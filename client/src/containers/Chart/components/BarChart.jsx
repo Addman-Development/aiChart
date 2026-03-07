@@ -21,7 +21,7 @@ ChartJS.register(
 
 function BarChart(props) {
   const {
-    chart, redraw, redrawComplete, editMode,
+    chart, redraw = false, redrawComplete = () => {}, editMode = false,
   } = props;
 
   const { isDark } = useTheme();
@@ -181,11 +181,6 @@ function BarChart(props) {
   );
 }
 
-BarChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => {},
-  editMode: false,
-};
 
 BarChart.propTypes = {
   chart: PropTypes.object.isRequired,

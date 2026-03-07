@@ -7,7 +7,7 @@ const { Op } = require("sequelize");
 const db = require("../models/models");
 const UserController = require("./UserController");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 class TeamController {
   constructor() {

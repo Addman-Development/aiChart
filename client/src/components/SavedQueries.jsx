@@ -25,7 +25,7 @@ function SavedQueries(props) {
   const [removeLoading, setRemoveLoading] = useState();
 
   const {
-    type, onSelectQuery, selectedQuery, style,
+    type = "", onSelectQuery = () => {}, selectedQuery = -1, style = {},
   } = props;
 
   const savedQueries = useSelector(selectSavedQueries);
@@ -241,13 +241,6 @@ const styles = {
   selectedItem: {
     backgroundColor: secondaryTransparent(0.1),
   },
-};
-
-SavedQueries.defaultProps = {
-  onSelectQuery: () => {},
-  selectedQuery: -1,
-  type: "",
-  style: {},
 };
 
 SavedQueries.propTypes = {

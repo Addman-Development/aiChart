@@ -2,7 +2,7 @@ import { io } from "socket.io-client";
 import { API_HOST } from "../config/settings";
 
 /**
- * Singleton Socket.IO client for Chartbrew AI
+ * Singleton Socket.IO client for ADDMAN-SmartChart AI
  * Handles connection, authentication, and room management
  */
 class SocketClient {

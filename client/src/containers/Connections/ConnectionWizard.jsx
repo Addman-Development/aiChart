@@ -13,13 +13,6 @@ import { useTheme } from "../../modules/ThemeContext";
 import ApiConnectionForm from "./components/ApiConnectionForm";
 import MongoConnectionForm from "./components/MongoConnectionForm";
 import PostgresConnectionForm from "./components/PostgresConnectionForm";
-import MysqlConnectionForm from "./components/MysqlConnectionForm";
-import FirestoreConnectionForm from "./Firestore/FirestoreConnectionForm";
-import RealtimeDbConnectionForm from "./RealtimeDb/RealtimeDbConnectionForm";
-import GaConnectionForm from "./GoogleAnalytics/GaConnectionForm";
-import StrapiConnectionForm from "./Strapi/StrapiConnectionForm";
-import CustomerioConnectionForm from "./Customerio/CustomerioConnectionForm";
-import ClickHouseConnectionForm from "./ClickHouse/ClickHouseConnectionForm";
 import { addConnection, addFilesToConnection, getConnection, getTeamConnections, saveConnection, selectConnections } from "../../slices/connection";
 import HelpBanner from "../../components/HelpBanner";
 import { generateInviteUrl, selectTeam } from "../../slices/team";
@@ -147,11 +140,6 @@ function ConnectionWizard() {
           dispatch(addFilesToConnection({ team_id: team.id, connection_id: createdConnection.payload.id, files }));
         }
 
-        if (data.type === "googleAnalytics") {
-          navigate(`/connections/${createdConnection.payload.id}`);
-          return true;
-        }
-
         setCompletionModal(true);
         setSelectedType("");
 
@@ -205,7 +193,7 @@ function ConnectionWizard() {
   return (
     <div>
       <div className="flex flex-col">
-        <div className="sm:mr-96">          
+        <div className="sm:mr-96">
           <Spacer y={2} />
 
           {!newConnection && (
@@ -303,77 +291,6 @@ function ConnectionWizard() {
               editConnection={newConnection}
             />
           )}
-          {selectedType === "mysql" && (
-            <MysqlConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-              subType="mysql"
-            />
-          )}
-          {selectedType === "firestore" && (
-            <FirestoreConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-            />
-          )}
-          {selectedType === "realtimedb" && (
-            <RealtimeDbConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-            />
-          )}
-          {selectedType === "googleAnalytics" && (
-            <GaConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-            />
-          )}
-          {selectedType === "strapi" && (
-            <StrapiConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-            />
-          )}
-          {selectedType === "customerio" && (
-            <CustomerioConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-            />
-          )}
-          {selectedType === "timescaledb" && (
-            <PostgresConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-              subType="timescaledb"
-            />
-          )}
-          {selectedType === "supabasedb" && (
-            <PostgresConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-              subType="supabasedb"
-            />
-          )}
-          {selectedType === "rdsPostgres" && (
-            <PostgresConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-              subType="rdsPostgres"
-            />
-          )}
-          {selectedType === "rdsMysql" && (
-            <MysqlConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-              subType="rdsMysql"
-            />
-          )}
-          {selectedType === "clickhouse" && (
-            <ClickHouseConnectionForm
-              onComplete={_onAddNewConnection}
-              editConnection={newConnection}
-            />
-          )}
 
           <div ref={bottomRef} />
         </div>
@@ -411,29 +328,6 @@ function ConnectionWizard() {
                     onClick={() => _onCopyInviteUrl()}
                   >
                     {inviteCopied ? "Copied to clipboard" : "Copy invite link"}
-                  </Button>
-                </CardFooter>
-              </Card>
-
-              <Spacer y={1} />
-
-              <Card>
-                <CardHeader className="flex flex-col items-start">
-                  <p className="font-semibold">Check out our tutorials</p>
-                </CardHeader>
-                <CardBody>
-                  <p className="text-sm text-gray-500">
-                    {"We have a number of tutorials that can help you get started with Chartbrew and learn more about the platform."}
-                  </p>
-                </CardBody>
-                <CardFooter>
-                  <Button
-                    size="sm"
-                    color="primary"
-                    fullWidth
-                    endContent={<LuCompass />}
-                  >
-                    Open the tutorials
                   </Button>
                 </CardFooter>
               </Card>
@@ -505,7 +399,7 @@ function ConnectionWizard() {
                   onPress={() => _onAskAi()}
                   startContent={<LuBrainCircuit />}
                 >
-                  Create with Chartbrew AI
+                  Create with AI
                 </Button>
               </>
             )}

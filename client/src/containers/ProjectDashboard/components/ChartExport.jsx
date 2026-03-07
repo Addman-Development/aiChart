@@ -8,7 +8,7 @@ import { LuCheckCheck, LuEye, LuEyeOff, LuFileDown, LuX } from "react-icons/lu";
 
 function ChartExport(props) {
   const {
-    charts, onExport, onUpdate, loading, error, showDisabled,
+    charts, onExport, onUpdate, loading = false, error = false, showDisabled = false,
   } = props;
   const [selectedIds, setSelectedIds] = useState([]);
 
@@ -137,12 +137,6 @@ function ChartExport(props) {
     </div>
   );
 }
-
-ChartExport.defaultProps = {
-  loading: false,
-  error: false,
-  showDisabled: false,
-};
 
 ChartExport.propTypes = {
   charts: PropTypes.array.isRequired,

@@ -16,7 +16,7 @@ import { tooltipPlugin } from "./ChartTooltip";
 ChartJS.register(CategoryScale, LinearScale, TimeScale, Title, Tooltip, Legend, MatrixController, MatrixElement);
 
 function MatrixChart(props) {
-  const { chart, redraw, redrawComplete } = props;
+  const { chart, redraw = false, redrawComplete = () => {} } = props;
 
   const { isDark } = useTheme();
   const theme = isDark ? "dark" : "light";
@@ -211,11 +211,6 @@ function MatrixChart(props) {
     </>
   );
 }
-
-MatrixChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => {},
-};
 
 MatrixChart.propTypes = {
   chart: PropTypes.object.isRequired,

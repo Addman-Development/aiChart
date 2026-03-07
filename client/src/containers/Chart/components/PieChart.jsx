@@ -76,7 +76,7 @@ const dataLabelsPlugin = {
 
 function PieChart(props) {
   const {
-    chart, redraw, redrawComplete,
+    chart, redraw = false, redrawComplete = () => { },
   } = props;
 
   const { isDark } = useTheme();
@@ -172,11 +172,6 @@ function PieChart(props) {
     </div>
   );
 }
-
-PieChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => { },
-};
 
 PieChart.propTypes = {
   chart: PropTypes.object.isRequired,

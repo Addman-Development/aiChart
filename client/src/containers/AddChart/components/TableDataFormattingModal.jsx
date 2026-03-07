@@ -85,7 +85,7 @@ const displayFormats = [{
 
 function TableDataFormattingModal(props) {
   const {
-    open, onUpdate, onClose, config, loading,
+    open = false, onUpdate, onClose, config = null, loading = false,
   } = props;
 
   const [dataType, setDataType] = useState("none");
@@ -644,12 +644,6 @@ TableDataFormattingModal.propTypes = {
   config: PropTypes.object,
   onUpdate: PropTypes.func.isRequired,
   loading: PropTypes.bool,
-};
-
-TableDataFormattingModal.defaultProps = {
-  open: false,
-  config: null,
-  loading: false,
 };
 
 export default TableDataFormattingModal;

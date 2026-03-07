@@ -540,12 +540,12 @@ function Report({ editMode = false }) {
       <div>
         <Helmet>
           <title>
-            {newChanges.dashboardTitle || project.dashboardTitle || project.name || "Chartbrew dashboard"}
+            {newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"}
           </title>
-          <meta name="description" content={project.description || newChanges.description || "Chartbrew dashboard"} />
+          <meta name="description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
           <meta name="robots" content="noindex" />
-          <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "Chartbrew dashboard"} />
-          <meta name="og:description" content={project.description || newChanges.description || "Chartbrew dashboard"} />
+          <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"} />
+          <meta name="og:description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
 
           {(newChanges?.headerCode || project?.headerCode) && !removeStyling && (
             <style type="text/css">{newChanges.headerCode || project.headerCode}</style>
@@ -643,7 +643,7 @@ function Report({ editMode = false }) {
       <div>
         <div className="container mx-auto pt-16">
           <div className="flex flex-col items-center justify-center">
-            <Image src={logo} height={50} width={50} radius="none" alt="Chartbrew logo" />
+            <Image src={logo} height={50} width={50} radius="none" alt="ADDMAN-SmartChart logo" />
             <Spacer y={2} />
             <h3 className="text-xl font-bold font-tw">{"This report is not available"}</h3>
             <p className="text-sm">{"This report is not available because it has no charts or it is not public."}</p>
@@ -658,16 +658,16 @@ function Report({ editMode = false }) {
     <div className="dashboard-container">
       <Helmet>
         <title>
-          {newChanges.dashboardTitle || project.dashboardTitle || project.name || "Chartbrew dashboard"}
+          {newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"}
         </title>
-        <meta name="description" content={project.description || newChanges.description || "Chartbrew dashboard"} />
+        <meta name="description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
         <meta name="robots" content="noindex" />
-        <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "Chartbrew dashboard"} />
-        <meta name="og:description" content={project.description || newChanges.description || "Chartbrew dashboard"} />
+        <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"} />
+        <meta name="og:description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
         <meta name="og:image" content={project.logo ? `${API_HOST}/${project.logo}` : logo} />
         <meta name="og:url" content={window.location.href} />
         <meta name="og:type" content="website" />
-        <meta name="og:site_name" content={project.name || "Chartbrew dashboard"} />
+        <meta name="og:site_name" content={project.name || "ADDMAN-SmartChart dashboard"} />
         <meta name="og:locale" content="en_US" />
         {(newChanges?.headerCode || project?.headerCode) && !removeStyling && (
           <style type="text/css">{newChanges.headerCode || project.headerCode}</style>
@@ -980,19 +980,15 @@ function Report({ editMode = false }) {
               <div className="footer-content mt-4 pr-4 flex justify-end">
                 <Link
                   className={`flex items-start !text-[${removeStyling ? "#000000" : (newChanges.titleColor || project.titleColor || "#000000")}]`}
-                  href={"https://chartbrew.com?ref=chartbrew_report"}
+                  href={"#"}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <span className="text-sm" style={{ color: removeStyling ? "#000000" : (newChanges.titleColor || project.titleColor || "#000000") }}>
-                    {"Powered by "}
+                    {"Powered by ADDMAN-SmartChart"}
                   </span> 
                   <Spacer x={1} />
                   <span className="text-sm" style={{ color: removeStyling ? "#000000" : (newChanges.titleColor || project.titleColor || "#000000") }}>
-                    <strong>{"Chart"}</strong>
-                  </span>
-                  <span className="text-sm" style={{ color: removeStyling ? "#000000" : (newChanges.titleColor || project.titleColor || "#000000") }}>
-                    {"brew"}
                   </span>
                 </Link>
               </div>

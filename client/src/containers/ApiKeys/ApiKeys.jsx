@@ -246,7 +246,7 @@ function ApiKeys() {
             <div className="text-lg font-semibold font-tw">Are you sure you want to delete the key?</div>
           </ModalHeader>
           <ModalBody>
-            <div className="text-gray-500">{"This key will lose access to Chartbrew. This action cannot be undone."}</div>
+            <div className="text-gray-500">{"This key will lose access to ADDMAN-SmartChart. This action cannot be undone."}</div>
           </ModalBody>
           <ModalFooter>
             <Button

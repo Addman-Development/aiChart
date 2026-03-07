@@ -41,17 +41,17 @@ function SlackCallback() {
       return;
     }
     await response.json();
-    toast.success("Successfully added Chartbrew to your Slack workspace");
+    toast.success("Successfully added ADDMAN-SmartChart to your Slack workspace");
     setLoading(false);
   };
 
   return (
     <div>
       <div className="text-lg font-semibold font-tw">
-        Add Chartbrew to your Slack workspace
+        Add ADDMAN-SmartChart to your Slack workspace
       </div>
       <div className="text-sm text-foreground-500">
-        {"Add Chartbrew to your Slack workspace to start using it"}
+        {"Add ADDMAN-SmartChart to your Slack workspace to start using it"}
       </div>
 
       <Spacer y={2} />
@@ -61,7 +61,7 @@ function SlackCallback() {
           <div className="flex flex-col items-center justify-center gap-2">
             <Spinner variant="simple" aria-label="Loading..." />
             <div className="text-center">
-              Please wait while we are adding Chartbrew to your Slack workspace...
+              Please wait while we are adding ADDMAN-SmartChart to your Slack workspace...
             </div>
           </div>
         )}
@@ -72,10 +72,10 @@ function SlackCallback() {
               <LuCircleCheck className="text-success" size={42} />
             </div>
             <div className="text-center font-bold">
-              Successfully added Chartbrew to your Slack workspace
+              Successfully added ADDMAN-SmartChart to your Slack workspace
             </div>
             <div className="text-center">
-              DM Chartbrew in Slack to get started and finish the setup:
+              DM ADDMAN-SmartChart in Slack to get started and finish the setup:
             </div>
             <div className="text-center">
               <Code>/chartbrew connect</Code>
@@ -87,7 +87,7 @@ function SlackCallback() {
           <Alert
             color="danger"
             variant="flat"
-            title="Failed to add Chartbrew to your Slack workspace"
+            title="Failed to add ADDMAN-SmartChart to your Slack workspace"
             description="Please try again."
             endContent={
               <a href={`${API_HOST}/apps/slack/oauth/start`}><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcSet="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x" /></a>

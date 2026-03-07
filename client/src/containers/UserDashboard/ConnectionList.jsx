@@ -136,7 +136,7 @@ function ConnectionList() {
             Data connections
           </div>
           <div className="text-sm text-foreground-500">
-            {"Connect your data sources to Chartbrew"}
+            {"Connect your data sources to ADDMAN-SmartChart"}
           </div>
         </div>
 

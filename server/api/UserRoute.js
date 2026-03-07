@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-const request = require("request");
 const rateLimit = require("express-rate-limit");
 
 const UserController = require("../controllers/UserController");
@@ -259,20 +258,21 @@ module.exports = (app) => {
       ]
     };
 
-    const options = {
+    return fetch(`${app.settings.sendgridHost}/mail/send`, {
       method: "POST",
-      url: `${app.settings.sendgridHost}/mail/send`,
-      body: JSON.stringify(message),
       headers: {
         authorization: `Bearer ${app.settings.sendgridKey}`,
         "content-type": "application/json"
-      }
-    };
-
-    return request(options, (err) => {
-      if (err) return res.status(400).send(err);
-      return res.status(200).send({});
-    });
+      },
+      body: JSON.stringify(message),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(response.statusText);
+        return res.status(200).send({});
+      })
+      .catch((err) => {
+        return res.status(400).send(err);
+      });
   });
   // --------------------------------------
 

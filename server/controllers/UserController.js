@@ -11,7 +11,7 @@ const db = require("../models/models");
 const mail = require("../modules/mail");
 const { decrypt, encrypt } = require("../modules/cbCrypto");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 const sc = simplecrypt({
   password: settings.secret,
@@ -539,7 +539,7 @@ class UserController {
   generateQrCodeUrl(email, secret) {
     const totp = new TOTP({
       secret,
-      issuer: "Chartbrew",
+      issuer: "ADDMAN-SmartChart",
       label: email,
       digits: 6,
       period: 30,

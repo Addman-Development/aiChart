@@ -71,15 +71,15 @@ function TopNav() {
         break;
       }
       case "tutorials": {
-        window.open("https://chartbrew.com/blog/tag/tutorial/", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "documentation": {
-        window.open("https://docs.chartbrew.com", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "github": {
-        window.open("https://github.com/chartbrew/chartbrew/discussions", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "feedback": {
@@ -91,11 +91,11 @@ function TopNav() {
         break;
       }
       case "roadmap": {
-        window.open("https://chartbrew.com/roadmap", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "api": {
-        window.open("https://docs.chartbrew.com/api-reference/introduction", "_blank");
+        window.open("#", "_blank");
         break;
       }
       default: {
@@ -176,7 +176,7 @@ function TopNav() {
               size="sm"
               className="from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-linear-to-tr hover:bg-linear-to-br transition-all duration-300 shadow-md"
             >
-              Ask Chartbrew AI
+              Ask ADDMAN-SmartChart AI
             </Button>
           )}
 

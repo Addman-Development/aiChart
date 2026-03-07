@@ -3,7 +3,7 @@ const DatasetController = require("../../../../controllers/DatasetController");
 
 const datasetController = new DatasetController();
 
-const clientUrl = process.env.NODE_ENV === "production" ? process.env.VITE_APP_CLIENT_HOST : process.env.VITE_APP_CLIENT_HOST_DEV;
+const clientUrl = process.env.VITE_APP_CLIENT_HOST;
 
 async function createDataset(payload) {
   const {

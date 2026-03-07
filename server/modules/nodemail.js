@@ -1,7 +1,7 @@
 const nodemailer = require("nodemailer");
 const ejs = require("ejs");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 // setup nodemailer
 // In tests we don't want to connect to a real SMTP server.
@@ -18,7 +18,7 @@ module.exports.sendInvite = (invite, admin, teamName) => {
   const message = {
     from: settings.adminMail,
     to: invite.email,
-    subject: "Chartbrew - Join the team",
+    subject: "ADDMAN-SmartChart - Join the team",
     text: `
       Hi there,
 
@@ -26,7 +26,7 @@ module.exports.sendInvite = (invite, admin, teamName) => {
 
       ${inviteUrl}
 
-      - Chartbrew
+      - ADDMAN-SmartChart
     `,
     html: `
       <h3>Hi there 👋</h3>
@@ -35,7 +35,7 @@ module.exports.sendInvite = (invite, admin, teamName) => {
 
       <p>${inviteUrl}</p>
 
-      - Chartbrew
+      - ADDMAN-SmartChart
     `,
   };
 
@@ -46,26 +46,26 @@ module.exports.passwordReset = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.email,
-    subject: "Chartbrew - Reset your password",
+    subject: "ADDMAN-SmartChart - Reset your password",
     text: `
-      Reset your Chartbrew password
+      Reset your ADDMAN-SmartChart password
 
       You can reset your password by clicking the link below:
 
       ${data.resetUrl}
 
       Cheers,
-      ChartBrew
+      ADDMAN-SmartChart
     `,
     html: `
-      <h3>Reset your Chartbrew password 🔑</h3>
+      <h3>Reset your ADDMAN-SmartChart password 🔑</h3>
 
       <p>You can reset your password by clicking the link below:</p>
 
       <p>${data.resetUrl}</p>
 
       Cheers,
-      ChartBrew
+      ADDMAN-SmartChart
     `,
   };
 
@@ -76,7 +76,7 @@ module.exports.sendChartAlert = (data) => {
   const message = {
     from: settings.adminMail,
     bcc: data.recipients,
-    subject: `Chartbrew - ${data.chartName} alert`,
+    subject: `ADDMAN-SmartChart - ${data.chartName} alert`,
   };
 
   /** TEXT */
@@ -90,7 +90,7 @@ module.exports.sendChartAlert = (data) => {
   }
   message.text += `Check your dashboard here: ${data.dashboardUrl}`;
   message.text += "\n";
-  message.text += "- Chartbrew";
+  message.text += "- ADDMAN-SmartChart";
   // ------------------------------
 
   ejs.renderFile(`${__dirname}/emailTemplates/alert.ejs`, {
@@ -113,7 +113,7 @@ module.exports.emailUpdate = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.email,
-    subject: "Chartbrew - new email confirmation",
+    subject: "ADDMAN-SmartChart - new email confirmation",
   };
 
   ejs.renderFile(`${__dirname}/emailTemplates/emailUpdate.ejs`, {
@@ -129,7 +129,7 @@ module.exports.sendDashboardSnapshot = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.recipients,
-    subject: `Chartbrew - ${data.projectName} snapshot`,
+    subject: `ADDMAN-SmartChart - ${data.projectName} snapshot`,
   };
 
   ejs.renderFile(`${__dirname}/emailTemplates/snapshot.ejs`, {

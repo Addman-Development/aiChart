@@ -26,7 +26,7 @@ import { selectTeam } from "../../../slices/team";
 */
 function MongoConnectionForm(props) {
   const {
-    editConnection, onComplete, addError,
+    editConnection = null, onComplete = () => {}, addError = false,
   } = props;
 
   const [showIp, setShowIp] = useState(false);
@@ -499,7 +499,7 @@ function MongoConnectionForm(props) {
                 <Text b>{"You might need to whitelist the front-end IP in the back-end"}</Text>
               </Row>
               <Row>
-                <Text>{"This is sometimes required when the database and the Chartbrew app are running on separate servers."}</Text>
+                <Text>{"This is sometimes required when the database and the ADDMAN-SmartChart app are running on separate servers."}</Text>
               </Row>
             </Container>
           </Row>
@@ -591,12 +591,6 @@ const styles = {
   saveBtn: {
     marginRight: 0,
   },
-};
-
-MongoConnectionForm.defaultProps = {
-  onComplete: () => {},
-  editConnection: null,
-  addError: false,
 };
 
 MongoConnectionForm.propTypes = {

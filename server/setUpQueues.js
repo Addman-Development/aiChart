@@ -39,7 +39,7 @@ const setUpQueues = (app) => {
   updateChartsQueue = new Queue("updateChartsQueue", getQueueOptions());
   updateChartsQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the updates queue. Please check if Redis is running: https://docs.chartbrew.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      console.error("Failed to set up the updates queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
       process.exit(1);
     }
   });
@@ -50,7 +50,7 @@ const setUpQueues = (app) => {
   updateDashboardsQueue = new Queue("updateDashboardsQueue", getQueueOptions());
   updateDashboardsQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the updates queue. Please check if Redis is running: https://docs.chartbrew.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      console.error("Failed to set up the updates queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
       process.exit(1);
     }
   });
@@ -61,7 +61,7 @@ const setUpQueues = (app) => {
   updateMongoDBSchemaQueue = new Queue("updateMongoDBSchemaQueue", getQueueOptions());
   updateMongoDBSchemaQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the MongoDB schema update queue. Please check if Redis is running: https://docs.chartbrew.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      console.error("Failed to set up the MongoDB schema update queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
       process.exit(1);
     }
   });
@@ -77,7 +77,7 @@ const setUpQueues = (app) => {
   const dashboardSnapshotQueue = new Queue("sendSnapshotsQueue", getQueueOptions());
   dashboardSnapshotQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the dashboard snapshot queue. Please check if Redis is running: https://docs.chartbrew.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      console.error("Failed to set up the dashboard snapshot queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
       process.exit(1);
     }
   });
@@ -93,7 +93,7 @@ const setUpQueues = (app) => {
   const updateSnapshotsQueue = new Queue("updateSnapshotsQueue", getQueueOptions());
   updateSnapshotsQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the update snapshots queue. Please check if Redis is running: https://docs.chartbrew.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      console.error("Failed to set up the update snapshots queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
       process.exit(1);
     }
   });
@@ -117,7 +117,7 @@ const setUpQueues = (app) => {
     serverAdapter,
     options: {
       uiConfig: {
-        boardTitle: "Chartbrew Jobs",
+        boardTitle: "ADDMAN-SmartChart Jobs",
       },
     },
   });

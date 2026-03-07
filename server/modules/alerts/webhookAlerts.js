@@ -1,6 +1,4 @@
-const request = require("request-promise");
-
-const settings = process.env.NODE_ENV === "production" ? require("../../settings") : require("../../settings-dev");
+const settings = require("../../settings");
 
 function send(data) {
   const {
@@ -15,13 +13,13 @@ function send(data) {
   if (alert.type === "milestone") {
     title = `You reached your milestone of *${value}*!`;
   } else if (alert.type === "threshold_above") {
-    title = `Chartbrew found some values above your threshold of *${value}*.`;
+    title = `ADDMAN-SmartChart found some values above your threshold of *${value}*.`;
   } else if (alert.type === "threshold_below") {
-    title = `Chartbrew found some values below your threshold of *${value}*.`;
+    title = `ADDMAN-SmartChart found some values below your threshold of *${value}*.`;
   } else if (alert.type === "threshold_between") {
-    title = `Chartbrew found some values between your thresholds of *${lower}* and *${upper}*.`;
+    title = `ADDMAN-SmartChart found some values between your thresholds of *${lower}* and *${upper}*.`;
   } else if (alert.type === "threshold_outside") {
-    title = `Chartbrew found some values your thresholds of *${lower}* and *${upper}*.`;
+    title = `ADDMAN-SmartChart found some values your thresholds of *${lower}* and *${upper}*.`;
   }
 
   const valueSections = [];
@@ -68,8 +66,7 @@ function send(data) {
     });
   }
 
-  const options = {
-    url: integration.config.url,
+  return fetch(integration.config.url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -85,9 +82,10 @@ function send(data) {
       snapshotUrl,
       blocks: integration.config.slackMode ? blocks : [],
     }),
-  };
-
-  return request(options);
+  }).then((response) => {
+    if (!response.ok) throw new Error(`Webhook failed with status ${response.status}`);
+    return response.text();
+  });
 }
 
 module.exports = {

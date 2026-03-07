@@ -70,7 +70,7 @@ function SlackAuth() {
         Authenticate Slack
       </div>
       <div className="text-sm text-foreground-500">
-        {"Connect your Slack workspace to your Chartbrew team"}
+        {"Connect your Slack workspace to your ADDMAN-SmartChart team"}
       </div>
 
       <Spacer y={2} />

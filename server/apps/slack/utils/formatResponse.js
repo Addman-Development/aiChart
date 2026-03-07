@@ -251,7 +251,7 @@ function parseMessageToBlocks(message) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_Response truncated. See full response in Chartbrew._",
+        text: "_Response truncated. See full response in ADDMAN-SmartChart._",
       },
     });
     return truncatedBlocks;

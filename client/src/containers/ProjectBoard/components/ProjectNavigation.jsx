@@ -280,30 +280,30 @@ function ProjectNavigation(props) {
           <div style={styles.absoluteLogo} className="flex justify-center items-center">
             {menuSize !== "small" && (
               <LinkNext
-                href={((!update || !update.tag_name) && `https://github.com/chartbrew/chartbrew/releases/tag/${APP_VERSION}`) || "#"}
+                href={((!update || !update.tag_name) && `#${APP_VERSION}`) || "#"}
                 target={(!update || !update.tag_name) && "_blank"}
                 rel="noopener noreferrer"
                 onPress={_onVersionClicked}
                 style={{ color: "white" }}
-                title={(update && update.tag_name && "New version available") || "Current Chartbrew version"}
+                title={(update && update.tag_name && "New version available") || "Current ADDMAN-SmartChart version"}
               >
                 <div className={"text-default-600 text-xs font-tw font-bold"} style={menuSize !== "small" ? styles.cbVersion : styles.cbVersionCollapsed}>
                   {update && update.tag_name && (
                     <LuChevronsUp color={secondary} />
                   )}
-                  Chartbrew
+                  ADDMAN-SmartChart
                   { ` ${APP_VERSION || "v3.0.0"}`}
                 </div>
               </LinkNext>
             )}
             {menuSize === "small" && (
               <LinkNext
-                href={((!update || !update.tag_name) && `https://github.com/chartbrew/chartbrew/releases/tag/${APP_VERSION}`) || "#"}
+                href={((!update || !update.tag_name) && `#${APP_VERSION}`) || "#"}
                 target={(!update || !update.tag_name) && "_blank"}
                 rel="noopener noreferrer"
                 onPress={_onVersionClicked}
                 style={{ color: "white" }}
-                title={(update && update.tag_name && "New version available") || "Current Chartbrew version"}
+                title={(update && update.tag_name && "New version available") || "Current ADDMAN-SmartChart version"}
               >
                 <div className={"text-default-600 text-xs font-tw font-bold"} style={menuSize !== "small" ? styles.cbVersion : styles.cbVersionCollapsed}>
                   {update && update.tag_name && (
@@ -366,7 +366,7 @@ function ProjectNavigation(props) {
               Close
             </Button>
             <LinkNext
-              href={`https://github.com/chartbrew/chartbrew/releases/tag/${update.tag_name}`}
+              href={`#${update.tag_name}`}
               target="_blank"
               rel="noreferrer"
             >

@@ -1,6 +1,6 @@
 {
-  "name": "server",
-  "version": "v4.8.0",
+  "name": "smartchart-server",
+  "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -11,26 +11,17 @@
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
     "test:ui": "vitest --ui",
-    "start-dev": "NODE_ENV=development nodemon index",
+    "dev": "NODE_ENV=development nodemon index",
     "start": "NODE_ENV=production node index",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "db:migrate": "cd models && npx sequelize-cli db:migrate",
-    "precommit": "lint-staged",
-    "postinstall": "npx --yes playwright install chromium --with-deps"
-  },
-  "author": {
-    "email": "hello@chartbrew.com",
-    "name": "Chartbrew"
+    "db:migrate": "cd models && npx sequelize-cli db:migrate"
   },
   "license": "MIT",
   "dependencies": {
     "@azure/msal-node": "^2.16.3",
     "@bull-board/api": "^6.17.0",
     "@bull-board/express": "^6.17.0",
-    "@clickhouse/client": "^1.17.0",
-    "@google-analytics/admin": "^9.0.1",
-    "@google-analytics/data": "^5.2.1",
     "@socket.io/pm2": "^6.0.8",
     "@socket.io/redis-adapter": "^8.3.0",
     "@slack/web-api": "^7.13.0",
@@ -49,8 +40,6 @@
     "ejs": "^3.1.10",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
-    "firebase-admin": "^12.7.0",
-    "googleapis": "^160.0.0",
     "helmet": "^7.2.0",
     "hot-formula-parser": "^4.0.0",
     "ioredis": "^5.9.2",
@@ -63,7 +52,6 @@
     "mongoose": "^8.22.1",
     "morgan": "^1.10.1",
     "multer": "^1.4.5-lts.2",
-    "mysql2": "^3.16.3",
     "nanoid": "^3.3.11",
     "node-cron": "^4.2.1",
     "node-xlsx": "^0.23.0",
@@ -74,15 +62,10 @@
     "pg-hstore": "^2.3.4",
     "playwright": "^1.58.2",
     "qrcode": "^1.5.4",
-    "request": "^2.88.2",
-    "request-promise": "^4.2.6",
     "sequelize": "^6.37.7",
     "simplecrypt": "^0.1.0",
     "socket.io": "^4.8.3",
-    "ssh2": "^1.17.0",
-    "tunnel-ssh": "^5.2.0",
     "umzug": "^3.8.2",
-    "uninstall": "^0.0.0",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
@@ -91,7 +74,6 @@
     "@playwright/test": "^1.58.2",
     "@vitest/coverage-v8": "^3.2.4",
     "@vitest/ui": "^3.2.4",
-    "babel-eslint": "^10.1.0",
     "eslint": "^8.57.1",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-plugin-import": "^2.32.0",

@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(bun:*)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(npx vite:*)",
+      "Bash(node:*)",
+      "Bash(find .:*)",
+      "Bash(grep \"\"dev\"\":*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)"
     ]
   }
 }

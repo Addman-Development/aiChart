@@ -35,8 +35,8 @@ const templates = [{
 */
 function ApiPagination(props) {
   const {
-    items, itemsLimit, offset, paginationField, pagination,
-    onPaginationChanged, apiRoute, template, result,
+    items, itemsLimit, offset, paginationField = "", pagination,
+    onPaginationChanged, apiRoute = "", template = "custom", result = null,
   } = props;
 
   const [fieldOptions, setFieldOptions] = useState([]);
@@ -254,7 +254,7 @@ function ApiPagination(props) {
       {template === "cursor" && (
         <div className="col-span-12 md:col-span-6">
           <Tooltip
-            content={"This should be the name of the field in the response that points to the next cursor position. This will help Chartbrew automatically set the cursor start position. "}
+            content={"This should be the name of the field in the response that points to the next cursor position. This will help ADDMAN-SmartChart automatically set the cursor start position. "}
             className="max-w-[400px]"
             placement="top-start"
           >
@@ -366,13 +366,6 @@ const styles = {
     display: "flex",
     alignItems: "center",
   }
-};
-
-ApiPagination.defaultProps = {
-  apiRoute: "",
-  template: "custom",
-  result: null,
-  paginationField: "",
 };
 
 ApiPagination.propTypes = {

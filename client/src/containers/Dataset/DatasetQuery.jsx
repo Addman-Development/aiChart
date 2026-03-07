@@ -7,7 +7,7 @@ import {
   Tab,
   Image,
 } from "@heroui/react";
-import { LuBrainCircuit, LuGitMerge, LuPlug, LuPlus, LuSearch, LuX } from "react-icons/lu";
+import { LuBrainCircuit, LuGitMerge, LuPlus, LuSearch, LuX } from "react-icons/lu";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router";
 import { cloneDeep, findIndex } from "lodash";
@@ -17,18 +17,12 @@ import toast from "react-hot-toast";
 import { selectConnections } from "../../slices/connection";
 import {
   updateDataset, createDataRequest, updateDataRequest, deleteDataRequest,
-  selectDataRequests,
   getDataRequestsByDataset,
 } from "../../slices/dataset";
 import connectionImages from "../../config/connectionImages";
 import ApiBuilder from "../AddChart/components/ApiBuilder";
 import SqlBuilder from "../AddChart/components/SqlBuilder";
 import MongoQueryBuilder from "../AddChart/components/MongoQueryBuilder";
-import RealtimeDbBuilder from "../Connections/RealtimeDb/RealtimeDbBuilder";
-import FirestoreBuilder from "../Connections/Firestore/FirestoreBuilder";
-import GaBuilder from "../Connections/GoogleAnalytics/GaBuilder";
-import CustomerioBuilder from "../Connections/Customerio/CustomerioBuilder";
-import ClickHouseBuilder from "../Connections/ClickHouse/ClickHouseBuilder";
 import DatarequestSettings from "./DatarequestSettings";
 import Container from "../../components/Container";
 import { useTheme } from "../../modules/ThemeContext";
@@ -51,18 +45,19 @@ function DatasetQuery(props) {
   const navigate = useNavigate();
   const initRef = useRef(null);
 
-  const stateDataRequests = useSelector((state) => selectDataRequests(state, parseInt(params.datasetId, 10))) || [];
   const connections = useSelector(selectConnections);
   const dataset = useSelector((state) => state.dataset.data.find((d) => `${d.id}` === `${params.datasetId}`));
   const projects = useSelector(selectProjects);
   const team = useSelector(selectTeam);
 
+  const datasetId = dataset?.id;
+  const teamId = team?.id;
   useEffect(() => {
-    if (dataset?.id && team?.id && !initRef.current) {
+    if (datasetId && teamId && !initRef.current) {
       initRef.current = true;
 
       dispatch(getDataRequestsByDataset({
-        team_id: team?.id,
+        team_id: teamId,
         dataset_id: params.datasetId,
       }))
         .then((drs) => {
@@ -77,8 +72,8 @@ function DatasetQuery(props) {
 
           if (drs.payload?.[0] > 0 && !dataset.main_dr_id) {
             dispatch(updateDataset({
-              team_id: team?.id,
-              dataset_id: dataset.id,
+              team_id: teamId,
+              dataset_id: datasetId,
               data: { main_dr_id: drs.payload[0].id },
             }));
           }
@@ -97,13 +92,7 @@ function DatasetQuery(props) {
           return err;
         });
     }
-  }, [dataset, team]);
-
-  useEffect(() => {
-    if (stateDataRequests.length > 0) {
-      setDataRequests(stateDataRequests);
-    }
-  }, [stateDataRequests]);
+  }, [datasetId, teamId]); // eslint-disable-line
 
   const _updateDataRequest = (newData) => {
     let newDr = newData;
@@ -244,47 +233,43 @@ function DatasetQuery(props) {
     return tags;
   };
 
-  const _getSelectedTab = () => {
-    if (selectedRequest?.isSettings) {
-      return "join";
-    }
-
-    if (createMode) {
-      return "add";
-    }
-    
-    if (selectedRequest?.id) {
-      return `${selectedRequest?.id}`;
-    }
-
-    return null;
-  };
-
   return (
     <>
       <div className="h-full py-2 overflow-y-auto flex flex-col gap-2">
         <div className="flex flex-row items-center justify-start gap-2">
           {dataRequests && dataRequests.length > 0 && (
             <>
-              <Tabs selectedKey={selectedRequest?.isSettings ? "join" : null} variant="bordered">
-                {selectedRequest && (
-                  <Tab
-                    key="join"
-                    title={(
-                      <div className="flex flex-row items-center gap-2">
-                        <LuGitMerge size={16} />
-                        <span>Join settings</span>
-                      </div>
-                    )}
-                    onPress={() => _onSelectSettings()}
-                  />
-                )}
-              </Tabs>
-              <LuPlug />
-              <Tabs selectedKey={_getSelectedTab()} variant="bordered">
+              <Tabs
+                selectedKey={
+                  selectedRequest?.isSettings ? "join"
+                    : createMode ? "add"
+                      : selectedRequest?.id ? `${selectedRequest.id}`
+                        : "join"
+                }
+                variant="bordered"
+                onSelectionChange={(key) => {
+                  if (key === "join") {
+                    _onSelectSettings();
+                  } else if (key === "add") {
+                    setCreateMode(true);
+                  } else {
+                    const dr = dataRequests.find((d) => `${d.id}` === `${key}`);
+                    if (dr) _onSelectDataRequest(dr);
+                  }
+                }}
+              >
+                <Tab
+                  key="join"
+                  title={(
+                    <div className="flex flex-row items-center gap-2">
+                      <LuGitMerge size={16} />
+                      <span>Join settings</span>
+                    </div>
+                  )}
+                />
                 {dataRequests.map((dr) => (
                   <Tab
-                    key={dr.id}
+                    key={`${dr.id}`}
                     title={(
                       <div className="flex flex-row items-center gap-2">
                         <Image
@@ -297,7 +282,6 @@ function DatasetQuery(props) {
                         <span>{dr?.Connection?.name}</span>
                       </div>
                     )}
-                    onPress={() => _onSelectDataRequest(dr)}
                   />
                 ))}
                 <Tab
@@ -308,7 +292,6 @@ function DatasetQuery(props) {
                       <span>Add a new data source</span>
                     </div>
                   )}
-                  onPress={() => setCreateMode(true)}
                 />
               </Tabs>
             </>
@@ -338,7 +321,7 @@ function DatasetQuery(props) {
                     onDelete={() => _onDeleteRequest(dr.id)}
                   />
                 )}
-                {(selectedRequest.Connection?.type === "mysql" || selectedRequest.Connection?.type === "postgres") && selectedRequest.id === dr.id && (
+                {selectedRequest.Connection?.type === "postgres" && selectedRequest.id === dr.id && (
                   <SqlBuilder
                     dataRequest={dr}
                     connection={dr.Connection}
@@ -349,51 +332,6 @@ function DatasetQuery(props) {
                 )}
                 {selectedRequest.Connection?.type === "mongodb" && selectedRequest.id === dr.id && (
                   <MongoQueryBuilder
-                    dataRequest={dr}
-                    connection={dr.Connection}
-                    onChangeRequest={_updateDataRequest}
-                    onSave={_onSaveRequest}
-                    onDelete={() => _onDeleteRequest(dr.id)}
-                  />
-                )}
-                {selectedRequest.Connection?.type === "realtimedb" && selectedRequest.id === dr.id && (
-                  <RealtimeDbBuilder
-                    dataRequest={dr}
-                    connection={dr.Connection}
-                    onChangeRequest={_updateDataRequest}
-                    onSave={_onSaveRequest}
-                    onDelete={() => _onDeleteRequest(dr.id)}
-                  />
-                )}
-                {selectedRequest.Connection?.type === "firestore" && selectedRequest.id === dr.id && (
-                  <FirestoreBuilder
-                    dataRequest={dr}
-                    connection={dr.Connection}
-                    onChangeRequest={_updateDataRequest}
-                    onSave={_onSaveRequest}
-                    onDelete={() => _onDeleteRequest(dr.id)}
-                  />
-                )}
-                {selectedRequest.Connection?.type === "googleAnalytics" && selectedRequest.id === dr.id && (
-                  <GaBuilder
-                    dataRequest={dr}
-                    connection={dr.Connection}
-                    onChangeRequest={_updateDataRequest}
-                    onSave={_onSaveRequest}
-                    onDelete={() => _onDeleteRequest(dr.id)}
-                  />
-                )}
-                {selectedRequest.Connection?.type === "customerio" && selectedRequest.id === dr.id && (
-                  <CustomerioBuilder
-                    dataRequest={dr}
-                    connection={dr.Connection}
-                    onChangeRequest={_updateDataRequest}
-                    onSave={_onSaveRequest}
-                    onDelete={() => _onDeleteRequest(dr.id)}
-                  />
-                )}
-                {selectedRequest.Connection?.type === "clickhouse" && selectedRequest.id === dr.id && (
-                  <ClickHouseBuilder
                     dataRequest={dr}
                     connection={dr.Connection}
                     onChangeRequest={_updateDataRequest}
@@ -489,7 +427,7 @@ function DatasetQuery(props) {
                         <div className="flex flex-row items-center justify-between">
                           <div className="flex flex-col gap-1">
                             <Text size="h4">{c.name}</Text>
-                            {(c.type === "mysql" || c.type === "postgres" || c.type === "mongodb" || c.type === "clickhouse") && (
+                            {(c.type === "postgres" || c.type === "mongodb") && (
                               <Chip color="secondary" variant="flat" size="sm" startContent={<LuBrainCircuit />}>
                                 {"AI-powered"}
                               </Chip>
@@ -526,14 +464,13 @@ function DatasetQuery(props) {
                       <CardFooter>
                         <Container>
                           <div className="flex flex-row justify-center">
-                            <Button
-                              variant="flat"
-                              onPress={() => _onCreateNewRequest(c)}
-                              size="sm"
-                              fullWidth
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              className="inline-flex items-center justify-center w-full h-8 rounded-md bg-default-100 hover:bg-default-200 cursor-pointer text-sm"
                             >
                               Select
-                            </Button>
+                            </div>
                           </div>
                         </Container>
                       </CardFooter>

@@ -278,7 +278,7 @@ function LoginForm() {
             />
             {resetDone && (
             <Row>
-              <Text color="green">{"We will send further instructions over email if the address is registered with Chartbrew."}</Text>
+              <Text color="green">{"We will send further instructions over email if the address is registered with ADDMAN-SmartChart."}</Text>
             </Row>
             )}
             {resetError && (

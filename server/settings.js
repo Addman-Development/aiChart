@@ -14,11 +14,6 @@ module.exports = {
       pass: process.env.CB_MAIL_PASS,
     },
   },
-  google: {
-    client_id: process.env.CB_GOOGLE_CLIENT_ID,
-    client_secret: process.env.CB_GOOGLE_CLIENT_SECRET,
-    redirect_url: "/google-auth",
-  },
   azure: {
     clientId: process.env.AZURE_AD_CLIENT_ID,
     clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
@@ -28,5 +23,4 @@ module.exports = {
   },
   teamRestricted: process.env.CB_RESTRICT_TEAMS,
   signupRestricted: process.env.CB_RESTRICT_SIGNUP,
-  chartbrewMainAPI: "https://api.chartbrew.com",
 };

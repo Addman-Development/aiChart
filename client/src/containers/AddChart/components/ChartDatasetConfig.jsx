@@ -34,7 +34,7 @@ import connectionImages from "../../../config/connectionImages";
 import { useTheme } from "../../../modules/ThemeContext";
 
 function ChartDatasetConfig(props) {
-  const { chartId, cdcId, dataRequests, onRemove } = props;
+  const { chartId, cdcId, dataRequests = [], onRemove } = props;
 
   const [legend, setLegend] = useState("");
   const [formula, setFormula] = useState("");
@@ -924,10 +924,6 @@ ChartDatasetConfig.propTypes = {
   dataRequests: PropTypes.array,
   cdcId: PropTypes.number.isRequired,
   onRemove: PropTypes.func.isRequired,
-};
-
-ChartDatasetConfig.defaultProps = {
-  dataRequests: [],
 };
 
 export default ChartDatasetConfig

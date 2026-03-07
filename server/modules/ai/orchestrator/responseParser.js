@@ -1,5 +1,5 @@
 /**
- * AI Response Parser for Chartbrew
+ * AI Response Parser for ADDMAN-SmartChart
  *
  * Parses AI responses to extract structured information and progress events.
  * Enables real-time progress tracking and better user experience.

@@ -68,7 +68,7 @@ function Dataset() {
       initRef.current = true;
       fetchData();
     }
-  }, [team]);
+  }, [team?.id]);
 
   useEffect(() => {
     if (user?.id && !team) {
@@ -82,7 +82,7 @@ function Dataset() {
         setDatasetMenu("configure");
       }
     }
-  }, [user, team]);
+  }, [user?.id, team?.id]);
 
   useEffect(() => {
     if (!dataset) {
@@ -93,7 +93,7 @@ function Dataset() {
       datasetInitRef.current = true;
       setLegend(dataset.legend);
     }
-  }, [dataset]);
+  }, [dataset?.id]);
 
   useEffect(() => {
     if (params.datasetId === "new" && !createInitRef.current) {
@@ -150,7 +150,7 @@ function Dataset() {
           }))
         });
     }
-  }, [ghostProject, dataset]);
+  }, [ghostProject?.id, dataset?.id]);
 
   useEffect(() => {
     if (datasetMenu === "configure" && dataset?.id && team?.id) {
@@ -160,7 +160,7 @@ function Dataset() {
         getCache: true,
       }));
     }
-  }, [datasetMenu, team]);
+  }, [datasetMenu, team?.id, dataset?.id]);
 
   useEffect(() => {
     let message = error;

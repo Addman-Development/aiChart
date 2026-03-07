@@ -515,10 +515,6 @@ function TeamMembers(props) {
   );
 }
 
-TeamMembers.defaultProps = {
-  style: {},
-};
-
 TeamMembers.propTypes = {
   style: PropTypes.object,
 };

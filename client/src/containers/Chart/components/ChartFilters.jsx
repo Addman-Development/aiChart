@@ -16,7 +16,7 @@ import Row from "../../../components/Row";
 
 function ChartFilters(props) {
   const {
-    chart, onAddFilter, onClearFilter, conditions, inline, size, amount,
+    chart, onAddFilter, onClearFilter, conditions = [], inline = false, size = "md", amount = 0,
   } = props;
 
   const [optionFilter, setOptionFilter] = useState({});
@@ -249,13 +249,6 @@ ChartFilters.propTypes = {
   inline: PropTypes.bool,
   size: PropTypes.string,
   amount: PropTypes.number,
-};
-
-ChartFilters.defaultProps = {
-  conditions: [],
-  inline: false,
-  size: "md",
-  amount: 0,
 };
 
 export default ChartFilters;

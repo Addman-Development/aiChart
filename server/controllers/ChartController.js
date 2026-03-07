@@ -21,7 +21,7 @@ const AxisChart = require("../charts/AxisChart");
 const TableView = require("../charts/TableView");
 const getEmbeddedChartData = require("../modules/getEmbeddedChartData");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 class ChartController {
   constructor() {
@@ -604,7 +604,7 @@ class ChartController {
       .then((connection) => {
         if (connection.type === "mongodb") {
           return this.testMongoQuery(chart, projectId);
-        } else if (connection.type === "postgres" || connection.type === "mysql") {
+        } else if (connection.type === "postgres") {
           return this.getPostgresData(chart, projectId, connection);
         } else {
           return new Promise((resolve, reject) => reject("The connection type is not supported"));
@@ -656,7 +656,7 @@ class ChartController {
           return this.testQuery(chart, projectId);
         } else if (connection.type === "api") {
           return this.getApiChartData(chart, projectId);
-        } else if (connection.type === "postgres" || connection.type === "mysql") {
+        } else if (connection.type === "postgres") {
           return this.getPostgresData(chart, projectId, connection);
         } else {
           return new Promise((resolve, reject) => reject("The connection type is not supported"));

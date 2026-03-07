@@ -17,7 +17,7 @@ import { chartColors } from "../../../config/colors";
 
 ChartJS.register(ArcElement, Tooltip, ChartDataLabels);
 
-function GaugeChart({ chart, redraw, redrawComplete }) {
+function GaugeChart({ chart, redraw = false, redrawComplete = () => {} }) {
   const { isDark } = useTheme();
   const theme = isDark ? "dark" : "light";
   const containerRef = useRef(null);
@@ -260,11 +260,6 @@ function GaugeChart({ chart, redraw, redrawComplete }) {
     </div>
   );
 }
-
-GaugeChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => {},
-};
 
 GaugeChart.propTypes = {
   chart: PropTypes.object.isRequired,

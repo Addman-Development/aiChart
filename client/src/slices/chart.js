@@ -382,7 +382,7 @@ export const exportChart = createAsyncThunk(
     const objUrl = window.URL.createObjectURL(new Blob([file]));
     const link = document.createElement("a");
     link.href = objUrl;
-    link.setAttribute("download", "chartbrew-export.xlsx");
+    link.setAttribute("download", "smartchart-export.xlsx");
 
     // Append to html page
     document.body.appendChild(link);
@@ -414,7 +414,7 @@ export const exportChartPublic = createAsyncThunk(
     const objUrl = window.URL.createObjectURL(new Blob([file]));
     const link = document.createElement("a");
     link.href = objUrl;
-    link.setAttribute("download", `${chart.name}-chartbrew.xlsx`);
+    link.setAttribute("download", `${chart.name}-smartchart.xlsx`);
 
     // Append to html page
     document.body.appendChild(link);

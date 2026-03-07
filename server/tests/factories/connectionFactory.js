@@ -43,19 +43,6 @@ export const connectionFactory = {
     return Array.from({ length: count }, () => connectionFactory.build(overrides));
   },
 
-  // Helper for creating MySQL connections
-  buildMySQL: (overrides = {}) => {
-    return connectionFactory.build({
-      type: "mysql",
-      host: "localhost",
-      port: "3306",
-      dbName: "test_db",
-      username: "testuser",
-      password: "testpass",
-      ...overrides
-    });
-  },
-
   // Helper for creating PostgreSQL connections
   buildPostgreSQL: (overrides = {}) => {
     return connectionFactory.build({

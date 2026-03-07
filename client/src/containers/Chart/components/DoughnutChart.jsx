@@ -76,7 +76,7 @@ const dataLabelsPlugin = {
 
 function DoughnutChart(props) {
   const {
-    chart, redraw, redrawComplete,
+    chart, redraw = false, redrawComplete = () => { },
   } = props;
 
   useEffect(() => {
@@ -173,11 +173,6 @@ function DoughnutChart(props) {
     </div>
   );
 }
-
-DoughnutChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => { },
-};
 
 DoughnutChart.propTypes = {
   chart: PropTypes.object.isRequired,

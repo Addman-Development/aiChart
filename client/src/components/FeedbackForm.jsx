@@ -74,7 +74,7 @@ function FeedbackForm() {
         {success
             && <Text color="success">{"We received your feedback and will work on it! Thank you."}</Text>}
         {submitError
-            && <Text color="danger">{"Something went wront, please try again or email us directly on support@chartbrew.com"}</Text>}
+            && <Text color="danger">{"Something went wront, please try again or email us directly on #"}</Text>}
       </Row>
       <Spacer y={1} />
       <Row>

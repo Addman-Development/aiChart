@@ -15,7 +15,7 @@ import {
   Spacer,
 } from "@heroui/react";
 
-function QueryResultsTable({ result }) {
+function QueryResultsTable({ result = "" }) {
   const [resultsPage, setResultsPage] = useState(1);
 
   const getResultHeaderRows = () => {
@@ -128,9 +128,6 @@ QueryResultsTable.propTypes = {
   result: PropTypes.string,
 };
 
-QueryResultsTable.defaultProps = {
-  result: "",
-};
 
 export default QueryResultsTable;
 

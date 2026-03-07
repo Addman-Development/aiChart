@@ -65,15 +65,15 @@ function AccountNav() {
         break;
       }
       case "tutorials": {
-        window.open("https://chartbrew.com/blog/tag/tutorial/", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "documentation": {
-        window.open("https://docs.chartbrew.com", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "github": {
-        window.open("https://github.com/chartbrew/chartbrew/discussions", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "feedback": {
@@ -93,11 +93,11 @@ function AccountNav() {
         break;
       }
       case "roadmap": {
-        window.open("https://chartbrew.com/roadmap", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "api": {
-        window.open("https://docs.chartbrew.com/api-reference/introduction", "_blank");
+        window.open("#", "_blank");
         break;
       }
       default: {
@@ -226,7 +226,7 @@ function AccountNav() {
       <Modal isOpen={showAppearance} onClose={() => setShowAppearance(false)} width="500px">
         <ModalContent>
           <ModalHeader>
-            <Text size="h4">Chartbrew UI Appearance</Text>
+            <Text size="h4">ADDMAN-SmartChart UI Appearance</Text>
           </ModalHeader>
           <ModalBody>
             <div className="flex flex-row justify-between gap-2">

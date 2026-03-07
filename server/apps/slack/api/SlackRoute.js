@@ -26,7 +26,7 @@ module.exports = (app) => {
     // Slack requires immediate response (within 3 seconds)
     res.status(200).send();
 
-    if (command === "/chartbrew") {
+    if (command === "/smartchart") {
       const parts = text ? text.trim().split(/\s+/) : [];
       const subcommand = parts[0] || "";
 
@@ -95,7 +95,7 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
-  ** Auth Complete - Link Slack workspace to Chartbrew team
+  ** Auth Complete - Link Slack workspace to ADDMAN-SmartChart team
   */
   app.post("/apps/slack/auth/complete", verifyToken, async (req, res) => {
     const { state_token, team_id, default_project_id } = req.body;

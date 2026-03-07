@@ -47,7 +47,7 @@ const formStrings = {
 */
 function PostgresConnectionForm(props) {
   const {
-    editConnection, onComplete, addError, subType,
+    editConnection = null, onComplete = () => {}, addError = false, subType = "postgres",
   } = props;
 
   const [loading, setLoading] = useState(false);
@@ -734,7 +734,7 @@ function PostgresConnectionForm(props) {
                       variant="bordered"
                       size="sm"
                       as={"a"}
-                      href="mailto:support@chartbrew.com"
+                      href="#"
                       target="_blank"
                     >
                       {"Contact support"}
@@ -820,13 +820,6 @@ function PostgresConnectionForm(props) {
   );
 }
 
-PostgresConnectionForm.defaultProps = {
-  onComplete: () => {},
-  editConnection: null,
-  addError: false,
-  subType: "postgres",
-};
-
 PostgresConnectionForm.propTypes = {
   onComplete: PropTypes.func,
   editConnection: PropTypes.object,
@@ -864,7 +857,7 @@ function FormGuides({ subType }) {
           <Link
             target="_blank"
             rel="noopener"
-            href="https://chartbrew.com/blog/connect-and-visualize-supabase-database-with-chartbrew/#create-a-read-only-user"
+            href="#"
           >
             <Text>{"For security reasons, connect to your Supabase database with read-only credentials"}</Text>
           </Link>
@@ -884,7 +877,7 @@ function FormGuides({ subType }) {
           <Link
             target="_blank"
             rel="noopener noreferrer"
-            href="https://chartbrew.com/blog/how-to-connect-and-visualize-amazon-rds-with-chartbrew/#ensure-your-database-user-has-read-only-access-optional-but-recommended"
+            href="#"
           >
             <Text>{"For security reasons, connect to your PostgreSQL database with read-only credentials"}</Text>
           </Link>
@@ -895,7 +888,7 @@ function FormGuides({ subType }) {
           <LuChevronRight />
           <Spacer x={1} />
           <Link
-            href="https://chartbrew.com/blog/how-to-connect-and-visualize-amazon-rds-with-chartbrew/#adjust-your-rds-instance-to-allow-remote-connections"
+            href="#"
             target="_blank"
             rel="noopener noreferrer"
           >

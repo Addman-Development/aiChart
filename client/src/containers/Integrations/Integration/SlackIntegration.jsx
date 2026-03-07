@@ -208,7 +208,7 @@ function SlackIntegration({ integration }) {
             <div className="flex flex-col gap-1">
               <div className="font-semibold">Allow All Channels</div>
               <div className="text-sm text-foreground-500">
-                When enabled, Chartbrew can be used in all channels. When disabled, only selected channels are allowed.
+                When enabled, ADDMAN-SmartChart can be used in all channels. When disabled, only selected channels are allowed.
               </div>
             </div>
             <Switch
@@ -233,7 +233,7 @@ function SlackIntegration({ integration }) {
                 setSelectedChannels(selectedArray)
               }}
               variant="bordered"
-              description="Chartbrew can only be used in these channels. To see private channels in the list, add the app to the channel in Slack first."
+              description="ADDMAN-SmartChart can only be used in these channels. To see private channels in the list, add the app to the channel in Slack first."
               isLoading={channelsLoading}
             >
               {channels.map((c) => (

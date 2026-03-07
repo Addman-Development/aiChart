@@ -29,7 +29,7 @@ module.exports = (data) => {
     connection.username = decrypt(connection.username);
     connection.password = decrypt(connection.password);
   } catch (e) {
-    // info is not encrypted, must be a test
+    console.error("[assembleMongoUrl] Decryption failed:", e.message);
   }
 
   let url = "mongodb://";

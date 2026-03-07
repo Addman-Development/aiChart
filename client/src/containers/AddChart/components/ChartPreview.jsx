@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import { connect } from "react-redux";
+import { useSelector } from "react-redux";
 import {
   Button, Checkbox, Chip, CircularProgress, Divider, Input, Link, Popover, PopoverContent, PopoverTrigger, Skeleton, Spacer, Tooltip,
 } from "@heroui/react";
@@ -33,8 +33,9 @@ import GaugeChart from "../../Chart/components/GaugeChart";
 
 function ChartPreview(props) {
   const {
-    chart, onChange, onRefreshData, chartLoading, changeCache, useCache,
+    chart, onChange, onRefreshData, changeCache, useCache,
   } = props;
+  const chartLoading = useSelector((state) => state.chart.loading);
 
   const [redraw, setRedraw] = useState(false);
   const [conditions, setConditions] = useState([]);
@@ -254,7 +255,7 @@ function ChartPreview(props) {
                   {"Use cached data"}
                 </Checkbox>
                 <Tooltip
-                  content="Chartbrew will use cached data for extra editing speed ⚡️"
+                  content="ADDMAN-SmartChart will use cached data for extra editing speed ⚡️"
                 >
                   <div><LuInfo /></div>
                 </Tooltip>
@@ -732,18 +733,11 @@ const styles = {
 
 ChartPreview.propTypes = {
   chart: PropTypes.object.isRequired,
-  chartLoading: PropTypes.bool.isRequired,
   onChange: PropTypes.func.isRequired,
   onRefreshData: PropTypes.func.isRequired,
-  onRefreshPreview: PropTypes.func.isRequired,
+  onRefreshPreview: PropTypes.func,
   changeCache: PropTypes.func.isRequired,
   useCache: PropTypes.bool.isRequired,
 };
 
-const mapStateToProps = (state) => {
-  return {
-    chartLoading: state.chart.loading,
-  };
-};
-
-export default connect(mapStateToProps)(ChartPreview);
+export default ChartPreview;

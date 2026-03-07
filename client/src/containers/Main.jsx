@@ -43,7 +43,6 @@ const ManageUser = lazy(() => import("./Settings/ManageUser"));
 const PublicDashboard = lazy(() => import("./PublicDashboard/PublicDashboard"));
 const PasswordReset = lazy(() => import("./PasswordReset"));
 const EmbeddedChart = lazy(() => import("./EmbeddedChart"));
-const GoogleAuth = lazy(() => import("./GoogleAuth"));
 const AzureCallback = lazy(() => import("./AzureCallback"));
 const ProjectRedirect = lazy(() => import("./ProjectRedirect"));
 import FeedbackForm from "../components/FeedbackForm";
@@ -156,8 +155,9 @@ function Main(props) {
     };
   }, []);
 
+  const teamsLength = teams?.length || 0;
   useEffect(() => {
-    if (teams && teams.length > 0 && !teamsRef.current) {
+    if (teamsLength > 0 && !teamsRef.current) {
       teamsRef.current = true;
 
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
@@ -173,7 +173,7 @@ function Main(props) {
         dispatch(getDatasets({ team_id: selectedTeam.id }));
       }
     }
-  }, [teams]);
+  }, [teamsLength]); // eslint-disable-line
 
   return (
     <IconContext.Provider value={{ className: "react-icons", size: 20, style: { opacity: 0.8 } }}>
@@ -258,7 +258,6 @@ function Main(props) {
                 )}
               />
               <Route exact path="/signup" element={<Signup />} />
-              <Route exact path="/google-auth" element={<GoogleAuth />} />
               <Route exact path="/azure-callback" element={<AzureCallback />} />
               <Route exact path="/login" element={<Login />} />
               <Route exact path="/user" element={<UserDashboard />} />

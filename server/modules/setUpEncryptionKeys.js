@@ -37,16 +37,14 @@ async function updateKeys(envVar) {
     // Write the updates back to the .env file
     await fs.writeFile(envPath, updatedData, "utf8");
   } catch (e) {
-    console.error("The encryption key could not be set up. Please ensure you have CB_ENCRYPTION_KEY_DEV and CB_ENCRYPTION_KEY in your .env file."); // eslint-disable-line
+    console.error("The encryption key could not be set up. Please ensure you have CB_ENCRYPTION_KEY in your .env file."); // eslint-disable-line
   }
 }
 
 module.exports = async () => {
-  await updateKeys("CB_ENCRYPTION_KEY_DEV");
   await updateKeys("CB_ENCRYPTION_KEY");
 
   return true;
 };
 
-updateKeys("CB_ENCRYPTION_KEY_DEV");
 updateKeys("CB_ENCRYPTION_KEY");

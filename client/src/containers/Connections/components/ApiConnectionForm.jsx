@@ -40,7 +40,7 @@ const authTypes = [{
 */
 function ApiConnectionForm(props) {
   const {
-    editConnection, onComplete, addError,
+    editConnection = null, onComplete, addError = null,
   } = props;
 
   const [loading, setLoading] = useState(false);
@@ -483,11 +483,6 @@ function ApiConnectionForm(props) {
     </div>
   );
 }
-
-ApiConnectionForm.defaultProps = {
-  editConnection: null,
-  addError: null,
-};
 
 ApiConnectionForm.propTypes = {
   onComplete: PropTypes.func.isRequired,

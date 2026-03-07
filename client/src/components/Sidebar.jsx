@@ -113,9 +113,9 @@ function Sidebar() {
         <div className="flex flex-col">
           <Link to="/" className="flex items-center justify-start h-16 px-4">
             {collapsed ? (
-              <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="Chartbrew Logo" width={40} radius="none" />
+              <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="ADDMAN-SmartChart Logo" width={40} radius="none" />
             ) : (
-              <Image src={isDark ? cbLogoDark : cbLogoLight} alt="Chartbrew Logo" width={120} radius="none" />
+              <Image src={isDark ? cbLogoDark : cbLogoLight} alt="ADDMAN-SmartChart Logo" width={120} radius="none" />
             )}
           </Link>
 

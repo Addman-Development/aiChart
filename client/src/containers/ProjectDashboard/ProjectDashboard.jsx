@@ -753,7 +753,7 @@ function ProjectDashboard() {
       }
 
       // Use client-side export with the already filtered data
-      exportMultipleChartsToExcel(exportableCharts, "chartbrew-dashboard-export.xlsx");
+      exportMultipleChartsToExcel(exportableCharts, "smartchart-dashboard-export.xlsx");
       toast.success(`${exportableCharts.length} chart(s) exported successfully`);
       setExportLoading(false);
       setViewExport(false);

@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const db = require("../models/models");
 const userResponse = require("./userResponse");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 module.exports = async (req, res, next) => {
   const token = req.headers.authorization ? req.headers.authorization.replace("Bearer ", "") : "";

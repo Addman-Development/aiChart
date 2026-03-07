@@ -112,7 +112,7 @@ function ProjectBoard() {
   );
 }
 
-function MainContent() {
+function MainContent({ mobile = false } = {}) {
   return (
     <div className="w-full">
       <Outlet />
@@ -124,10 +124,6 @@ MainContent.propTypes = {
   onPrint: PropTypes.func.isRequired,
   _canAccess: PropTypes.func.isRequired,
   mobile: PropTypes.bool,
-};
-
-MainContent.defaultProps = {
-  mobile: false,
 };
 
 const styles = {

@@ -14,10 +14,6 @@ import { LuLink2, LuMonitorX, LuPlus } from "react-icons/lu";
 import ApiBuilder from "./ApiBuilder";
 import SqlBuilder from "./SqlBuilder";
 import MongoQueryBuilder from "./MongoQueryBuilder";
-import RealtimeDbBuilder from "../../Connections/RealtimeDb/RealtimeDbBuilder";
-import FirestoreBuilder from "../../Connections/Firestore/FirestoreBuilder";
-import GaBuilder from "../../Connections/GoogleAnalytics/GaBuilder";
-import CustomerioBuilder from "../../Connections/Customerio/CustomerioBuilder";
 import DatarequestSettings from "./DatarequestSettings";
 import Container from "../../../components/Container";
 import Row from "../../../components/Row";
@@ -39,7 +35,7 @@ import { useParams } from "react-router";
 
 function DatarequestModal(props) {
   const {
-    open, onClose, dataset, getDataRequestByDataset,
+    open = false, onClose, dataset, getDataRequestByDataset,
     createDataRequest, updateDataRequest, chart,
     connections, deleteDataRequest, updateDataset, responses, stateDataRequests,
     datasetResponses, runRequest,
@@ -349,7 +345,7 @@ function DatarequestModal(props) {
                         onDelete={() => _onDeleteRequest(dr.id)}
                       />
                     )}
-                    {(selectedRequest.Connection.type === "mysql" || selectedRequest.Connection.type === "postgres") && selectedRequest.id === dr.id && (
+                    {selectedRequest.Connection.type === "postgres" && selectedRequest.id === dr.id && (
                       <SqlBuilder
                         dataRequest={dr}
                         connection={dr.Connection}
@@ -360,42 +356,6 @@ function DatarequestModal(props) {
                     )}
                     {selectedRequest.Connection.type === "mongodb" && selectedRequest.id === dr.id && (
                       <MongoQueryBuilder
-                        dataRequest={dr}
-                        connection={dr.Connection}
-                        onChangeRequest={_updateDataRequest}
-                        onSave={_onSaveRequest}
-                        onDelete={() => _onDeleteRequest(dr.id)}
-                      />
-                    )}
-                    {selectedRequest.Connection.type === "realtimedb" && selectedRequest.id === dr.id && (
-                      <RealtimeDbBuilder
-                        dataRequest={dr}
-                        connection={dr.Connection}
-                        onChangeRequest={_updateDataRequest}
-                        onSave={_onSaveRequest}
-                        onDelete={() => _onDeleteRequest(dr.id)}
-                      />
-                    )}
-                    {selectedRequest.Connection.type === "firestore" && selectedRequest.id === dr.id && (
-                      <FirestoreBuilder
-                        dataRequest={dr}
-                        connection={dr.Connection}
-                        onChangeRequest={_updateDataRequest}
-                        onSave={_onSaveRequest}
-                        onDelete={() => _onDeleteRequest(dr.id)}
-                      />
-                    )}
-                    {selectedRequest.Connection.type === "googleAnalytics" && selectedRequest.id === dr.id && (
-                      <GaBuilder
-                        dataRequest={dr}
-                        connection={dr.Connection}
-                        onChangeRequest={_updateDataRequest}
-                        onSave={_onSaveRequest}
-                        onDelete={() => _onDeleteRequest(dr.id)}
-                      />
-                    )}
-                    {selectedRequest.Connection.type === "customerio" && selectedRequest.id === dr.id && (
-                      <CustomerioBuilder
                         dataRequest={dr}
                         connection={dr.Connection}
                         onChangeRequest={_updateDataRequest}
@@ -483,10 +443,6 @@ function DatarequestModal(props) {
     </Modal>
   );
 }
-
-DatarequestModal.defaultProps = {
-  open: false,
-};
 
 DatarequestModal.propTypes = {
   open: PropTypes.bool,

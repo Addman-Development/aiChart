@@ -23,8 +23,8 @@ import { useTheme } from "../../../modules/ThemeContext";
 
 function CustomTemplateForm(props) {
   const {
-    template, onBack, projectId, onComplete, isAdmin, onDelete,
-    onCreateProject,
+    template, onBack, projectId = "", onComplete, isAdmin = false, onDelete,
+    onCreateProject = () => {},
   } = props;
 
   const [selectedCharts, setSelectedCharts] = useState([]);
@@ -243,7 +243,7 @@ function CustomTemplateForm(props) {
             </div>
           )}
           <Row>
-            <Text b>{"Select which charts you want Chartbrew to create for you"}</Text>
+            <Text b>{"Select which charts you want ADDMAN-SmartChart to create for you"}</Text>
           </Row>
           <Spacer y={1} />
           <div className="grid grid-cols-12 gap-2">
@@ -359,12 +359,6 @@ CustomTemplateForm.propTypes = {
   onDelete: PropTypes.func.isRequired,
   isAdmin: PropTypes.bool,
   onCreateProject: PropTypes.func,
-};
-
-CustomTemplateForm.defaultProps = {
-  isAdmin: false,
-  onCreateProject: () => {},
-  projectId: "",
 };
 
 export default CustomTemplateForm;

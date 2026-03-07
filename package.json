@@ -1,30 +1,14 @@
 {
-  "name": "chartbrew",
-  "version": "v4.8.0",
-  "description": "",
-  "main": "index.js",
-  "workspaces": [],
+  "name": "addman-smartchart",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["client", "server"],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "setup": "npm run prepareSettings && npm install && cd client && npm install && cd ../server/ && npm install",
-    "prepareSettings": "echo n | cp -vipr .env-template .env | true && cd client && echo n | cp -vipr src/config/settings.template.js src/config/settings.js | true",
-    "client": "cd client && npm start",
-    "server": "cd server && npm run start-dev"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/chartbrew/chartbrew.git"
-  },
-  "author": {
-    "email": "hello@chartbrew.com",
-    "name": "Chartbrew"
-  },
-  "license": "MIT",
-  "bugs": {
-    "url": "https://github.com/charbrew/chartbrew/issues"
-  },
-  "homepage": "https://github.com/chartbrew/chartbrew",
-  "devDependencies": {
-    "vuepress": "^1.9.10"
+    "dev": "bun run --filter '*' dev",
+    "dev:client": "cd client && bun run dev",
+    "dev:server": "cd server && bun run dev",
+    "build": "cd client && bun run build",
+    "setup": "bun install && bun run prepare-settings",
+    "prepare-settings": "echo n | cp -vipr .env-template .env | true && cd client && echo n | cp -vipr src/config/settings.template.js src/config/settings.js | true"
   }
 }

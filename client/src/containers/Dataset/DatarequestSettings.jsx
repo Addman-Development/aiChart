@@ -45,7 +45,7 @@ function DatarequestSettings(props) {
   const joinInitRef = useRef(null);
 
   const dataset = useSelector((state) => state.dataset.data.find((d) => `${d.id}` === `${params.datasetId}`));
-  const dataRequests = useSelector((state) => selectDataRequests(state, parseInt(params.datasetId, 10))) || [];
+  const dataRequests = useSelector((state) => selectDataRequests(state, parseInt(params.datasetId, 10)));
   const responses = useSelector(selectResponses);
   const team = useSelector(selectTeam);
 
@@ -64,11 +64,11 @@ function DatarequestSettings(props) {
         setJoins(newJoins);
       }
     }
-  }, [dataset]);
+  }, [dataset?.id]);
 
   useEffect(() => {
     if (dataset?.main_dr_id && team?.id) {
-      const dr = dataRequests.find((o) => o.id === dataset.main_dr_id);
+      const dr = dataRequests?.find((o) => o.id === dataset.main_dr_id);
       if (dr && !responseInitRef.current) {
         responseInitRef.current = true;
         dispatch(runDataRequest({
@@ -80,7 +80,7 @@ function DatarequestSettings(props) {
           .catch(() => {});
       }
     }
-  }, [dataset?.main_dr_id, dataRequests, team]);
+  }, [dataset?.main_dr_id, team?.id]);
 
   useEffect(() => {
     if (dataset?.joinSettings?.joins && team?.id && !joinInitRef.current) {
@@ -104,7 +104,7 @@ function DatarequestSettings(props) {
         }
       });
     }
-  }, [dataset?.joinSettings?.joins, team]);
+  }, [dataset?.id, team?.id]); // eslint-disable-line
 
   useEffect(() => {
     if (_.isEqual(dataset?.joinSettings?.joins, joins)) {
@@ -114,16 +114,15 @@ function DatarequestSettings(props) {
     } else {
       setIsSaved(false);
     }
-  }, [dataset, joins]);
+  }, [dataset?.id, dataset?.joinSettings, joins]);
 
+  const currentResponse = responses?.find((o) => o.dataset_id === dataset?.id);
+  const currentResponseData = currentResponse?.data;
   useEffect(() => {
-    if (responses && responses.length > 0 && dataset && dataset.id) {
-      const selectedResponse = responses.find((o) => o.dataset_id === dataset.id);
-      if (selectedResponse?.data) {
-        setResult(JSON.stringify(selectedResponse.data, null, 2));
-      }
+    if (currentResponseData) {
+      setResult(JSON.stringify(currentResponseData, null, 2));
     }
-  }, [responses]);
+  }, [currentResponseData]);
 
   const _onChangeMainSource = (drId) => {
     onChange({ main_dr_id: drId });
@@ -560,7 +559,7 @@ function DatarequestSettings(props) {
               </Checkbox>
               <Spacer x={0.5} />
               <Tooltip
-                content="If checked, Chartbrew will use cached data instead of making requests to your data source. The cache gets automatically invalidated when you change the collections and/or filters."
+                content="If checked, ADDMAN-SmartChart will use cached data instead of making requests to your data source. The cache gets automatically invalidated when you change the collections and/or filters."
                 placement="leftStart"
                 className="max-w-[500px]"
               >

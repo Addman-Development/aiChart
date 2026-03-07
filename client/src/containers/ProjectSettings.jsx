@@ -25,7 +25,7 @@ import { selectTeam } from "../slices/team";
 */
 function ProjectSettings(props) {
   const {
-    user, cleanErrors, style,
+    user, cleanErrors, style = {},
   } = props;
 
   const [success, setSuccess] = useState(false);
@@ -286,10 +286,6 @@ function ProjectSettings(props) {
     </Segment>
   );
 }
-
-ProjectSettings.defaultProps = {
-  style: {},
-};
 
 ProjectSettings.propTypes = {
   style: PropTypes.object,

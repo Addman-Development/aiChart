@@ -868,7 +868,7 @@ function ApiBuilder(props) {
               <Tooltip
                 content={(
                   <>
-                    <p>{"Chartbrew will use cached data for extra editing speed ⚡️"}</p>
+                    <p>{"ADDMAN-SmartChart will use cached data for extra editing speed ⚡️"}</p>
                     <p>{"The cache gets automatically invalidated when you change the configuration of the request."}</p>
                   </>
                 )}

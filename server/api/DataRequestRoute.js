@@ -199,6 +199,7 @@ module.exports = (app) => {
         return res.status(200).send(newDataRequest);
       })
       .catch((error) => {
+        console.error("[DataRequestRoute] runRequest error:", error.message, error.stack);
         if (error.message === "401") {
           return res.status(401).send({ error: "Not authorized" });
         }

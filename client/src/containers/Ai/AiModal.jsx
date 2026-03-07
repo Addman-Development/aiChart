@@ -1258,7 +1258,7 @@ function AiModal({ isOpen, onClose }) {
               />
               <div className="flex flex-col items-center justify-center">
                 <div className="flex flex-row items-center gap-2">
-                  <div className="font-tw font-medium text-lg">Chartbrew AI</div>
+                  <div className="font-tw font-medium text-lg">ADDMAN-SmartChart AI</div>
                   <Chip color="primary" variant="flat" size="sm" radius="sm" className="shadow-sm">
                     Beta
                   </Chip>
@@ -1484,7 +1484,7 @@ function AiModal({ isOpen, onClose }) {
 
             <Divider />
             <div className="text-xs text-foreground-500 mb-2">
-              <span className="font-medium">Note:</span> We are still in beta. Some features may not work as expected. Please let us know if you encounter any issues or have any feedback at <a href="mailto:support@chartbrew.com" className="text-primary-500 hover:text-primary-600">support@chartbrew.com</a>
+              <span className="font-medium">Note:</span> We are still in beta. Some features may not work as expected. Please let us know if you encounter any issues or have any feedback at <a href="#" className="text-primary-500 hover:text-primary-600">our support team</a>
             </div>
           </ModalBody>
         )}
