@@ -384,9 +384,16 @@ class DatasetController {
           }
         });
 
-        return Promise.all(drPromises);
+        return Promise.allSettled(drPromises);
       })
-      .then(async (promisedRequests) => {
+      .then(async (settledResults) => {
+        const promisedRequests = settledResults
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => r.value);
+        if (promisedRequests.length === 0 && settledResults.length > 0) {
+          const firstError = settledResults.find((r) => r.status === "rejected");
+          throw firstError?.reason || new Error("All data requests failed");
+        }
         const filteredRequests = promisedRequests.filter((request) => request !== undefined);
         let data = [];
         const mainResponseData = filteredRequests

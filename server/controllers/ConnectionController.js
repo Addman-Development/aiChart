@@ -653,76 +653,78 @@ class ConnectionController {
     let mongoConnection;
 
     // Use the processed query if provided, otherwise use the original query
-    let formattedQuery = queryOverride || dataRequest.query;
+    const formattedQuery = (() => {
+      let q = queryOverride || dataRequest.query;
+      if (!q) return null;
+      // formatting required since introducing the multiple mongo connection support
+      if (q.indexOf("connection.") === 0) {
+        q = q.replace("connection.", "");
+      }
+      return q;
+    })();
 
     if (!formattedQuery) {
-      return Promise.reject(new Error("No query provided"));
+      throw new Error("No query provided");
     }
 
-    // formatting required since introducing the multiple mongo connection support
-    if (formattedQuery.indexOf("connection.") === 0) {
-      formattedQuery = formattedQuery.replace("connection.", "");
-    }
+    try {
+      const url = await this.getConnectionUrl(id);
+      mongoConnection = mongoose.createConnection(url, { connectTimeoutMS: 100000 });
+      await mongoConnection.asPromise();
 
-    return this.getConnectionUrl(id)
-      .then((url) => {
-        const options = {
-          connectTimeoutMS: 100000,
-        };
-        mongoConnection = mongoose.createConnection(url, options);
-        return mongoConnection.asPromise();
-      })
-      .then(() => {
-        return Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}.toArray()`)()(mongoConnection, ObjectId); // eslint-disable-line
-      })
-      // if array fails, check if it works with object (for example .findOne() return object)
-      .catch((err) => {
-        if (!mongoConnection) {
-          console.error("[runMongo] Connection failed:", err.message);
-          throw err;
-        }
-        return Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
-      })
-      .then(async (data) => {
-        let finalData = data;
-        if (data && typeof data?.next === "function") {
-          finalData = await data.toArray();
-        }
-        // MonogoDB returns a plain number when count() is used, transform this into an object
-        if (formattedQuery.indexOf("count(") > -1) {
-          finalData = { count: data };
-        }
-        // Ensure ObjectId instances are returned as strings for UI rendering
-        finalData = stringifyMongoIds(finalData);
-        // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
-        const dataToCache = {
-          dataRequest,
-          responseData: {
-            data: finalData,
-          },
-          connection_id: id,
-        };
-
-        await drCacheController.create(dataRequest.id, dataToCache);
-
-        // close the mongodb connection
-        mongoConnection.close();
-
-        // Trigger schema update in the background
+      // Build the query function - try with .toArray() first, then without
+      let data;
+      try {
+        data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}.toArray()`)()(mongoConnection, ObjectId); // eslint-disable-line
+      } catch (toArrayErr) {
         try {
-          this.addMongoSchemaUpdateJob(id);
-        } catch (error) {
-          // do nothing
+          data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
+        } catch (queryErr) {
+          throw new Error(`Invalid MongoDB query: ${queryErr.message}`);
         }
+      }
 
-        return Promise.resolve(dataToCache);
-      })
-      .catch((error) => {
-        // close the mongodb connection
-        mongoConnection.close();
+      let finalData = data;
+      if (data && typeof data?.next === "function") {
+        finalData = await data.toArray();
+      }
+      // MongoDB returns a plain number when count() is used, transform this into an object
+      if (formattedQuery.indexOf("count(") > -1) {
+        finalData = { count: data };
+      }
+      // Ensure ObjectId instances are returned as strings for UI rendering
+      finalData = stringifyMongoIds(finalData);
+      // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
+      const dataToCache = {
+        dataRequest,
+        responseData: {
+          data: finalData,
+        },
+        connection_id: id,
+      };
 
-        return new Promise((resolve, reject) => reject(error));
-      });
+      await drCacheController.create(dataRequest.id, dataToCache);
+
+      // Trigger schema update in the background
+      try {
+        this.addMongoSchemaUpdateJob(id);
+      } catch (error) {
+        // do nothing
+      }
+
+      return dataToCache;
+    } catch (error) {
+      console.error("[runMongo] Error:", error.message);
+      throw error;
+    } finally {
+      if (mongoConnection) {
+        try {
+          mongoConnection.close();
+        } catch (closeErr) {
+          // ignore close errors
+        }
+      }
+    }
   }
 
   async runPostgres(id, dataRequest, getCache, queryOverride = null) {

@@ -1,3 +1,8 @@
+// Prevent unhandled promise rejections from crashing the server
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[unhandledRejection]", reason);
+});
+
 // set up the encryption keys first, then load .env file
 const setUpEncryptionKeys = require("./modules/setUpEncryptionKeys"); // eslint-disable-line
 

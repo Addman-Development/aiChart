@@ -364,9 +364,16 @@ class ChartController {
             );
           }
         });
-        return Promise.all(requestPromises);
+        return Promise.allSettled(requestPromises);
       })
-      .then(async (datasets) => {
+      .then(async (settledResults) => {
+        const datasets = settledResults
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => r.value);
+        if (datasets.length === 0 && settledResults.length > 0) {
+          const firstError = settledResults.find((r) => r.status === "rejected");
+          throw firstError?.reason || new Error("All dataset requests failed");
+        }
         const resolvingData = {
           chart: gChart,
           datasets,
