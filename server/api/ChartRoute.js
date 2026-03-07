@@ -228,6 +228,25 @@ module.exports = (app) => {
   // --------------------------------------------------------
 
   /*
+  ** Route to move a chart to a different dashboard/project
+  */
+  app.put("/project/:project_id/chart/:id/move", verifyToken, checkPermissions("updateOwn"), (req, res) => {
+    const moveChartToDashboard = require("../modules/ai/orchestrator/tools/moveChartToDashboard");
+    return moveChartToDashboard({
+      chart_id: req.params.id,
+      target_project_id: req.body.target_project_id,
+      team_id: req.body.team_id,
+    })
+      .then((result) => {
+        return res.status(200).send(result);
+      })
+      .catch((error) => {
+        return res.status(400).send({ message: error.message });
+      });
+  });
+  // --------------------------------------------------------
+
+  /*
   ** Route to remove a chart
   */
   app.delete("/project/:project_id/chart/:id", verifyToken, checkPermissions("deleteOwn"), (req, res) => {

@@ -397,7 +397,7 @@ function WebhookIntegrations({ teamId }) {
 }
 
 WebhookIntegrations.propTypes = {
-  teamId: PropTypes.string.isRequired,
+  teamId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
 };
 
 export default WebhookIntegrations;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react"
 import PropTypes from "prop-types"
 import { Modal, ModalContent, ModalBody, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
-import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack } from "react-icons/lu"
+import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
@@ -11,7 +11,7 @@ import { useParams } from "react-router";
 import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, getAiUsage } from "../../api/ai";
 import { selectTeam } from "../../slices/team";
 import { selectUser } from "../../slices/user";
-import { getChart } from "../../slices/chart";
+import { getChart, moveChartToDashboard } from "../../slices/chart";
 import Chart from "../Chart/Chart";
 import { selectProjects } from "../../slices/project";
 import { selectConnections } from "../../slices/connection";
@@ -107,6 +107,33 @@ function AiModal({ isOpen, onClose }) {
         return `Dataset: ${entity.legend || entity.name}`;
       default:
         return entity.name;
+    }
+  };
+
+  const [movingChartId, setMovingChartId] = useState(null);
+
+  const _onMoveChartToDashboard = async (chartId, sourceProjectId, targetProjectId) => {
+    setMovingChartId(chartId);
+    try {
+      const result = await dispatch(moveChartToDashboard({
+        project_id: sourceProjectId,
+        chart_id: chartId,
+        target_project_id: targetProjectId,
+        team_id: team.id,
+      })).unwrap();
+
+      toast.success("Chart added to dashboard");
+
+      // Update the local chart data to reflect the move
+      setCreatedCharts(prev => prev.map(c =>
+        c.id === parseInt(chartId, 10)
+          ? { ...c, project_id: parseInt(targetProjectId, 10) }
+          : c
+      ));
+    } catch (error) {
+      toast.error(error.message || "Failed to move chart");
+    } finally {
+      setMovingChartId(null);
     }
   };
 
@@ -901,7 +928,7 @@ function AiModal({ isOpen, onClose }) {
                     </div>
                   )}
                   <div className="flex gap-2 mt-3">
-                    <a href={`/${team.id}/${parsed.projectId}/dashboard`} target="_blank" rel="noopener noreferrer">
+                    <a href={`/dashboard/${parsed.projectId}`} target="_blank" rel="noopener noreferrer">
                       <Button
                         size="sm"
                         variant="flat"
@@ -911,7 +938,7 @@ function AiModal({ isOpen, onClose }) {
                         View on Dashboard
                       </Button>
                     </a>
-                    <a href={`/${team.id}/${parsed.projectId}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
+                    <a href={`/dashboard/${parsed.projectId}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
                       <Button
                         size="sm"
                         variant="flat"
@@ -932,37 +959,54 @@ function AiModal({ isOpen, onClose }) {
     // Temporary chart messages - render the chart with temporary styling
     if (parsed.type === "chart_temporary" && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
+      const nonGhostProjects = projects.filter((p) => !p.ghost);
+      const chartAlreadyMoved = chartData && nonGhostProjects.some(
+        (p) => p.id === chartData.project_id
+      );
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">
           <div className="w-full max-w-[90%]">
-            <div className="px-6 py-4 rounded-lg border border-primary-200 bg-primary-50/50">
+            <div className={`px-6 py-4 rounded-lg border ${
+              chartAlreadyMoved ? "border-success-200" : "border-primary-200 bg-primary-50/50"
+            }`}>
               <div className="flex items-start gap-3">
                 <Avatar
                   icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
-                  color="primary"
+                  color={chartAlreadyMoved ? "success" : "primary"}
                 />
                 <div className="w-full">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium">
-                      Temporary Chart Preview
+                      {chartAlreadyMoved ? "Chart Added" : "Temporary Chart Preview"}
                     </span>
                     <Chip
                       size="sm"
                       variant="flat"
-                      color="primary"
+                      color={chartAlreadyMoved ? "success" : "primary"}
                     >
                       {parsed.chartName}
                     </Chip>
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      color="default"
-                      className="ml-auto"
-                    >
-                      Not saved to dashboard
-                    </Chip>
+                    {chartAlreadyMoved ? (
+                      <Chip
+                        size="sm"
+                        variant="flat"
+                        color="success"
+                        className="ml-auto"
+                      >
+                        Added to {nonGhostProjects.find((p) => p.id === chartData.project_id)?.name}
+                      </Chip>
+                    ) : (
+                      <Chip
+                        size="sm"
+                        variant="flat"
+                        color="default"
+                        className="ml-auto"
+                      >
+                        Not saved to dashboard
+                      </Chip>
+                    )}
                   </div>
                   {chartData ? (
                     <div className="overflow-hidden h-[300px]">
@@ -978,8 +1022,61 @@ function AiModal({ isOpen, onClose }) {
                       <div className="text-sm mt-2">Loading chart...</div>
                     </div>
                   )}
-                  <div className="text-xs text-foreground-500 mt-3 mb-2">
-                    {"This chart is temporary. Tell me which dashboard you'd like to add it to."}
+                  <div className="flex items-center gap-2 mt-3">
+                    {!chartAlreadyMoved ? (
+                      <Dropdown aria-label="Select a dashboard">
+                        <DropdownTrigger>
+                          <Button
+                            size="sm"
+                            color="primary"
+                            variant="flat"
+                            startContent={<LuLayoutDashboard size={14} />}
+                            endContent={<LuChevronDown size={14} />}
+                            isLoading={movingChartId === parsed.chartId}
+                          >
+                            Add to Dashboard
+                          </Button>
+                        </DropdownTrigger>
+                        <DropdownMenu
+                          aria-label="Select a dashboard"
+                          onAction={(key) => {
+                            _onMoveChartToDashboard(
+                              parsed.chartId,
+                              parsed.projectId,
+                              key
+                            );
+                          }}
+                        >
+                          {nonGhostProjects.map((project) => (
+                            <DropdownItem key={project.id} textValue={project.name}>
+                              {project.name}
+                            </DropdownItem>
+                          ))}
+                        </DropdownMenu>
+                      </Dropdown>
+                    ) : (
+                      <>
+                        <a href={`/dashboard/${chartData.project_id}`} target="_blank" rel="noopener noreferrer">
+                          <Button
+                            size="sm"
+                            variant="flat"
+                            color="primary"
+                            className="pointer-events-none"
+                          >
+                            View on Dashboard
+                          </Button>
+                        </a>
+                        <a href={`/dashboard/${chartData.project_id}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
+                          <Button
+                            size="sm"
+                            variant="flat"
+                            className="pointer-events-none"
+                          >
+                            Edit Chart
+                          </Button>
+                        </a>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

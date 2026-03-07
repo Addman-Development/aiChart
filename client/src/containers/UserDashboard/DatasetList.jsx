@@ -466,7 +466,7 @@ function DatasetList() {
                   </div>
                 </TableCell>
                 <TableCell key="connections">
-                  <div className="flex flex-row items-center">
+                  <div className="flex flex-row items-center justify-center">
                     <AvatarGroup max={3} isBordered size="sm">
                       {dataset?.DataRequests?.map((dr) => (
                         <Avatar

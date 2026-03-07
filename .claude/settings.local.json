@@ -10,7 +10,8 @@
       "Bash(find .:*)",
       "Bash(grep \"\"dev\"\":*)",
       "Bash(ls:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep:*)"
     ]
   }
 }
