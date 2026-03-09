@@ -1,8 +1,49 @@
-const request = require("request-promise");
 const _ = require("lodash");
 
+async function _fetchWithFullResponse(options) {
+  const fetchOptions = {
+    method: options.method || "GET",
+    headers: { ...options.headers },
+  };
+
+  let url = options.url;
+
+  if (options.qs) {
+    const params = new URLSearchParams();
+    Object.entries(options.qs).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, String(value));
+      }
+    });
+    const qsString = params.toString();
+    if (qsString) {
+      url += (url.includes("?") ? "&" : "?") + qsString;
+    }
+  }
+
+  if (options.auth) {
+    const encoded = Buffer.from(`${options.auth.user}:${options.auth.pass}`).toString("base64");
+    fetchOptions.headers.authorization = `Basic ${encoded}`;
+  }
+
+  if (options.body) {
+    fetchOptions.body = options.body;
+  }
+
+  const response = await fetch(url, fetchOptions);
+  const body = await response.text();
+
+  if (!response.ok) {
+    const error = new Error(`${response.status} - ${body}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return { statusCode: response.status, body, headers: response.headers };
+}
+
 function PaginateRequests(options, limit, items, offset, totalResults = []) {
-  return request(options)
+  return _fetchWithFullResponse(options)
     .then((response) => {
       let results;
       try {
@@ -53,7 +94,7 @@ function PaginateRequests(options, limit, items, offset, totalResults = []) {
 function PaginatePages(options, limit, offset, totalResults = []) {
   if (!options.qs[offset]) options.qs[offset] = 1; // eslint-disable-line
 
-  return request(options)
+  return _fetchWithFullResponse(options)
     .then((response) => {
       let results;
       try {
@@ -103,7 +144,7 @@ function PaginatePages(options, limit, offset, totalResults = []) {
 }
 
 function PaginateStripe(options, limit, totalResults) {
-  return request(options)
+  return _fetchWithFullResponse(options)
     .then((response) => {
       // introduce a delay so Stripe doesn't shut down the request
       return new Promise((resolve) => setTimeout(() => resolve(response), 1500));
@@ -141,7 +182,7 @@ function PaginateStripe(options, limit, totalResults) {
 }
 
 function PaginateUrl(options, paginationField, limit, totalResults = []) {
-  return request(options)
+  return _fetchWithFullResponse(options)
     .then((response) => {
       let results;
       let paginationURL;
@@ -199,7 +240,7 @@ function PaginateUrl(options, paginationField, limit, totalResults = []) {
 }
 
 function PaginateCursor(options, limit, items, offset, totalResults = []) {
-  return request(options)
+  return _fetchWithFullResponse(options)
     .then((response) => {
       const resultsKey = [];
       try {

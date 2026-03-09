@@ -161,7 +161,7 @@ function TeamMembers(props) {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _teamsOwned = () => {
@@ -514,10 +514,6 @@ function TeamMembers(props) {
     </div>
   );
 }
-
-TeamMembers.defaultProps = {
-  style: {},
-};
 
 TeamMembers.propTypes = {
   style: PropTypes.object,

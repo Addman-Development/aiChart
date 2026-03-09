@@ -121,7 +121,7 @@ describe("User Auth API", () => {
       const password = "password123";
 
       const sc = simplecrypt({
-        password: process.env.CB_SECRET_DEV,
+        password: process.env.CB_SECRET,
         salt: "10",
       });
 

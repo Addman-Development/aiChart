@@ -54,7 +54,10 @@ function LoginForm() {
   };
 
   const loginUser = async (e) => {
-    e.preventDefault();
+    // Prevent default only if it's a form submission event
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
 
     const params = new URLSearchParams(document.location.search);
 
@@ -98,7 +101,15 @@ function LoginForm() {
       setLoading(false);
       navigate("/");
     } catch (err) {
-      setErrors({ ...errors, login: err.message });
+      // Handle Azure-only user error
+      if (err.message === "AZURE_ONLY") {
+        setErrors({
+          ...errors,
+          login: "This account uses Microsoft login. Please use the 'Sign in with Microsoft' button above."
+        });
+      } else {
+        setErrors({ ...errors, login: err.message });
+      }
       setLoading(false);
     }
   };
@@ -190,7 +201,6 @@ function LoginForm() {
             <Spacer y={4} />
             <Row justify="center" align="center">
               <Button
-                onPress={loginUser}
                 endContent={<LuChevronRight />}
                 size="lg"
                 color="primary"
@@ -268,7 +278,7 @@ function LoginForm() {
             />
             {resetDone && (
             <Row>
-              <Text color="green">{"We will send further instructions over email if the address is registered with Chartbrew."}</Text>
+              <Text color="green">{"We will send further instructions over email if the address is registered with ADDMAN-SmartChart."}</Text>
             </Row>
             )}
             {resetError && (

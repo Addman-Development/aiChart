@@ -30,7 +30,7 @@ async function runQuery(payload) {
 
     // Add LIMIT clause if not present to respect row_limit
     let limitedQuery = query.trim();
-    if (!upperQuery.includes("LIMIT") && (dialect === "postgres" || dialect === "mysql")) {
+    if (!upperQuery.includes("LIMIT") && dialect === "postgres") {
       limitedQuery = `${limitedQuery.replace(/;$/, "")} LIMIT ${row_limit}`;
     }
 
@@ -59,8 +59,8 @@ async function runQuery(payload) {
 
     let result;
     try {
-      if (dialect === "postgres" || dialect === "mysql") {
-        result = await connectionController.runMysqlOrPostgres(
+      if (dialect === "postgres") {
+        result = await connectionController.runPostgres(
           connection_id,
           tempDataRequest,
           false, // don't use cache

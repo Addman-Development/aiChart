@@ -1,22 +1,18 @@
-const request = require("request-promise");
-
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 module.exports = (projectId, charts, authorization) => {
   charts.forEach((chart) => {
-    const updateOpt = {
-      url: `http://${settings.api}:${settings.port}/project/${projectId}/chart/${chart.id}/query`,
+    const url = new URL(`http://${settings.api}:${settings.port}/project/${projectId}/chart/${chart.id}/query`);
+    url.searchParams.append("getCache", "true");
+
+    fetch(url.toString(), {
       method: "POST",
       headers: {
         authorization,
         accept: "application/json",
       },
-      qs: {
-        getCache: true,
-      },
-      json: true,
-    };
-
-    request(updateOpt);
+    }).catch(() => {
+      // fire and forget
+    });
   });
 };

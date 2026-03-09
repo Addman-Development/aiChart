@@ -1,10 +1,11 @@
+const { aiClient, aiModel } = require("../../aiClient");
+
 async function suggestChart(payload) {
   const {
     question, result_shape
   } = payload;
-  // dialect and query could be used for context in the future
 
-  if (!global.openaiClient) {
+  if (!aiClient) {
     return {
       type: "table",
       title: "Query Results",
@@ -14,15 +15,15 @@ async function suggestChart(payload) {
   }
 
   // Use AI to suggest appropriate chart type
-  const prompt = `Based on the question "${question}" and result columns ${JSON.stringify(result_shape.columns)}, suggest the most appropriate Chartbrew chart type and configuration.
+  const prompt = `Based on the question "${question}" and result columns ${JSON.stringify(result_shape.columns)}, suggest the most appropriate chart type and configuration.
 
 Available chart types: line, bar, pie, doughnut, radar, polar, table, kpi, avg, gauge.
 
 Respond with JSON only: { "type": "...", "title": "...", "encodings": {}, "options": {} }`;
 
   try {
-    const response = await global.openaiClient.chat.completions.create({
-      model: global.openAiModel || "gpt-4o-mini",
+    const response = await aiClient.chat.completions.create({
+      model: aiModel,
       messages: [{ role: "user", content: prompt }],
       max_tokens: 300,
     });

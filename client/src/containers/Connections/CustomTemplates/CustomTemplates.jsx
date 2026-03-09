@@ -15,8 +15,8 @@ import Row from "../../../components/Row";
 
 function CustomTemplates(props) {
   const {
-    teamId, projectId, onComplete, isAdmin,
-    onCreateProject,
+    teamId, projectId = "", onComplete, isAdmin = false,
+    onCreateProject = () => {},
   } = props;
 
   const [createTemplate, setCreateTemplate] = useState(false);
@@ -136,13 +136,6 @@ CustomTemplates.propTypes = {
   onComplete: PropTypes.func.isRequired,
   isAdmin: PropTypes.bool,
   onCreateProject: PropTypes.func,
-};
-
-CustomTemplates.defaultProps = {
-  loading: false,
-  isAdmin: false,
-  projectId: "",
-  onCreateProject: () => {},
 };
 
 export default CustomTemplates;

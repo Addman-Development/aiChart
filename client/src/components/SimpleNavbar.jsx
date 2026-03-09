@@ -16,7 +16,7 @@ function SimpleNavbar() {
     <Navbar maxWidth={"full"} className="z-50" isBordered>
       <NavbarBrand>
         <a href={`${SITE_HOST}`}>
-          <Image src={isDark ? cbLogoDark : cbLogoLight} alt="Chartbrew Logo" width={150} radius="sm" />
+          <Image src={isDark ? cbLogoDark : cbLogoLight} alt="ADDMAN-SmartChart Logo" width={150} radius="sm" />
         </a>
       </NavbarBrand>
       <NavbarContent justify="flex-end">

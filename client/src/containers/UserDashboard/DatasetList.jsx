@@ -97,7 +97,7 @@ function DatasetList() {
   };
 
   const _canAccess = (role, teamRoles) => {
-    return canAccess(role, user.id, teamRoles);
+    return canAccess(role, user.id, teamRoles, user);
   };
 
   const _getDatasetTags = (projectIds) => {
@@ -466,7 +466,7 @@ function DatasetList() {
                   </div>
                 </TableCell>
                 <TableCell key="connections">
-                  <div className="flex flex-row items-center">
+                  <div className="flex flex-row items-center justify-center">
                     <AvatarGroup max={3} isBordered size="sm">
                       {dataset?.DataRequests?.map((dr) => (
                         <Avatar

@@ -75,7 +75,7 @@ function PasswordReset(props) {
       <div className="container mx-auto max-w-xl px-4">
         <Row>
           <Link to="/">
-            <img src={isDark ? cbLogoSmall : cbLogo} style={{ width: 70 }} alt="Chartbrew logo" />
+            <img src={isDark ? cbLogoSmall : cbLogo} style={{ width: 70 }} alt="ADDMAN-SmartChart logo" />
           </Link>
         </Row>
         <Spacer y={4} />

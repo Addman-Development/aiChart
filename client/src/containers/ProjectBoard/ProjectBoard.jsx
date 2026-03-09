@@ -79,7 +79,7 @@ function ProjectBoard() {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   if (!project && loading) {
@@ -112,7 +112,7 @@ function ProjectBoard() {
   );
 }
 
-function MainContent() {
+function MainContent({ mobile = false } = {}) {
   return (
     <div className="w-full">
       <Outlet />
@@ -121,13 +121,8 @@ function MainContent() {
 }
 
 MainContent.propTypes = {
-  onPrint: PropTypes.func.isRequired,
-  _canAccess: PropTypes.func.isRequired,
+  _canAccess: PropTypes.func,
   mobile: PropTypes.bool,
-};
-
-MainContent.defaultProps = {
-  mobile: false,
 };
 
 const styles = {

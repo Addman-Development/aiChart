@@ -93,7 +93,7 @@ module.exports = (app) => {
   };
 
   /*
-  ** [MASTER] Route to get all the charts
+  ** Route to get all the charts (global admin only)
   */
   app.get("/chart", verifyToken, (req, res) => {
     if (!req.user.admin) {
@@ -223,6 +223,25 @@ module.exports = (app) => {
       })
       .catch((error) => {
         return res.status(400).send(error);
+      });
+  });
+  // --------------------------------------------------------
+
+  /*
+  ** Route to move a chart to a different dashboard/project
+  */
+  app.put("/project/:project_id/chart/:id/move", verifyToken, checkPermissions("updateOwn"), (req, res) => {
+    const moveChartToDashboard = require("../modules/ai/orchestrator/tools/moveChartToDashboard");
+    return moveChartToDashboard({
+      chart_id: req.params.id,
+      target_project_id: req.body.target_project_id,
+      team_id: req.body.team_id,
+    })
+      .then((result) => {
+        return res.status(200).send(result);
+      })
+      .catch((error) => {
+        return res.status(400).send({ message: error.message });
       });
   });
   // --------------------------------------------------------

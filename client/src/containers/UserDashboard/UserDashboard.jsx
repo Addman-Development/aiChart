@@ -66,19 +66,20 @@ function UserDashboard(props) {
     if (user.data.id && !user.loading) {
       _checkParameters();
     }
-  }, [user]);
+  }, [user.data.id, user.loading]);
 
+  const teamsLength = teams?.length || 0;
   useEffect(() => {
-    if (teams && teams.length > 0 && !teamsRef.current) {
+    if (teamsLength > 0 && !teamsRef.current) {
       teamsRef.current = true;
-      let selectedTeam = teams.find((t) => t.TeamRoles.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id));
-      
+      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id));
+
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
       if (storageActiveTeam) {
         const storageTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
         if (storageTeam) selectedTeam = storageTeam;
       }
-      
+
       if (selectedTeam) {
         dispatch(saveActiveTeam(selectedTeam));
         dispatch(getTeamMembers({ team_id: selectedTeam.id }));
@@ -88,17 +89,20 @@ function UserDashboard(props) {
         if (welcome) {
           navigate(`/${selectedTeam?.id}/connection/new`);
         }
-      }        
+      }
     }
-  }, [teams]);
+  }, [teamsLength]); // eslint-disable-line
 
+  const teamId = team?.id;
+  const teamLoadRef = useRef(null);
   useEffect(() => {
-    if (team?.id) {
-      dispatch(getTeamMembers({ team_id: team.id }));
-      dispatch(getTeamConnections({ team_id: team.id }));
-      dispatch(getProjects({ team_id: team.id }));
+    if (teamId && teamId !== teamLoadRef.current) {
+      teamLoadRef.current = teamId;
+      dispatch(getTeamMembers({ team_id: teamId }));
+      dispatch(getTeamConnections({ team_id: teamId }));
+      dispatch(getProjects({ team_id: teamId }));
     }
-  }, [team]);
+  }, [teamId]);
 
   const _checkParameters = () => {
     const params = new URLSearchParams(window.location.search);

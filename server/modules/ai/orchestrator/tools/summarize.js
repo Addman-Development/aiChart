@@ -1,3 +1,5 @@
+const { aiClient, aiModel } = require("../../aiClient");
+
 async function summarize(payload) {
   const { question, result } = payload;
 
@@ -8,7 +10,7 @@ async function summarize(payload) {
     };
   }
 
-  if (!global.openaiClient) {
+  if (!aiClient) {
     return {
       text: `Found ${result.rowCount} results`,
     };
@@ -18,8 +20,8 @@ async function summarize(payload) {
   const prompt = `Based on the question "${question}" and the following query results, provide a concise summary:\n\nResults: ${JSON.stringify(result.rows.slice(0, 5))}\nTotal rows: ${result.rowCount}`;
 
   try {
-    const response = await global.openaiClient.chat.completions.create({
-      model: global.openAiModel || "gpt-4o-mini",
+    const response = await aiClient.chat.completions.create({
+      model: aiModel,
       messages: [
         { role: "system", content: "You are a data analyst. Provide concise summaries of query results." },
         { role: "user", content: prompt },

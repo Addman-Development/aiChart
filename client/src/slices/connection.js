@@ -118,7 +118,15 @@ export const testRequest = createAsyncThunk(
 
     const response = await fetch(url, { headers, method: "POST", body });
 
-    return response;
+    const responseText = await response.text();
+    let responseBody;
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch (e) {
+      responseBody = responseText;
+    }
+
+    return { status: response.status, body: responseBody };
   }
 );
 
@@ -153,7 +161,15 @@ export const testRequestWithFiles = createAsyncThunk(
 
     const response = await fetch(url, { headers, method: "POST", body: formData });
 
-    return response;
+    const text = await response.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch (e) {
+      body = text;
+    }
+
+    return { status: response.status, body };
   }
 );
 

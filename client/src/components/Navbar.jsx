@@ -95,9 +95,9 @@ function NavbarContainer() {
 
   const _canAccess = (role, teamData) => {
     if (teamData) {
-      return canAccess(role, user.id, teamData.TeamRoles);
+      return canAccess(role, user.id, teamData.TeamRoles, user);
     }
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _onDropdownAction = (key) => {
@@ -107,15 +107,15 @@ function NavbarContainer() {
         break;  
       }
       case "tutorials": {
-        window.open("https://chartbrew.com/blog/tag/tutorial/", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "documentation": {
-        window.open("https://docs.chartbrew.com", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "github": {
-        window.open("https://github.com/chartbrew/chartbrew/discussions", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "feedback": {
@@ -135,11 +135,11 @@ function NavbarContainer() {
         break;
       }
       case "roadmap": {
-        window.open("https://chartbrew.com/roadmap", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "api": {
-        window.open("https://docs.chartbrew.com/api-reference/introduction", "_blank");
+        window.open("#/api-reference/introduction", "_blank");
         break;
       }
       default: {
@@ -167,16 +167,16 @@ function NavbarContainer() {
         <NavbarBrand>
           {params.teamId && (
             <Link to="/">
-              <img src={isDark ? cbLogoInverted : cbLogo} alt="Chartbrew Logo" width={30}  />
+              <img src={isDark ? cbLogoInverted : cbLogo} alt="ADDMAN-SmartChart Logo" width={30}  />
             </Link>
           )}
           {!params.teamId && (
             <>
               <Link to="/" className="hidden sm:block">
-                <img src={isDark ? cbFullLogoDark : cbFullLogoLight} alt="Chartbrew Logo" width={120}  />
+                <img src={isDark ? cbFullLogoDark : cbFullLogoLight} alt="ADDMAN-SmartChart Logo" width={120}  />
               </Link>
               <Link to="/" className="block sm:hidden">
-                <img src={isDark ? cbLogoInverted : cbLogo} alt="Chartbrew Logo" width={30} />
+                <img src={isDark ? cbLogoInverted : cbLogo} alt="ADDMAN-SmartChart Logo" width={30} />
               </Link>
             </>
           )}
@@ -216,7 +216,7 @@ function NavbarContainer() {
           </NavbarItem>
           <Dropdown aria-label="Select a help option">
             <NavbarItem>
-              <DropdownTrigger>
+              {/* <DropdownTrigger>
                 <Button
                   variant="light"
                   disableRipple
@@ -226,7 +226,7 @@ function NavbarContainer() {
                 >
                   Resources
                 </Button>
-              </DropdownTrigger>
+              </DropdownTrigger> */}
             </NavbarItem>
             <DropdownMenu variant="faded" onAction={(key) => _onDropdownAction(key)}>
               <DropdownItem startContent={<TbBrandDiscord />} key="discord" textValue="Join our Discord">
@@ -262,7 +262,7 @@ function NavbarContainer() {
                 size="sm"
                 className="from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-gradient-to-tr hover:bg-gradient-to-br transition-all duration-300 shadow-md"
               >
-                Ask Chartbrew AI
+                Ask ADDMAN-SmartChart AI
               </Button>
             </NavbarItem>
           )}
@@ -340,7 +340,7 @@ function NavbarContainer() {
       <Modal isOpen={showAppearance} onClose={() => setShowAppearance(false)} width="500px">
         <ModalContent>
           <ModalHeader>
-            <Text size="h4">Chartbrew UI Appearance</Text>
+            <Text size="h4">ADDMAN-SmartChart UI Appearance</Text>
           </ModalHeader>
           <ModalBody>
             <div className="flex flex-row justify-between gap-2">

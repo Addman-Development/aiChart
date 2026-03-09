@@ -22,7 +22,7 @@ import { updateCdc } from "../../slices/chart";
 
 
 function DatasetBuilder(props) {
-  const { chart, projectId } = props;
+  const { chart = {}, projectId } = props;
 
   const [fieldOptions, setFieldOptions] = useState([]);
   const [formula, setFormula] = useState("");
@@ -430,7 +430,7 @@ function DatasetBuilder(props) {
           selectedKeys={[dataset.yAxisOperation]}
           selectionMode="single"
           variant="bordered"
-          renderValue={(
+          renderValue={() => (
             <Text>
               {(dataset.yAxisOperation
                 && operations.find((i) => i.value === dataset.yAxisOperation).text
@@ -581,10 +581,6 @@ function DatasetBuilder(props) {
 DatasetBuilder.propTypes = {
   chart: PropTypes.object,
   projectId: PropTypes.number.isRequired,
-};
-
-DatasetBuilder.defaultProps = {
-  chart: {},
 };
 
 export default DatasetBuilder

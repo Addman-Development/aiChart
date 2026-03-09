@@ -255,7 +255,7 @@ function DashboardFilters({
   }
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   return (
@@ -390,8 +390,8 @@ function DashboardFilters({
 }
 
 DashboardFilters.propTypes = {
-  filters: PropTypes.object.isRequired,
-  projectId: PropTypes.number.isRequired,
+  filters: PropTypes.object,
+  projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
   onRemoveFilter: PropTypes.func.isRequired,
   onApplyFilterValue: PropTypes.func.isRequired,
   onReport: PropTypes.bool,

@@ -7,17 +7,11 @@ import { useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router";
 import { LuArrowLeft, LuArrowRight } from "react-icons/lu";
 
-import SimpleAnalyticsTemplate from "../../Connections/SimpleAnalytics/SimpleAnalyticsTemplate";
-import ChartMogulTemplate from "../../Connections/ChartMogul/ChartMogulTemplate";
-import MailgunTemplate from "../../Connections/Mailgun/MailgunTemplate";
-import GaTemplate from "../../Connections/GoogleAnalytics/GaTemplate";
 import CustomTemplates from "../../Connections/CustomTemplates/CustomTemplates";
-import PlausibleTemplate from "../../Connections/Plausible/PlausibleTemplate";
 import canAccess from "../../../config/canAccess";
 import Container from "../../../components/Container";
 import Text from "../../../components/Text";
 import Row from "../../../components/Row";
-import availableTemplates from "../../../modules/availableTemplates";
 import { selectTeam } from "../../../slices/team";
 import { selectUser } from "../../../slices/user";
 
@@ -71,7 +65,7 @@ function ChartDescription(props) {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   return (
@@ -79,7 +73,6 @@ function ChartDescription(props) {
       <Row align="center" wrap="wrap">
         <Tabs selectedKey={selectedMenu} onSelectionChange={(key) => setSelectedMenu(key)}>
           <Tab key="emptyChart" title="Create from scratch" />
-          <Tab key="communityTemplates" title="Community templates" isDisabled={!_canAccess("teamAdmin")} />
           <Tab key="customTemplates" title="Custom templates" isDisabled={!_canAccess("teamAdmin")} />
         </Tabs>
       </Row>
@@ -147,33 +140,6 @@ function ChartDescription(props) {
               </Row>
             </>
           )}
-          {selectedMenu === "communityTemplates" && (
-            <Row align="center">
-              <div className="grid grid-cols-12 gap-2">
-                {availableTemplates.map((t) => (
-                  <div key={t.type} className="col-span-12 sm:col-span-6 md:col-span-4 lg:col-span-3">
-                    <Card
-                      isPressable
-                      isHoverable
-                      onPress={() => setFormType(t.type)}
-                    >
-                      <CardBody className="p-0">
-                        <Image className="object-cover" width="300" height="300" src={t.image} />
-                      </CardBody>
-                      <CardFooter>
-                        <Row wrap="wrap" justify="center" align="center">
-                          <Text size="h4">
-                            {t.name}
-                          </Text>
-                        </Row>
-                      </CardFooter>
-                    </Card>
-                  </div>
-                ))}
-              </div>
-            </Row>
-          )}
-
           {selectedMenu === "customTemplates" && (
             <Row align="center">
               <CustomTemplates
@@ -183,7 +149,7 @@ function ChartDescription(props) {
                 projectId={params.projectId}
                 connections={connections}
                 onComplete={_onCompleteTemplate}
-                isAdmin={canAccess("teamAdmin", user.id, team.TeamRoles)}
+                isAdmin={canAccess("teamAdmin", user.id, team.TeamRoles, user)}
               />
             </Row>
           )}
@@ -209,56 +175,6 @@ function ChartDescription(props) {
         </>
       )}
 
-      {formType === "saTemplate" && selectedMenu === "communityTemplates"
-        && (
-          <SimpleAnalyticsTemplate
-            teamId={teamId}
-            projectId={projectId}
-            onComplete={_onCompleteTemplate}
-            connections={connections}
-            onBack={() => setFormType("")}
-          />
-        )}
-      {formType === "cmTemplate" && selectedMenu === "communityTemplates"
-        && (
-          <ChartMogulTemplate
-            teamId={teamId}
-            projectId={projectId}
-            onComplete={_onCompleteTemplate}
-            connections={connections}
-            onBack={() => setFormType("")}
-          />
-        )}
-      {formType === "mailgunTemplate" && selectedMenu === "communityTemplates"
-        && (
-          <MailgunTemplate
-            teamId={teamId}
-            projectId={projectId}
-            onComplete={_onCompleteTemplate}
-            connections={connections}
-            onBack={() => setFormType("")}
-          />
-        )}
-      {formType === "googleAnalyticsTemplate" && selectedMenu === "communityTemplates"
-        && (
-          <GaTemplate
-            teamId={teamId}
-            projectId={projectId}
-            onComplete={_onCompleteTemplate}
-            connections={connections}
-            onBack={() => setFormType("")}
-          />
-        )}
-      {formType === "plausibleTemplate" && selectedMenu === "communityTemplates"
-        && (
-          <PlausibleTemplate
-            teamId={teamId}
-            projectId={projectId}
-            onComplete={_onCompleteTemplate}
-            connections={connections}
-            onBack={() => setFormType("")}
-          />
-        )}
     </Container>
   );
 }

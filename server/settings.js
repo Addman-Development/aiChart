@@ -14,12 +14,13 @@ module.exports = {
       pass: process.env.CB_MAIL_PASS,
     },
   },
-  google: {
-    client_id: process.env.CB_GOOGLE_CLIENT_ID,
-    client_secret: process.env.CB_GOOGLE_CLIENT_SECRET,
-    redirect_url: "/google-auth",
+  azure: {
+    clientId: process.env.AZURE_AD_CLIENT_ID,
+    clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
+    tenantId: process.env.AZURE_AD_TENANT_ID,
+    redirectUri: process.env.AZURE_AD_REDIRECT_URI,
+    authority: process.env.AZURE_AD_AUTHORITY,
   },
   teamRestricted: process.env.CB_RESTRICT_TEAMS,
   signupRestricted: process.env.CB_RESTRICT_SIGNUP,
-  chartbrewMainAPI: "https://api.chartbrew.com",
 };

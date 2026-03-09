@@ -76,7 +76,7 @@ const dataLabelsPlugin = {
 
 function PolarChart(props) {
   const {
-    chart, redraw, redrawComplete,
+    chart, redraw = false, redrawComplete = () => { },
   } = props;
 
   const { isDark } = useTheme();
@@ -189,11 +189,6 @@ function PolarChart(props) {
     </div>
   );
 }
-
-PolarChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => { },
-};
 
 PolarChart.propTypes = {
   chart: PropTypes.object.isRequired,

@@ -25,7 +25,7 @@ ChartJS.register(
 
 function RadarChart(props) {
   const {
-    chart, redraw, redrawComplete,
+    chart, redraw = false, redrawComplete = () => { },
   } = props;
 
   const { isDark } = useTheme();
@@ -102,11 +102,6 @@ function RadarChart(props) {
     </div>
   );
 }
-
-RadarChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => { },
-};
 
 RadarChart.propTypes = {
   chart: PropTypes.object.isRequired,

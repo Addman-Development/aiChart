@@ -578,7 +578,7 @@ function SharingSettings(props) {
               <Tooltip
                 content={(
                   <>
-                    <p>{"Allow sharing the report with anyone with or without a Chartbrew account."}</p>
+                    <p>{"Allow sharing the report with anyone with or without an ADDMAN-SmartChart account."}</p>
                     <Spacer y={2} />
                     <p>{"When disabled, the report can only be seen by members of your team if logged in."}</p>
                   </>
@@ -787,7 +787,7 @@ function SharingSettings(props) {
               onValueChange={_onToggleBranding}
               size="sm"
             >
-              Show Chartbrew branding
+              Show ADDMAN-SmartChart branding
             </Switch>
           </Row>
         </DrawerBody>

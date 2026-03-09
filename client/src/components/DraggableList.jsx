@@ -8,11 +8,11 @@ function DraggableList(props) {
     getOrder,
     onReorder,
     renderItem,
-    className,
-    orientation,
-    highlightClassName,
-    draggingClassName,
-    wrapperClassName,
+    className = "gap-2",
+    orientation = "horizontal",
+    highlightClassName = "ring-2 ring-primary/50 rounded-md",
+    draggingClassName = "opacity-80 scale-[0.98]",
+    wrapperClassName = "",
   } = props;
 
   const [draggingId, setDraggingId] = useState(null);
@@ -123,14 +123,6 @@ DraggableList.propTypes = {
   highlightClassName: PropTypes.string,
   draggingClassName: PropTypes.string,
   wrapperClassName: PropTypes.string,
-};
-
-DraggableList.defaultProps = {
-  className: "gap-2",
-  orientation: "horizontal",
-  highlightClassName: "ring-2 ring-primary/50 rounded-md",
-  draggingClassName: "opacity-80 scale-[0.98]",
-  wrapperClassName: "",
 };
 
 export default DraggableList;

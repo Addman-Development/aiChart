@@ -1,20 +1,18 @@
 const { Op } = require("sequelize");
-const request = require("request-promise");
 const { DateTime } = require("luxon");
 
 const mail = require("../../modules/mail");
 const { snapDashboard } = require("../../modules/snapshots");
 const db = require("../../models/models");
 
-const settings = process.env.NODE_ENV === "production" ? require("../../settings") : require("../../settings-dev");
+const settings = require("../../settings");
 
-const fullApiUrl = process.env.NODE_ENV === "production" ? process.env.VITE_APP_API_HOST : process.env.VITE_APP_API_HOST_DEV;
+const fullApiUrl = process.env.VITE_APP_API_HOST;
 
 async function sendToWebhook({
   project, snapshotUrl, blocks, integration
 }) {
-  const options = {
-    url: integration.config.url,
+  const response = await fetch(integration.config.url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -24,11 +22,13 @@ async function sendToWebhook({
       snapshotUrl,
       blocks,
     }),
-  };
+  });
 
-  const response = await request(options);
+  if (!response.ok) {
+    throw new Error(`Webhook request failed with status ${response.status}`);
+  }
 
-  return response;
+  return response.text();
 }
 
 async function sendSnapshotToEmail(project, snapshotPath, customEmails) {

@@ -1,3 +1,8 @@
+// Prevent unhandled promise rejections from crashing the server
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[unhandledRejection]", reason);
+});
+
 // set up the encryption keys first, then load .env file
 const setUpEncryptionKeys = require("./modules/setUpEncryptionKeys"); // eslint-disable-line
 
@@ -17,7 +22,7 @@ const helmet = require("helmet");
 const fs = require("fs");
 const busboy = require("connect-busboy");
 
-const settings = process.env.NODE_ENV === "production" ? require("./settings") : require("./settings-dev");
+const settings = require("./settings");
 const routes = require("./api");
 const appsRoutes = require("./apps");
 
@@ -45,7 +50,6 @@ app.set("trust proxy", 1);
 
 app.use(busboy());
 if (process.env.NODE_ENV !== "production") {
-  app.set("trust proxy", true);
   app.use(morgan("dev"));
 }
 app.use(cookieParser());
@@ -78,7 +82,7 @@ app.use(cors());
 //---------------------------------------
 
 app.get("/", (req, res) => {
-  return res.send("Welcome to chartBrew server API");
+  return res.send("Welcome to ADDMAN-SmartChart server API");
 });
 
 app.use("/uploads", express.static("uploads"));

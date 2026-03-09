@@ -7,7 +7,7 @@ const { Op } = require("sequelize");
 const db = require("../models/models");
 const UserController = require("./UserController");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 class TeamController {
   constructor() {
@@ -22,6 +22,21 @@ class TeamController {
       .catch((error) => {
         return Promise.reject(error);
       });
+  }
+
+  getAllTeams() {
+    return db.Team.findAll({
+      include: [
+        { model: db.TeamRole },
+        {
+          model: db.Project,
+          include: [
+            { model: db.Chart, attributes: ["id"] },
+          ],
+        },
+        { model: db.Connection, attributes: ["id"] },
+      ],
+    });
   }
 
   // create a new team

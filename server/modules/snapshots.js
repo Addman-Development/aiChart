@@ -3,7 +3,7 @@ const path = require("path");
 const jwt = require("jsonwebtoken");
 const { nanoid } = require("nanoid");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 module.exports.snapChart = async (shareString) => {
   let browser = null;

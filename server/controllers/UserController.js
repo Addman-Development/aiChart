@@ -11,7 +11,7 @@ const db = require("../models/models");
 const mail = require("../modules/mail");
 const { decrypt, encrypt } = require("../modules/cbCrypto");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 const sc = simplecrypt({
   password: settings.secret,
@@ -25,15 +25,34 @@ class UserController {
       .then(async (foundUser) => {
         if (foundUser) return new Promise((resolve, reject) => reject(new Error(409)));
 
-        const bcryptHash = await bcrypt.hash(user.password, 10);
+        // Check if this is the first user — make them global admin
+        const isFirstUser = !(await this.areThereAnyUsers());
 
-        return db.User.create({
+        // Hash password only if provided (local users)
+        const bcryptHash = user.password ? await bcrypt.hash(user.password, 10) : null;
+
+        // Build user data object
+        const userData = {
           name: user.name,
           email: user.email,
           password: bcryptHash,
           icon: user.icon,
-          active: true,
-        });
+          active: user.active !== undefined ? user.active : true,
+          admin: isFirstUser,
+        };
+
+        // Add Azure fields if provided (optional)
+        if (user.azureId) {
+          userData.azureId = user.azureId;
+        }
+        if (user.authProvider) {
+          userData.authProvider = user.authProvider;
+        }
+        if (user.azureLinkedAt) {
+          userData.azureLinkedAt = user.azureLinkedAt;
+        }
+
+        return db.User.create(userData);
       })
       .then((newUser) => {
         gNewUser = newUser;
@@ -196,6 +215,17 @@ class UserController {
         throw new Error(401);
       }
 
+      // Check if Azure SSO is enabled and user is Azure-only
+      const azureEnabled = settings.azure && settings.azure.clientId;
+      if (azureEnabled && foundUser.authProvider === "azure" && !foundUser.password) {
+        throw new Error("AZURE_ONLY");
+      }
+
+      // Check if user has a password for local auth
+      if (!foundUser.password) {
+        throw new Error(401);
+      }
+
       let isAuthenticated = false;
 
       if (foundUser.password.startsWith("$2a$") || foundUser.password.startsWith("$2b$") || foundUser.password.startsWith("$2y$")) {
@@ -322,6 +352,7 @@ class UserController {
         return this.findById(id);
       })
       .catch((error) => {
+        console.error("UserController.update error:", error);
         return new Promise((resolve, reject) => reject(new Error(error)));
       });
   }
@@ -429,6 +460,21 @@ class UserController {
       });
   }
 
+  async changePasswordAuthenticated(userId, currentPassword, newPassword) {
+    const user = await db.User.findByPk(userId);
+    if (!user) throw new Error(404);
+
+    if (!user.password) throw new Error(401);
+
+    const isCorrect = await bcrypt.compare(currentPassword, user.password);
+    if (!isCorrect) throw new Error(401);
+
+    const bcryptHash = await bcrypt.hash(newPassword, 10);
+    await db.User.update({ password: bcryptHash }, { where: { id: userId } });
+
+    return { completed: true };
+  }
+
   areThereAnyUsers() {
     return db.User.findAll({ limit: 1 })
       .then((users) => {
@@ -512,7 +558,7 @@ class UserController {
   generateQrCodeUrl(email, secret) {
     const totp = new TOTP({
       secret,
-      issuer: "Chartbrew",
+      issuer: "ADDMAN-SmartChart",
       label: email,
       digits: 6,
       period: 30,
@@ -654,6 +700,33 @@ class UserController {
     return db.PinnedDashboard.findAll({
       where: { user_id: userId },
     });
+  }
+
+  findByAzureId(azureId) {
+    return db.User.findOne({
+      where: { azureId },
+      include: [{ model: db.TeamRole }],
+    }).then((user) => {
+      return user;
+    }).catch((error) => {
+      return new Promise((resolve, reject) => reject(error.message));
+    });
+  }
+
+  async verifyPassword(user, password) {
+    try {
+      if (!user.password) {
+        return false;
+      }
+
+      if (user.password.startsWith("$2a$") || user.password.startsWith("$2b$") || user.password.startsWith("$2y$")) {
+        return await bcrypt.compare(password, user.password);
+      }
+
+      return user.password === sc.encrypt(password);
+    } catch (error) {
+      return false;
+    }
   }
 }
 

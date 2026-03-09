@@ -440,7 +440,7 @@ export function exportChart(projectId, chartIds, filters) {
       const url = window.URL.createObjectURL(new Blob([file]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", "chartbrew-export.xlsx");
+      link.setAttribute("download", "smartchart-export.xlsx");
 
       // 3. Append to html page
       document.body.appendChild(link);
@@ -478,7 +478,7 @@ export function exportChartPublic(chart, password) {
       const url = window.URL.createObjectURL(new Blob([file]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `${chart.name}-chartbrew.xlsx`);
+      link.setAttribute("download", `${chart.name}-smartchart.xlsx`);
 
       // 3. Append to html page
       document.body.appendChild(link);

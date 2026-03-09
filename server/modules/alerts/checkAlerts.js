@@ -1,5 +1,4 @@
 const { add, isPast } = require("date-fns");
-const request = require("request-promise");
 const moment = require("moment");
 const ChartController = require("../../controllers/ChartController");
 
@@ -7,9 +6,9 @@ const db = require("../../models/models");
 const mail = require("../mail");
 const webhookAlerts = require("./webhookAlerts");
 
-const settings = process.env.NODE_ENV === "production" ? require("../../settings") : require("../../settings-dev");
+const settings = require("../../settings");
 
-const fullApiUrl = process.env.NODE_ENV === "production" ? process.env.VITE_APP_API_HOST : process.env.VITE_APP_API_HOST_DEV;
+const fullApiUrl = process.env.VITE_APP_API_HOST;
 
 async function processAlert(chart, alert, alerts) {
   const {
@@ -48,13 +47,13 @@ async function processAlert(chart, alert, alerts) {
   if (type === "milestone") {
     thresholdText = `You reached your milestone of ${value}!`;
   } else if (type === "threshold_above") {
-    thresholdText = `Chartbrew found some values above your threshold of ${value}.`;
+    thresholdText = `ADDMAN-SmartChart found some values above your threshold of ${value}.`;
   } else if (type === "threshold_below") {
-    thresholdText = `Chartbrew found some values below your threshold of ${value}.`;
+    thresholdText = `ADDMAN-SmartChart found some values below your threshold of ${value}.`;
   } else if (type === "threshold_between") {
-    thresholdText = `Chartbrew found some values between your thresholds of ${lower} and ${upper}.`;
+    thresholdText = `ADDMAN-SmartChart found some values between your thresholds of ${lower} and ${upper}.`;
   } else if (type === "threshold_outside") {
-    thresholdText = `Chartbrew found some values your thresholds of ${lower} and ${upper}.`;
+    thresholdText = `ADDMAN-SmartChart found some values your thresholds of ${lower} and ${upper}.`;
   }
 
   // take a snapshot of the chart
@@ -273,20 +272,23 @@ async function checkChartForAlerts(chart) {
             dataForAnomalies.series[formattedLabel] = d;
           });
 
-          const anomalyOpt = {
-            url: "https://trends-api.depomo.com/anomalies",
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "accept": "application/json",
-            },
-            form: dataForAnomalies,
-            json: true,
-          };
-
           let anomalies;
           try {
-            anomalies = await request(anomalyOpt);
+            const anomalyResponse = await fetch("https://trends-api.depomo.com/anomalies", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "accept": "application/json",
+              },
+              body: new URLSearchParams(
+                Object.entries(dataForAnomalies.series).reduce((acc, [k, v]) => {
+                  acc[`series[${k}]`] = v;
+                  return acc;
+                }, {})
+              ).toString(),
+            });
+            if (!anomalyResponse.ok) throw new Error(anomalyResponse.statusText);
+            anomalies = await anomalyResponse.json();
           } catch (err) {
             // oupsie
           }

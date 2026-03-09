@@ -1,6 +1,6 @@
 const simplecrypt = require("simplecrypt");
 
-const settings = process.env.NODE_ENV === "production" ? require("../../settings") : require("../../settings-dev");
+const settings = require("../../settings");
 
 const sc = simplecrypt({
   password: settings.secret,
@@ -51,7 +51,20 @@ module.exports = (sequelize, DataTypes) => {
     },
     password: {
       type: DataTypes.STRING,
-      allowNull: false,
+      allowNull: true,
+    },
+    azureId: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    authProvider: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      defaultValue: "local",
+    },
+    azureLinkedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
     },
     icon: {
       type: DataTypes.STRING,
@@ -97,7 +110,19 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   User.beforeValidate((user) => {
-    user.admin = false; // eslint-disable-line
+    // Only validate Azure-specific constraints when explicitly creating Azure users
+    const azureEnabled = settings.azure && settings.azure.clientId;
+
+    if (azureEnabled && user.changed("azureId")) {
+      // Only validate when Azure fields are being actively set
+      if (user.authProvider === "azure" && !user.azureId) {
+        throw new Error("Azure users must have an azureId");
+      }
+      if (user.authProvider === "hybrid" && !user.password && !user.azureId) {
+        throw new Error("Hybrid users must have at least a password or azureId");
+      }
+    }
+
     return new Promise((resolve) => resolve(user));
   });
 

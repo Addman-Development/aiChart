@@ -50,7 +50,7 @@ function DashboardList() {
   }, [window.location.search]);
 
   const _canAccess = (role, teamRoles) => {
-    return canAccess(role, user.id, teamRoles);
+    return canAccess(role, user.id, teamRoles, user);
   };
 
   const _onNewProject = (team) => {
@@ -241,9 +241,9 @@ function DashboardList() {
                 {_canAccess("teamAdmin", team.TeamRoles) && (
                   <Dropdown size="sm">
                     <DropdownTrigger>
-                      <Button isIconOnly variant="flat" size="sm">
+                      <div role="button" tabIndex={0} className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-default-100 hover:bg-default-200 cursor-pointer" onClick={(e) => e.stopPropagation()}>
                         <LuEllipsis className="text-foreground-400" />
-                      </Button>
+                      </div>
                     </DropdownTrigger>
                     <DropdownMenu>
                       <DropdownItem

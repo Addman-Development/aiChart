@@ -366,7 +366,7 @@ function DatasetAlerts(props) {
                   label="Alert type"
                   renderValue={(
                     <Text>
-                      {ruleTypes.find((r) => r.value === newAlert.type)?.label}
+                      {ruleTypes.find((r) => r.value === newAlert.type)?.label || "Select an alert type"}
                     </Text>
                   )}
                   selectedKeys={[newAlert.type]}

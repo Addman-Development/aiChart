@@ -176,15 +176,15 @@ function TeamSettings() {
             onValueChange={(selected) => _onToggleBranding(selected)}
             size="sm"
           >
-            Show Chartbrew branding
+            Show ADDMAN-SmartChart branding
           </Switch>
-          <Tooltip content="Chartbrew branding is shown in the footer of the dashboard reports">
+          <Tooltip content="ADDMAN-SmartChart branding is shown in the footer of the dashboard reports">
             <div><LuInfo size={18} className="text-foreground" /></div>
           </Tooltip>
         </div>
       </div>
 
-      {canAccess("teamOwner", user.id, team.TeamRoles) && (
+      {canAccess("teamOwner", user.id, team.TeamRoles, user) && (
         <>
           <Spacer y={4} />
           <Divider />

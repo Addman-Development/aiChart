@@ -263,7 +263,6 @@ function InviteMembersForm(props) {
 }
 
 InviteMembersForm.propTypes = {
-  match: PropTypes.object.isRequired,
   selectedProjects: PropTypes.array,
 };
 

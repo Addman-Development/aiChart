@@ -50,8 +50,8 @@ function formatColumnsForOrdering(columns) {
 
 function DatasetData(props) {
   const {
-    dataset, onUpdate, chartType, chartData,
-    dataLoading, datasetResponses,
+    dataset, onUpdate, chartType = "", chartData = null,
+    dataLoading = false, datasetResponses,
   } = props;
 
   const [fieldOptions, setFieldOptions] = useState([]);
@@ -1523,12 +1523,6 @@ function DatasetData(props) {
     </>
   );
 }
-
-DatasetData.defaultProps = {
-  chartType: "",
-  chartData: null,
-  dataLoading: false,
-};
 
 DatasetData.propTypes = {
   dataset: PropTypes.object.isRequired,

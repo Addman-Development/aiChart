@@ -190,7 +190,7 @@ const renderCellContent = (value, columnKey, columnsFormatting) => {
 };
 
 function TableComponent({
-  columns, data, embedded, dataset, defaultRowsPerPage = 10,
+  columns, data, embedded = false, dataset, defaultRowsPerPage = 10,
 }) {
   const columnsFormatting = dataset?.configuration?.columnsFormatting;
   
@@ -316,7 +316,7 @@ function TableComponent({
               {page.map((row) => {
                 prepareRow(row);
                 return (
-                  <TableRow key={row.getRowProps().key} {...row.getRowProps()}>
+                  <TableRow key={row.getRowProps().key} {...(() => { const { key, ...rest } = row.getRowProps(); return rest; })()}>
                     {row.cells.map((cell, cellIndex) => {
                       // identify collections to render them differently
                       const cellObj = cell.render("Cell");
@@ -334,7 +334,7 @@ function TableComponent({
                       return (
                         <TableCell
                           key={`${row.id}-${cell.column.Header}`}
-                          {...cell.getCellProps()}
+                          {...(() => { const { key, ...rest } = cell.getCellProps(); return rest; })()}
                           className={"max-w-[300px] pr-10 pl-10 truncate"}
                           css={{
                             userSelect: "text",
@@ -398,10 +398,6 @@ const styles = {
   itemsDropdown: {
     maxWidth: 200,
   }
-};
-
-TableComponent.defaultProps = {
-  embedded: false,
 };
 
 TableComponent.propTypes = {

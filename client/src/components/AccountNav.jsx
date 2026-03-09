@@ -53,9 +53,9 @@ function AccountNav() {
 
   const _canAccess = (role, teamData) => {
     if (teamData) {
-      return canAccess(role, user.id, teamData.TeamRoles);
+      return canAccess(role, user.id, teamData.TeamRoles, user);
     }
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _onDropdownAction = (key) => {
@@ -65,15 +65,15 @@ function AccountNav() {
         break;
       }
       case "tutorials": {
-        window.open("https://chartbrew.com/blog/tag/tutorial/", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "documentation": {
-        window.open("https://docs.chartbrew.com", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "github": {
-        window.open("https://github.com/chartbrew/chartbrew/discussions", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "feedback": {
@@ -93,11 +93,11 @@ function AccountNav() {
         break;
       }
       case "roadmap": {
-        window.open("https://chartbrew.com/roadmap", "_blank");
+        window.open("#", "_blank");
         break;
       }
       case "api": {
-        window.open("https://docs.chartbrew.com/api-reference/introduction", "_blank");
+        window.open("#", "_blank");
         break;
       }
       default: {
@@ -108,7 +108,7 @@ function AccountNav() {
   
   return (
     <div className="flex flex-col items-start w-full">
-      <Listbox aria-label="Account actions" variant="flat">
+      {/* <Listbox aria-label="Account actions" variant="flat">
         <ListboxItem
           startContent={<LuHeartHandshake size={18} />}
           onPress={() => _onDropdownAction("resources")}
@@ -153,7 +153,7 @@ function AccountNav() {
         >
           <div className={"hidden sm:block text-sm"}>Updates</div>
         </ListboxItem>
-      </Listbox>
+      </Listbox> */}
       <Dropdown aria-label="Select a user option" placement="right-end" className="justify-start">
         <DropdownTrigger className="flex flex-row justify-start">
           <div className="flex flex-row justify-between items-center cursor-pointer hover:bg-content2 rounded-lg w-full p-2">
@@ -226,7 +226,7 @@ function AccountNav() {
       <Modal isOpen={showAppearance} onClose={() => setShowAppearance(false)} width="500px">
         <ModalContent>
           <ModalHeader>
-            <Text size="h4">Chartbrew UI Appearance</Text>
+            <Text size="h4">ADDMAN-SmartChart UI Appearance</Text>
           </ModalHeader>
           <ModalBody>
             <div className="flex flex-row justify-between gap-2">

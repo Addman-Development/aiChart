@@ -18,12 +18,8 @@ const {
 } = require("../utils/slackClient");
 const { formatResponse, formatError } = require("../utils/formatResponse");
 
-const settings = process.env.NODE_ENV === "production"
-  ? require("../../../settings")
-  : require("../../../settings-dev"); // eslint-disable-line
-const clientUrl = process.env.NODE_ENV === "production"
-  ? process.env.VITE_APP_CLIENT_HOST
-  : process.env.VITE_APP_CLIENT_HOST_DEV;
+const settings = require("../../../settings");
+const clientUrl = process.env.VITE_APP_CLIENT_HOST;
 
 class SlackController {
   constructor() {
@@ -120,9 +116,9 @@ class SlackController {
 
       if (!integration) {
         throw new Error(
-          "Chartbrew app is not installed in this workspace. "
-          + "Please install the Chartbrew app from the Slack App Directory first, "
-          + "then run `/chartbrew connect` again."
+          "ADDMAN-SmartChart app is not installed in this workspace. "
+          + "Please install the ADDMAN-SmartChart app from the Slack App Directory first, "
+          + "then run `/smartchart connect` again."
         );
       }
 
@@ -132,7 +128,7 @@ class SlackController {
       const isInstaller = integration.config.installer_slack_user_id === slackUserId;
 
       if (!isAdmin && !isInstaller) {
-        throw new Error("Only workspace admins can connect to Chartbrew.");
+        throw new Error("Only workspace admins can connect to ADDMAN-SmartChart.");
       }
 
       // Generate state token
@@ -155,13 +151,13 @@ class SlackController {
         botToken,
         slackUserId,
         {
-          text: "Connect this Slack workspace to your Chartbrew team",
+          text: "Connect this Slack workspace to your ADDMAN-SmartChart team",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "🔗 Connect this Slack workspace to your Chartbrew team:",
+                text: "🔗 Connect this Slack workspace to your ADDMAN-SmartChart team:",
               },
             },
             {
@@ -220,7 +216,7 @@ class SlackController {
 
     // Create new conversation if needed
     if (!conversationId) {
-      // Find a Chartbrew user from this team to own the conversation
+      // Find an ADDMAN-SmartChart user from this team to own the conversation
       // Prefer team owner/admin
       const teamRole = await db.TeamRole.findOne({
         where: {
@@ -232,22 +228,22 @@ class SlackController {
         ],
       });
 
-      let chartbrewUserId = 1; // fallback to default
+      let smartchartUserId = 1; // fallback to default
       if (teamRole) {
-        chartbrewUserId = teamRole.user_id;
+        smartchartUserId = teamRole.user_id;
       } else {
         // If no owner/admin found, find any user from the team
         const anyTeamRole = await db.TeamRole.findOne({
           where: { team_id: integration.team_id },
         });
         if (anyTeamRole) {
-          chartbrewUserId = anyTeamRole.user_id;
+          smartchartUserId = anyTeamRole.user_id;
         }
       }
 
       const conversation = await db.AiConversation.create({
         team_id: integration.team_id,
-        user_id: chartbrewUserId,
+        user_id: smartchartUserId,
         title: `Slack Thread: ${threadTs.substring(0, 10)}...`,
         status: "active",
         source: "slack",
@@ -299,7 +295,7 @@ class SlackController {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "❌ *This integration is not allowed in this channel.*\n\nTo enable Chartbrew in this channel, add it to the allowed channels list.",
+            text: "❌ *This integration is not allowed in this channel.*\n\nTo enable ADDMAN-SmartChart in this channel, add it to the allowed channels list.",
           },
         },
         {
@@ -347,17 +343,17 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to Chartbrew. Use `/chartbrew connect` to get started.");
+        throw new Error("This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
       }
 
       if (!integration.team_id || !integration.apikey_id) {
-        throw new Error("This workspace isn't connected to a Chartbrew team. Use `/chartbrew connect` to get started.");
+        throw new Error("This workspace isn't connected to a ADDMAN-SmartChart team. Use `/smartchart connect` to get started.");
       }
 
       // Get bot token
       botToken = integration.config.bot_token;
       if (!botToken) {
-        throw new Error("Bot token not found. Please reinstall the Chartbrew Slack app.");
+        throw new Error("Bot token not found. Please reinstall the ADDMAN-SmartChart Slack app.");
       }
 
       // Check channel access
@@ -636,7 +632,7 @@ class SlackController {
   }
 
   /**
-   * Handle app_mention event - when user tags @chartbrew
+   * Handle app_mention event - when user tags @smartchart
    */
   async handleMention(event) {
     const {
@@ -662,7 +658,7 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to Chartbrew. Use `/chartbrew connect` to get started.");
+        throw new Error("This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
       }
 
       // Check channel access early - before processing the question
@@ -676,7 +672,7 @@ class SlackController {
         return;
       }
 
-      // Extract question from mention text (remove @chartbrew mention)
+      // Extract question from mention text (remove @smartchart mention)
       // Slack mentions come as <@BOT_USER_ID> or <@BOT_USER_ID|display_name>
       let question = mentionText || "";
 
@@ -686,8 +682,8 @@ class SlackController {
         question = question.replace(new RegExp(`<@${botUserId}[^>]*>`, "gi"), "").trim();
       }
 
-      // Also handle generic @chartbrew mentions and any <@...> pattern
-      question = question.replace(/@chartbrew/gi, "").trim();
+      // Also handle generic @smartchart mentions and any <@...> pattern
+      question = question.replace(/@smartchart/gi, "").trim();
       question = question.replace(/<@[^>]+>/g, "").trim();
 
       if (!question || question.length === 0) {
@@ -737,18 +733,18 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to Chartbrew. Use `/chartbrew connect` to get started.");
+        throw new Error("This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
       }
 
       if (!integration.team_id || !integration.apikey_id) {
-        await sendDM(integration?.config?.bot_token, slackUserId, "This workspace isn't connected to Chartbrew. Use `/chartbrew connect` to get started.");
+        await sendDM(integration?.config?.bot_token, slackUserId, "This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
         return;
       }
 
       // Get bot token
       const botToken = integration.config.bot_token;
       if (!botToken) {
-        await sendDM(integration.config.bot_token, slackUserId, "Bot token not found. Please reinstall the Chartbrew Slack app.");
+        await sendDM(integration.config.bot_token, slackUserId, "Bot token not found. Please reinstall the ADDMAN-SmartChart Slack app.");
         return;
       }
 
@@ -757,7 +753,7 @@ class SlackController {
           type: "header",
           text: {
             type: "plain_text",
-            text: "Chartbrew Integration Status",
+            text: "ADDMAN-SmartChart Integration Status",
           },
         },
       ];
@@ -785,13 +781,13 @@ class SlackController {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "❌ Not connected to a Chartbrew team\nUse `/chartbrew connect` to get started",
+            text: "❌ Not connected to a ADDMAN-SmartChart team\nUse `/smartchart connect` to get started",
           },
         });
       }
 
       const statusMessage = {
-        text: "Chartbrew Integration Status",
+        text: "ADDMAN-SmartChart Integration Status",
         blocks,
       };
 
@@ -829,13 +825,13 @@ class SlackController {
    */
   async handleHelp(slackTeamId, slackUserId, channelId, responseUrl = null) { // eslint-disable-line max-len
     const helpMessage = {
-      text: "Chartbrew Slack Commands",
+      text: "ADDMAN-SmartChart Slack Commands",
       blocks: [
         {
           type: "header",
           text: {
             type: "plain_text",
-            text: "Chartbrew Slack Commands",
+            text: "ADDMAN-SmartChart Slack Commands",
           },
         },
         {
@@ -843,13 +839,13 @@ class SlackController {
           text: {
             type: "mrkdwn",
             text: "*Ask Questions:*\n"
-              + "Tag @chartbrew in any channel to ask questions about your data. Each thread maintains its own conversation history.\n\n"
-              + "*Example:* `@chartbrew how many users do I have?`\n\n"
+              + "Tag @smartchart in any channel to ask questions about your data. Each thread maintains its own conversation history.\n\n"
+              + "*Example:* `@smartchart how many users do I have?`\n\n"
               + "*Setup Commands:*\n"
-              + "• `/chartbrew connect` - Connect this workspace to a Chartbrew team\n"
-              + "• `/chartbrew status` - Check connection status\n"
-              + "• `/chartbrew disconnect` - Disconnect from Chartbrew team\n"
-              + "• `/chartbrew help` - Show this help message",
+              + "• `/smartchart connect` - Connect this workspace to a ADDMAN-SmartChart team\n"
+              + "• `/smartchart status` - Check connection status\n"
+              + "• `/smartchart disconnect` - Disconnect from ADDMAN-SmartChart team\n"
+              + "• `/smartchart help` - Show this help message",
           },
         },
       ],
@@ -912,13 +908,13 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to Chartbrew.");
+        throw new Error("This workspace isn't connected to ADDMAN-SmartChart.");
       }
 
       // Check if user is admin
       const botToken = integration.config.bot_token;
       if (!botToken) {
-        throw new Error("Bot token not found. Please reinstall the Chartbrew Slack app.");
+        throw new Error("Bot token not found. Please reinstall the ADDMAN-SmartChart Slack app.");
       }
 
       const isAdmin = await isWorkspaceAdmin(botToken, slackUserId);
@@ -946,13 +942,13 @@ class SlackController {
 
       if (!integration.team_id || !integration.apikey_id) {
         const message = {
-          text: "Not connected to a Chartbrew team.",
+          text: "Not connected to a ADDMAN-SmartChart team.",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "❌ Not connected to a Chartbrew team.",
+                text: "❌ Not connected to a ADDMAN-SmartChart team.",
               },
             },
           ],
@@ -972,13 +968,13 @@ class SlackController {
       });
 
       const successMessage = {
-        text: "Disconnected from Chartbrew team. Use `/chartbrew connect` to reconnect.",
+        text: "Disconnected from ADDMAN-SmartChart team. Use `/smartchart connect` to reconnect.",
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: "✅ Disconnected from Chartbrew team. Use `/chartbrew connect` to reconnect.",
+              text: "✅ Disconnected from ADDMAN-SmartChart team. Use `/smartchart connect` to reconnect.",
             },
           },
         ],
@@ -1058,20 +1054,20 @@ class SlackController {
         tokenData.bot_token,
         tokenData.installer_user_id,
         {
-          text: "Chartbrew has been installed in your workspace!",
+          text: "ADDMAN-SmartChart has been installed in your workspace!",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "🎉 *Chartbrew has been installed in your workspace!*",
+                text: "🎉 *ADDMAN-SmartChart has been installed in your workspace!*",
               },
             },
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "To connect this workspace to a Chartbrew team, use the command:\n`/chartbrew connect`",
+                text: "To connect this workspace to a ADDMAN-SmartChart team, use the command:\n`/smartchart connect`",
               },
             },
           ],
@@ -1085,7 +1081,7 @@ class SlackController {
   }
 
   /**
-   * Handle auth complete - Link Slack workspace to Chartbrew team
+   * Handle auth complete - Link Slack workspace to ADDMAN-SmartChart team
    */
   async handleAuthComplete(stateToken, teamId, userId, defaultProjectId, userEmail = null) {
     // Find and verify auth state
@@ -1160,13 +1156,13 @@ class SlackController {
       integration.config.bot_token,
       authState.external_user_id,
       {
-        text: `Successfully connected to Chartbrew team: ${team.name}`,
+        text: `Successfully connected to ADDMAN-SmartChart team: ${team.name}`,
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `✅ *Successfully connected to Chartbrew team: ${team.name}*`,
+              text: `✅ *Successfully connected to ADDMAN-SmartChart team: ${team.name}*`,
             },
           },
           {
@@ -1175,7 +1171,7 @@ class SlackController {
               type: "mrkdwn",
               text: "Next steps:\n\n"
                 + `1. Edit app channel access from the <${integrationUrl}|integrations settings>\n`
-                + "2. Tag @chartbrew in your channels to ask questions about your data",
+                + "2. Tag @smartchart in your channels to ask questions about your data",
             },
           },
         ],

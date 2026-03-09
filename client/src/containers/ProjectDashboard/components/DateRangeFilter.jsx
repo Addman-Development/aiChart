@@ -215,8 +215,8 @@ function DateRangeFilter({
 }
 
 DateRangeFilter.propTypes = {
-  startDate: PropTypes.string.isRequired,
-  endDate: PropTypes.string.isRequired,
+  startDate: PropTypes.string,
+  endDate: PropTypes.string,
   onChange: PropTypes.func.isRequired,
   className: PropTypes.string,
   variant: PropTypes.string,

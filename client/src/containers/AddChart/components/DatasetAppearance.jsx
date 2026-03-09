@@ -138,7 +138,7 @@ DatasetAppearance.propTypes = {
 
 function ColorPicker(props) {
   const {
-    fillIndex, type, dataset, onUpdate
+    fillIndex = null, type, dataset, onUpdate
   } = props;
   let color = type === "dataset" ? dataset.datasetColor
     : (fillIndex || fillIndex === 0)
@@ -173,10 +173,6 @@ function ColorPicker(props) {
     />
   );
 }
-
-ColorPicker.defaultProps = {
-  fillIndex: null,
-};
 
 ColorPicker.propTypes = {
   dataset: PropTypes.object.isRequired,

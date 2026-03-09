@@ -1,33 +1,18 @@
 const getRedisOptions = () => {
-  if (process.env.NODE_ENV === "production") {
-    if (!process.env.CB_REDIS_HOST) {
-      console.error("CB_REDIS_HOST is not set. The charts are not going to update automatically."); // eslint-disable-line no-console
-    }
-    return {
-      host: process.env.CB_REDIS_HOST,
-      port: process.env.CB_REDIS_PORT,
-      password: process.env.CB_REDIS_PASSWORD,
-      db: process.env.CB_REDIS_DB,
-      tls: process.env.CB_REDIS_CA ? { ca: process.env.CB_REDIS_CA } : undefined,
-    };
-  } else {
-    if (!process.env.CB_REDIS_HOST_DEV) {
-      console.error("CB_REDIS_HOST_DEV is not set. The charts are not going to update automatically."); // eslint-disable-line no-console
-    }
-    return {
-      host: process.env.CB_REDIS_HOST_DEV,
-      port: process.env.CB_REDIS_PORT_DEV,
-      password: process.env.CB_REDIS_PASSWORD_DEV,
-      db: process.env.CB_REDIS_DB_DEV,
-      tls: process.env.CB_REDIS_CA_DEV ? { ca: process.env.CB_REDIS_CA_DEV } : undefined,
-    };
+  if (!process.env.CB_REDIS_HOST) {
+    console.error("CB_REDIS_HOST is not set. The charts are not going to update automatically."); // eslint-disable-line no-console
   }
+  return {
+    host: process.env.CB_REDIS_HOST,
+    port: process.env.CB_REDIS_PORT,
+    password: process.env.CB_REDIS_PASSWORD,
+    db: process.env.CB_REDIS_DB,
+    tls: process.env.CB_REDIS_CA ? { ca: process.env.CB_REDIS_CA } : undefined,
+  };
 };
 
 const getRedisClusterOptions = () => {
-  const clusterNodes = process.env.NODE_ENV === "production"
-    ? process.env.CB_REDIS_CLUSTER_NODES
-    : process.env.CB_REDIS_CLUSTER_NODES_DEV;
+  const clusterNodes = process.env.CB_REDIS_CLUSTER_NODES;
 
   if (clusterNodes) {
     const nodes = clusterNodes.split(",").map((node) => {
@@ -38,16 +23,12 @@ const getRedisClusterOptions = () => {
     const clusterOptions = {
       enableReadyCheck: false,
       redisOptions: {
-        password: process.env.NODE_ENV === "production"
-          ? process.env.CB_REDIS_PASSWORD
-          : process.env.CB_REDIS_PASSWORD_DEV,
+        password: process.env.CB_REDIS_PASSWORD,
       }
     };
 
     // Add TLS configuration if provided
-    const tlsCa = process.env.NODE_ENV === "production"
-      ? process.env.CB_REDIS_CA
-      : process.env.CB_REDIS_CA_DEV;
+    const tlsCa = process.env.CB_REDIS_CA;
 
     if (tlsCa) {
       clusterOptions.redisOptions.tls = { ca: tlsCa };

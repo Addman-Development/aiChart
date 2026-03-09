@@ -36,11 +36,7 @@ const checkAccess = async (req, res, next) => {
 };
 
 const isOpenAiApiKeySet = () => {
-  if (process.env.NODE_ENV === "production") {
-    return process.env.CB_OPENAI_API_KEY;
-  } else {
-    return process.env.CB_OPENAI_API_KEY_DEV;
-  }
+  return process.env.CB_AI_API_KEY || process.env.CB_OPENAI_API_KEY;
 };
 
 module.exports = (app) => {

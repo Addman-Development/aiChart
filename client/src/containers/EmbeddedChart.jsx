@@ -259,10 +259,10 @@ function EmbeddedChart() {
     <div style={styles.container} id="chart-container">
       <Helmet>
         <title>
-          {chart.name || "Chartbrew chart"}
+          {chart.name || "ADDMAN-SmartChart chart"}
         </title>
         <meta name="robots" content="noindex" />
-        <meta name="og:title" content={chart.name || "Chartbrew chart"} />
+        <meta name="og:title" content={chart.name || "ADDMAN-SmartChart chart"} />
         <style type="text/css">
           {`
             body, html {

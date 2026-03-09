@@ -36,7 +36,7 @@ function replaceEmptyColors(colors) {
 function Dataset(props) {
   const {
     dataset, onUpdate, onDelete, chart, onRefresh,
-    loading, datasetResponses,
+    loading = false, datasetResponses,
   } = props;
 
   const [newDataset, setNewDataset] = useState(dataset);
@@ -346,10 +346,6 @@ Dataset.propTypes = {
   onRefresh: PropTypes.func.isRequired,
   loading: PropTypes.bool,
   datasetResponses: PropTypes.array.isRequired,
-};
-
-Dataset.defaultProps = {
-  loading: false,
 };
 
 const styles = {

@@ -6,7 +6,6 @@ const db = require("../models/models");
 const { generateSqlQuery } = require("../modules/ai/generateSqlQuery");
 const { generateMongoQuery } = require("../modules/ai/generateMongoQuery");
 const externalDbConnection = require("../modules/externalDbConnection");
-const { generateClickhouseQuery } = require("../modules/ai/generateClickhouseQuery");
 const { applyTransformation } = require("../modules/dataTransformations");
 const { applyVariables } = require("../modules/applyVariables");
 
@@ -185,31 +184,8 @@ class RequestController {
           return this.connectionController.runApiRequest(
             connection.id, chartId, originalDataRequest, getCache, [], "", variables,
           );
-        } else if (connection.type === "postgres" || connection.type === "mysql") {
-          return this.connectionController.runMysqlOrPostgres(
-            connection.id, originalDataRequest, getCache, processedQuery,
-          );
-        } else if (connection.type === "firestore") {
-          return this.connectionController.runFirestore(
-            connection.id,
-            originalDataRequest,
-            getCache,
-            variables,
-          );
-        } else if (connection.type === "googleAnalytics") {
-          return this.connectionController.runGoogleAnalytics(
-            connection, originalDataRequest,
-          );
-        } else if (connection.type === "realtimedb") {
-          return this.connectionController.runRealtimeDb(
-            connection.id, originalDataRequest, getCache, variables,
-          );
-        } else if (connection.type === "customerio") {
-          return this.connectionController.runCustomerio(
-            connection, originalDataRequest, getCache,
-          );
-        } else if (connection.type === "clickhouse") {
-          return this.connectionController.runClickhouse(
+        } else if (connection.type === "postgres") {
+          return this.connectionController.runPostgres(
             connection.id, originalDataRequest, getCache, processedQuery,
           );
         } else {
@@ -222,36 +198,6 @@ class RequestController {
           processedRequest.responseData = JSON.parse(
             JSON.stringify(processedRequest.responseData)
           );
-        }
-
-        if (response?.dataRequest?.Connection.type === "firestore") {
-          let newConfiguration = {};
-          if (response.dataRequest.configuration && typeof response.dataRequest.configuration === "object") {
-            newConfiguration = { ...response.dataRequest.configuration };
-          }
-
-          if (response?.responseData?.configuration) {
-            newConfiguration = { ...newConfiguration, ...response.responseData.configuration };
-          }
-
-          if (newConfiguration && Object.keys(newConfiguration).length > 0) {
-            processedRequest.dataRequest.configuration = newConfiguration;
-
-            db.DataRequest.update(
-              { configuration: newConfiguration },
-              { where: { id: response.dataRequest.id } },
-            );
-
-            try {
-              const drCache = await drCacheController.findLast(response.dataRequest.id);
-              if (drCache?.responseData?.configuration) {
-                drCache.responseData.configuration = newConfiguration;
-                drCacheController.update(drCache, response.dataRequest.id);
-              }
-            } catch (e) {
-              // do nothing
-            }
-          }
         }
 
         // Apply transformation if enabled
@@ -296,11 +242,9 @@ class RequestController {
             const updatedConnection = await this.connectionController
               .updateMongoSchema(connection.id);
             schema = updatedConnection?.schema;
-          } else if (connection.type === "postgres" || connection.type === "mysql") {
+          } else if (connection.type === "postgres") {
             const dbConnection = await externalDbConnection(connection);
             schema = await this.connectionController.getSchema(dbConnection);
-          } else if (connection.type === "clickhouse") {
-            schema = await this.connectionController.getClickhouseSchema(connection.id);
           }
         }
 
@@ -311,10 +255,6 @@ class RequestController {
         let aiResponse;
         if (connection.type === "mongodb") {
           aiResponse = await generateMongoQuery(
-            schema, question, conversationHistory, currentQuery
-          );
-        } else if (connection.type === "clickhouse") {
-          aiResponse = await generateClickhouseQuery(
             schema, question, conversationHistory, currentQuery
           );
         } else {

@@ -26,7 +26,7 @@ import { selectTeam } from "../../../slices/team";
 */
 function MongoConnectionForm(props) {
   const {
-    editConnection, onComplete, addError,
+    editConnection = null, onComplete = () => {}, addError = false,
   } = props;
 
   const [showIp, setShowIp] = useState(false);
@@ -85,16 +85,11 @@ function MongoConnectionForm(props) {
   const _onTestRequest = (data) => {
     const newTestResult = {};
     return dispatch(testRequest({ team_id: team.id, connection: data }))
-      .then(async (response) => {
+      .then((response) => {
         newTestResult.status = response.payload.status;
-        newTestResult.body = await response.payload.text();
-
-        try {
-          newTestResult.body = JSON.parse(newTestResult.body);
-          newTestResult.body = JSON.stringify(newTestResult, null, 2);
-        } catch (e) {
-          // the response is not in JSON format
-        }
+        newTestResult.body = typeof response.payload.body === "object"
+          ? JSON.stringify(response.payload.body, null, 2)
+          : response.payload.body;
 
         setTestResult(newTestResult);
         return Promise.resolve(newTestResult);
@@ -499,7 +494,7 @@ function MongoConnectionForm(props) {
                 <Text b>{"You might need to whitelist the front-end IP in the back-end"}</Text>
               </Row>
               <Row>
-                <Text>{"This is sometimes required when the database and the Chartbrew app are running on separate servers."}</Text>
+                <Text>{"This is sometimes required when the database and the ADDMAN-SmartChart app are running on separate servers."}</Text>
               </Row>
             </Container>
           </Row>
@@ -591,12 +586,6 @@ const styles = {
   saveBtn: {
     marginRight: 0,
   },
-};
-
-MongoConnectionForm.defaultProps = {
-  onComplete: () => {},
-  editConnection: null,
-  addError: false,
 };
 
 MongoConnectionForm.propTypes = {

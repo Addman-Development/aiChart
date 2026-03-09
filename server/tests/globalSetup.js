@@ -12,7 +12,7 @@ export default async function globalSetup() {
 
   // Use MySQL with Docker containers by default for testing
   // Set to 'sqlite' as fallback if containers fail
-  process.env.CB_DB_DIALECT_DEV = process.env.CB_DB_DIALECT_DEV || "mysql";
+  process.env.CB_DB_DIALECT = process.env.CB_DB_DIALECT || "postgres";
   process.env.FORCE_CONTAINERS = "true";
 
   // Start test database container (will be shared across all tests)

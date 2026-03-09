@@ -56,6 +56,28 @@ export const getProjectCharts = createAsyncThunk(
   }
 );
 
+export const moveChartToDashboard = createAsyncThunk(
+  "chart/moveChartToDashboard",
+  async ({ project_id, chart_id, target_project_id, team_id }) => {
+    const token = getAuthToken();
+    const url = `${API_HOST}/project/${project_id}/chart/${chart_id}/move`;
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: new Headers({
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "authorization": `Bearer ${token}`,
+      }),
+      body: JSON.stringify({ target_project_id, team_id }),
+    });
+    const data = await response.json();
+    if (response.status >= 400) {
+      throw new Error(data.message);
+    }
+    return data;
+  }
+);
+
 export const createChart = createAsyncThunk(
   "chart/createChart",
   async ({ project_id, data }) => {
@@ -382,7 +404,7 @@ export const exportChart = createAsyncThunk(
     const objUrl = window.URL.createObjectURL(new Blob([file]));
     const link = document.createElement("a");
     link.href = objUrl;
-    link.setAttribute("download", "chartbrew-export.xlsx");
+    link.setAttribute("download", "smartchart-export.xlsx");
 
     // Append to html page
     document.body.appendChild(link);
@@ -414,7 +436,7 @@ export const exportChartPublic = createAsyncThunk(
     const objUrl = window.URL.createObjectURL(new Blob([file]));
     const link = document.createElement("a");
     link.href = objUrl;
-    link.setAttribute("download", `${chart.name}-chartbrew.xlsx`);
+    link.setAttribute("download", `${chart.name}-smartchart.xlsx`);
 
     // Append to html page
     document.body.appendChild(link);

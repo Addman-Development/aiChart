@@ -1,5 +1,5 @@
 /**
- * AI Orchestrator for Chartbrew
+ * AI Orchestrator
  *
  * Enables conversational AI interactions for:
  * - Querying data from connected databases
@@ -7,29 +7,23 @@
  * - Creating charts and visualizations
  * - Suggesting appropriate chart types
  *
- * Uses OpenAI's function calling API to orchestrate multi-step workflows.
+ * Uses an OpenAI-compatible API (supports LiteLLM, Claude, etc.)
  *
  * Main entry point: orchestrate(teamId, question, conversationHistory)
  */
 
-const OpenAI = require("openai");
 const db = require("../../../models/models");
 const socketManager = require("../../socketManager");
 const { emitProgressEvent, parseProgressEvents } = require("./responseParser");
 const { ENTITY_CREATION_RULES } = require("./entityCreationRules");
 const { isCapabilityQuestion, generateCapabilityResponse } = require("./capabilityHandler");
+const { aiClient, aiModel } = require("../aiClient");
 
-const openAiKey = process.env.NODE_ENV === "production" ? process.env.CB_OPENAI_API_KEY : process.env.CB_OPENAI_API_KEY_DEV;
-const openAiModel = process.env.NODE_ENV === "production" ? process.env.CB_OPENAI_MODEL : process.env.CB_OPENAI_MODEL_DEV;
-let openaiClient;
+// Set globals for tool modules (summarize, suggestChart) that use global.aiClient
+global.aiClient = aiClient;
+global.openAiModel = aiModel;
 
-if (openAiKey) {
-  openaiClient = new OpenAI({
-    apiKey: openAiKey,
-  });
-}
-
-const clientUrl = process.env.NODE_ENV === "production" ? process.env.VITE_APP_CLIENT_HOST : process.env.VITE_APP_CLIENT_HOST_DEV;
+const clientUrl = process.env.VITE_APP_CLIENT_HOST;
 
 // Import tool functions
 const {
@@ -51,8 +45,6 @@ const {
 const { chartColors } = require("../../../charts/colors");
 
 // Make global variables available to tool functions
-global.openaiClient = openaiClient;
-global.openAiModel = openAiModel;
 global.clientUrl = clientUrl;
 
 async function availableTools() {
@@ -170,7 +162,7 @@ async function availableTools() {
     },
     {
       name: "create_dataset",
-      description: "Persist an SQL query as a Chartbrew dataset (before making a chart).",
+      description: "Persist an SQL query as an ADDMAN-SmartChart dataset (before making a chart).",
       parameters: {
         type: "object",
         properties: {
@@ -478,7 +470,7 @@ The title should be actionable and descriptive based on the user's question.`
     : `\n## Current Conversation
 This is a continuing conversation. Be aware of previous interactions and maintain context.`;
 
-  return `You are an AI assistant for Chartbrew, a data visualization platform. Your role is to help users query their data and create charts.${conversationContext}
+  return `You are an AI assistant for ADDMAN-SmartChart, a data visualization platform. Your role is to help users query their data and create charts.${conversationContext}
 
 ## Available Connections
 ${connections.filter((c) => ["mysql", "postgres", "mongodb"].includes(c.type)).map((c) => `- ${c.name} (${c.type}${c.subType ? `/${c.subType}` : ""}) [ID: ${c.id}]`).join("\n")}
@@ -496,7 +488,7 @@ ${projects.map((p) => `- ${p.name} [ID: ${p.id}] - ${p.Charts?.length || 0} char
 ## Chart Types Available
 ${chartCatalog.map((catalog) => Object.entries(catalog).map(([type, info]) => `- ${type}: ${info.description}`).join("\n")).join("\n")}
 
-## How Chartbrew Works
+## How ADDMAN-SmartChart Works
 1. **Connections**: Store database credentials and schemas. Currently supported:
    - **MySQL connections**: SQL databases with tables/columns
    - **PostgreSQL connections**: SQL databases with tables/columns
@@ -530,7 +522,7 @@ ${ENTITY_CREATION_RULES}
 - **Only ask questions when**: Context is truly ambiguous, multiple valid options exist with no clear preference, or you need clarification on user intent.
 
 ## Limitations
-**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. Chartbrew visualizes data from connected databases. Connect MySQL, PostgreSQL, or MongoDB via the Connections page."
+**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. ADDMAN-SmartChart visualizes data from connected databases. Connect MySQL, PostgreSQL, or MongoDB via the Connections page."
 
 ## Workflow Guidelines
 1. When a user asks a data question:
@@ -937,7 +929,7 @@ async function orchestrate(
 ) {
   // Extract optional tool progress callback
   const { toolProgressCallback } = options;
-  if (!openaiClient) {
+  if (!aiClient) {
     throw new Error("OpenAI client is not initialized. Please check your environment variables.");
   }
 
@@ -980,7 +972,7 @@ async function orchestrate(
         total_tokens: 0
       },
       usageRecords: [{
-        model: openAiModel || "gpt-5-nano",
+        model: aiModel,
         prompt_tokens: 0,
         completion_tokens: 0,
         total_tokens: 0,
@@ -1031,8 +1023,8 @@ async function orchestrate(
 
   // Initial API call
   const startTime1 = Date.now();
-  let response = await openaiClient.chat.completions.create({
-    model: openAiModel || "gpt-5-nano",
+  let response = await aiClient.chat.completions.create({
+    model: aiModel,
     messages,
     tools,
     tool_choice: "auto",
@@ -1044,7 +1036,7 @@ async function orchestrate(
   // Record first usage
   if (response.usage) {
     usageRecords.push({
-      model: openAiModel || "gpt-5-nano",
+      model: aiModel,
       prompt_tokens: response.usage.prompt_tokens || 0,
       completion_tokens: response.usage.completion_tokens || 0,
       total_tokens: response.usage.total_tokens || 0,
@@ -1194,8 +1186,8 @@ async function orchestrate(
     // Get next response from AI
     const startTime = Date.now();
     // eslint-disable-next-line no-await-in-loop
-    response = await openaiClient.chat.completions.create({
-      model: openAiModel || "gpt-5-nano",
+    response = await aiClient.chat.completions.create({
+      model: aiModel,
       messages: updatedMessages,
       tools,
       tool_choice: "auto",
@@ -1207,7 +1199,7 @@ async function orchestrate(
     // Record usage for this API call
     if (response.usage) {
       usageRecords.push({
-        model: openAiModel || "gpt-5-nano",
+        model: aiModel,
         prompt_tokens: response.usage.prompt_tokens || 0,
         completion_tokens: response.usage.completion_tokens || 0,
         total_tokens: response.usage.total_tokens || 0,

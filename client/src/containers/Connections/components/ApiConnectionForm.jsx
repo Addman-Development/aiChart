@@ -40,7 +40,7 @@ const authTypes = [{
 */
 function ApiConnectionForm(props) {
   const {
-    editConnection, onComplete, addError,
+    editConnection = null, onComplete, addError = null,
   } = props;
 
   const [loading, setLoading] = useState(false);
@@ -94,16 +94,11 @@ function ApiConnectionForm(props) {
   const _onTestRequest = (data) => {
     const newTestResult = {};
     return dispatch(testRequest({ team_id: team.id, connection: data }))
-      .then(async (response) => {
+      .then((response) => {
         newTestResult.status = response.payload.status;
-        newTestResult.body = await response.payload.text();
-
-        try {
-          newTestResult.body = JSON.parse(newTestResult.body);
-          newTestResult.body = JSON.stringify(newTestResult, null, 2);
-        } catch (e) {
-          // the response is not in JSON format
-        }
+        newTestResult.body = typeof response.payload.body === "object"
+          ? JSON.stringify(response.payload.body, null, 2)
+          : response.payload.body;
 
         setTestResult(newTestResult);
         return Promise.resolve(newTestResult);
@@ -483,11 +478,6 @@ function ApiConnectionForm(props) {
     </div>
   );
 }
-
-ApiConnectionForm.defaultProps = {
-  editConnection: null,
-  addError: null,
-};
 
 ApiConnectionForm.propTypes = {
   onComplete: PropTypes.func.isRequired,

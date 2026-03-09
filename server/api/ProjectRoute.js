@@ -4,7 +4,7 @@ const { nanoid } = require("nanoid");
 const _ = require("lodash");
 const jwt = require("jsonwebtoken");
 
-const settings = process.env.NODE_ENV === "production" ? require("../settings") : require("../settings-dev");
+const settings = require("../settings");
 
 const ProjectController = require("../controllers/ProjectController");
 const TeamController = require("../controllers/TeamController");
@@ -73,7 +73,7 @@ module.exports = (app) => {
   };
 
   /*
-  ** [MASTER] Route to get all the projects
+  ** Route to get all the projects (global admin only)
   */
   app.get("/project", verifyToken, (req, res) => {
     if (!req.user.admin) {

@@ -368,53 +368,14 @@ class DatasetController {
                 variables,
               )
             );
-          } else if (connection.type === "postgres" || connection.type === "mysql") {
+          } else if (connection.type === "postgres") {
             drPromises.push(
-              this.connectionController.runMysqlOrPostgres(
+              this.connectionController.runPostgres(
                 connection.id,
                 originalDataRequest,
                 getCache,
                 processedQuery,
               )
-            );
-          } else if (connection.type === "clickhouse") {
-            drPromises.push(
-              this.connectionController.runClickhouse(
-                connection.id,
-                originalDataRequest,
-                getCache,
-                processedQuery,
-              )
-            );
-          } else if (connection.type === "firestore") {
-            drPromises.push(
-              this.connectionController.runFirestore(
-                connection.id,
-                originalDataRequest,
-                getCache,
-                variables,
-              )
-            );
-          } else if (connection.type === "googleAnalytics") {
-            drPromises.push(
-              this.connectionController.runGoogleAnalytics(
-                connection,
-                originalDataRequest,
-                getCache,
-              )
-            );
-          } else if (connection.type === "realtimedb") {
-            drPromises.push(
-              this.connectionController.runRealtimeDb(
-                connection.id,
-                originalDataRequest,
-                getCache,
-                variables,
-              )
-            );
-          } else if (connection.type === "customerio") {
-            drPromises.push(
-              this.connectionController.runCustomerio(connection, originalDataRequest, getCache)
             );
           } else {
             drPromises.push(
@@ -423,9 +384,16 @@ class DatasetController {
           }
         });
 
-        return Promise.all(drPromises);
+        return Promise.allSettled(drPromises);
       })
-      .then(async (promisedRequests) => {
+      .then(async (settledResults) => {
+        const promisedRequests = settledResults
+          .filter((r) => r.status === "fulfilled")
+          .map((r) => r.value);
+        if (promisedRequests.length === 0 && settledResults.length > 0) {
+          const firstError = settledResults.find((r) => r.status === "rejected");
+          throw firstError?.reason || new Error("All data requests failed");
+        }
         const filteredRequests = promisedRequests.filter((request) => request !== undefined);
         let data = [];
         const mainResponseData = filteredRequests

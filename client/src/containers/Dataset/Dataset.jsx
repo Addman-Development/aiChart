@@ -68,7 +68,7 @@ function Dataset() {
       initRef.current = true;
       fetchData();
     }
-  }, [team]);
+  }, [team?.id]);
 
   useEffect(() => {
     if (user?.id && !team) {
@@ -78,11 +78,11 @@ function Dataset() {
 
   useEffect(() => {
     if (user?.id && team?.id) {
-      if (!canAccess("projectAdmin", user.id, team.TeamRoles)) {
+      if (!canAccess("projectAdmin", user.id, team.TeamRoles, user)) {
         setDatasetMenu("configure");
       }
     }
-  }, [user, team]);
+  }, [user?.id, team?.id]);
 
   useEffect(() => {
     if (!dataset) {
@@ -93,7 +93,7 @@ function Dataset() {
       datasetInitRef.current = true;
       setLegend(dataset.legend);
     }
-  }, [dataset]);
+  }, [dataset?.id]);
 
   useEffect(() => {
     if (params.datasetId === "new" && !createInitRef.current) {
@@ -150,7 +150,7 @@ function Dataset() {
           }))
         });
     }
-  }, [ghostProject, dataset]);
+  }, [ghostProject?.id, dataset?.id]);
 
   useEffect(() => {
     if (datasetMenu === "configure" && dataset?.id && team?.id) {
@@ -160,7 +160,7 @@ function Dataset() {
         getCache: true,
       }));
     }
-  }, [datasetMenu, team]);
+  }, [datasetMenu, team?.id, dataset?.id]);
 
   useEffect(() => {
     let message = error;
@@ -384,7 +384,7 @@ function Dataset() {
             selectedKey={datasetMenu}
             onSelectionChange={(key) => setDatasetMenu(key)}
           >
-            {canAccess("projectAdmin", user.id, team.TeamRoles) && (
+            {canAccess("projectAdmin", user.id, team.TeamRoles, user) && (
               <Tab key="query" title={(
                 <div className="flex flex-row items-center gap-2">
                   <LuDatabase size={18} />
@@ -392,7 +392,7 @@ function Dataset() {
                 </div>
               )} />
             )}
-            {canAccess("projectEditor", user.id, team.TeamRoles) && (
+            {canAccess("projectEditor", user.id, team.TeamRoles, user) && (
               <Tab key="configure" title={(
                 <div className="flex flex-row items-center gap-2">
                   <LuChartArea size={18} />

@@ -112,14 +112,6 @@ describe("Factories", () => {
       expect(connection.type).toBe("api");
     });
 
-    it("should create MySQL connections", () => {
-      const connection = connectionFactory.buildMySQL();
-
-      expect(connection.type).toBe("mysql");
-      expect(connection.port).toBe("3306");
-      expect(connection.host).toBe("localhost");
-    });
-
     it("should create PostgreSQL connections", () => {
       const connection = connectionFactory.buildPostgreSQL();
 

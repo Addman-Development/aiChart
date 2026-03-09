@@ -25,7 +25,7 @@ import { selectTeam } from "../slices/team";
 */
 function ProjectSettings(props) {
   const {
-    user, cleanErrors, style,
+    user, cleanErrors, style = {},
   } = props;
 
   const [success, setSuccess] = useState(false);
@@ -114,7 +114,7 @@ function ProjectSettings(props) {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   return (
@@ -286,10 +286,6 @@ function ProjectSettings(props) {
     </Segment>
   );
 }
-
-ProjectSettings.defaultProps = {
-  style: {},
-};
 
 ProjectSettings.propTypes = {
   style: PropTypes.object,

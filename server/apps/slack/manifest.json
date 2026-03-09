@@ -1,9 +1,9 @@
 {
   "display_information": {
-    "name": "Chartbrew",
-    "description": "Chartbrew insights in Slack",
+    "name": "ADDMAN-SmartChart",
+    "description": "ADDMAN-SmartChart insights in Slack",
     "background_color": "#048bde",
-    "long_description": "Chartbrew brings your data into Slack, so your team can get answers without context switching. Connect data sources, pick dashboards or projects, ask questions in plain English, and get clear, shareable insights with links back to Chartbrew."
+    "long_description": "ADDMAN-SmartChart brings your data into Slack, so your team can get answers without context switching. Connect data sources, pick dashboards or projects, ask questions in plain English, and get clear, shareable insights with links back to ADDMAN-SmartChart."
   },
   "features": {
     "app_home": {
@@ -12,14 +12,14 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "Chartbrew",
+      "display_name": "ADDMAN-SmartChart",
       "always_online": true
     },
     "slash_commands": [
       {
-        "command": "/chartbrew",
-        "url": "https://api.your-chartbrew-url.com/apps/slack/commands",
-        "description": "Chartbrew commands",
+        "command": "/smartchart",
+        "url": "https://api.your-smartchart-url.com/apps/slack/commands",
+        "description": "ADDMAN-SmartChart commands",
         "usage_hint": "help | connect | disconnect | status",
         "should_escape": false
       }
@@ -27,7 +27,7 @@
   },
   "oauth_config": {
     "redirect_urls": [
-      "https://client.your-chartbrew-url.com/integrations/auth/slack/callback"
+      "https://client.your-smartchart-url.com/integrations/auth/slack/callback"
     ],
       "scopes": {
       "bot": [
@@ -44,7 +44,7 @@
   },
   "settings": {
     "event_subscriptions": {
-      "request_url": "https://api.your-chartbrew-url.com/apps/slack/events",
+      "request_url": "https://api.your-smartchart-url.com/apps/slack/events",
       "bot_events": [
         "app_home_opened",
         "app_mention"
@@ -52,7 +52,7 @@
     },
     "interactivity": {
       "is_enabled": true,
-      "request_url": "https://api.your-chartbrew-url.com/apps/slack/interactions"
+      "request_url": "https://api.your-smartchart-url.com/apps/slack/interactions"
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": false,

@@ -351,7 +351,7 @@ function MongoQueryBuilder(props) {
             </Checkbox>
             <Spacer x={1} />
             <Tooltip
-              content={"Chartbrew will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change the query."}
+              content={"ADDMAN-SmartChart will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change the query."}
               className="max-w-[400px]"
             >
               <div><LuInfo /></div>
@@ -678,7 +678,6 @@ MongoQueryBuilder.propTypes = {
   dataRequest: PropTypes.object.isRequired,
   onChangeRequest: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
-  match: PropTypes.object.isRequired,
   connection: PropTypes.object.isRequired,
   onDelete: PropTypes.func.isRequired,
 };

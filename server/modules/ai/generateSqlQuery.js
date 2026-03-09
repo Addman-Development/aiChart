@@ -1,18 +1,8 @@
-const OpenAI = require("openai");
-
-const openAiKey = process.env.NODE_ENV === "production" ? process.env.CB_OPENAI_API_KEY : process.env.CB_OPENAI_API_KEY_DEV;
-const openAiModel = process.env.NODE_ENV === "production" ? process.env.CB_OPENAI_MODEL : process.env.CB_OPENAI_MODEL_DEV;
-let openaiClient;
-
-if (openAiKey) {
-  openaiClient = new OpenAI({
-    apiKey: openAiKey,
-  });
-}
+const { aiClient, aiModel } = require("./aiClient");
 
 async function generateSqlQuery(schema, question, conversationHistory = [], currentQuery = "") {
-  if (!openaiClient) {
-    throw new Error("OpenAI client is not initialized. Please check your environment variables.");
+  if (!aiClient) {
+    throw new Error("AI client is not initialized. Please check your CB_AI_API_KEY environment variable.");
   }
 
   const formattedSchema = JSON.stringify(schema).replace(/\\/g, "").replace(/"/g, "");
@@ -50,8 +40,8 @@ async function generateSqlQuery(schema, question, conversationHistory = [], curr
       });
     }
 
-    const response = await openaiClient.chat.completions.create({
-      model: openAiModel || "gpt-4o-mini",
+    const response = await aiClient.chat.completions.create({
+      model: aiModel,
       messages,
     });
 
@@ -79,6 +69,7 @@ async function generateSqlQuery(schema, question, conversationHistory = [], curr
 
     return { query: cleanedQuery, conversationHistory };
   } catch (error) {
+    console.error("[generateSqlQuery] AI error:", error.message, error.status || "", error.code || "");
     return { query: "", conversationHistory };
   }
 }

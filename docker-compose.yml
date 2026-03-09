@@ -1,14 +1,12 @@
 services:
-  chartbrew:
-    container_name: chartbrew
-    image: dockerdude63/brewChat:latest
+  aichart:
+    image: dockerdude63/smart-chart:latest
+    container_name: smart-chart
     build: .
     restart: unless-stopped
     env_file: .env
     ports:
-      # If you do change these ports you also need to update them in the VITE_APP_CLIENT_HOST and VITE_APP_API_HOST variables in your .env file
       - 4018:4018 # Frontend
       - 4019:4019 # API
 
-volumes:
-  chartbrew-postgres-db:
+# docker buildx build --push -t dockerdude63/smart-chart:latest .

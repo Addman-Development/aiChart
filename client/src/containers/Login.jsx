@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { connect, useDispatch } from "react-redux";
 import PropTypes from "prop-types";
 import { Link, useNavigate } from "react-router";
@@ -8,11 +8,13 @@ import {
 import _ from "lodash";
 
 import LoginForm from "../components/LoginForm";
+import AzureLoginButton from "../components/AzureLoginButton";
 import { cleanErrors as cleanErrorsAction } from "../actions/error";
 import cbLogoSmall from "../assets/logo_inverted.png";
 import Row from "../components/Row";
 import Text from "../components/Text";
-import { relog } from "../slices/user";
+import { areThereAnyUsers, relog } from "../slices/user";
+import { isAzureConfigured } from "../config/azureConfig";
 
 /*
   Login container with an embedded login form
@@ -23,6 +25,13 @@ function Login(props) {
 
   const navigate = useNavigate();
   const dispatch = useDispatch();
+  const azureEnabled = isAzureConfigured();
+  const [signupAllowed, setSignupAllowed] = useState(false);
+
+  // Check for Azure error in URL params
+  const params = new URLSearchParams(window.location.search);
+  const azureError = params.get("error");
+  const azureMessage = params.get("message");
 
   useEffect(() => {
     cleanErrors();
@@ -33,22 +42,51 @@ function Login(props) {
           navigate("/");
         }
       });
+
+    dispatch(areThereAnyUsers())
+      .then((result) => {
+        const hasUsers = result?.payload?.areThereAnyUsers;
+        const restricted = result?.payload?.signupRestricted;
+        setSignupAllowed(!hasUsers || !restricted);
+      });
   }, []);
 
   return (
     <div className="pt-20">
       <Row justify="center" align="center">
         <Link to="/">
-          <img size="tiny" src={cbLogoSmall} style={{ width: 70 }} alt="Chartbrew logo" />
+          <img size="tiny" src={cbLogoSmall} style={{ width: 70 }} alt="ADDMAN-SmartChart logo" />
         </Link>
       </Row>
       <Spacer y={4} />
       <div className="sm:flex m-4 justify-center">
         <Card shadow="none" className="border-1 border-divider">
           <CardHeader className={"flex justify-center"}>
-            <h1 className={"mt-4 text-xl font-bold"}>{"Welcome back to Chartbrew"}</h1>
+            <h1 className={"mt-4 text-xl font-bold"}>{"Welcome back to ADDMAN-SmartChart"}</h1>
           </CardHeader>
           <CardBody>
+            {azureEnabled && (
+              <>
+                <AzureLoginButton />
+                <Spacer y={4} />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-px bg-divider" />
+                  <Text className="text-default-400 text-sm">Or sign in with email</Text>
+                  <div className="flex-1 h-px bg-divider" />
+                </div>
+                <Spacer y={4} />
+              </>
+            )}
+            {azureError && (
+              <>
+                <div className="p-3 bg-danger-50 border border-danger-200 rounded-lg">
+                  <Text className="text-danger text-sm">
+                    {azureMessage || "Azure authentication failed. Please try again."}
+                  </Text>
+                </div>
+                <Spacer y={2} />
+              </>
+            )}
             <LoginForm />
           </CardBody>
           {loginError && (
@@ -63,15 +101,19 @@ function Login(props) {
           )}
         </Card>
       </div>
-      <Spacer y={8} />
-      <Row justify="center" align="center">
-        <div>
-          <p>
-            {" You don't have an account yet? "}
-            <Link to={"/signup"} className="underline decoration-2">Sign up here</Link>
-          </p>
-        </div>
-      </Row>
+      {signupAllowed && (
+        <>
+          <Spacer y={8} />
+          <Row justify="center" align="center">
+            <div>
+              <p>
+                {" You don't have an account yet? "}
+                <Link to={"/signup"} className="underline decoration-2">Sign up here</Link>
+              </p>
+            </div>
+          </Row>
+        </>
+      )}
     </div>
   );
 }

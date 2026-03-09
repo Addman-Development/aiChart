@@ -41,7 +41,7 @@ const dataLabelsPlugin = {
 
 function LineChart(props) {
   const {
-    chart, redraw, redrawComplete, editMode,
+    chart, redraw = false, redrawComplete = () => {}, editMode = false,
   } = props;
 
   const { isDark } = useTheme();
@@ -189,12 +189,6 @@ function LineChart(props) {
     </>
   );
 }
-
-LineChart.defaultProps = {
-  redraw: false,
-  redrawComplete: () => {},
-  editMode: false,
-};
 
 LineChart.propTypes = {
   chart: PropTypes.object.isRequired,

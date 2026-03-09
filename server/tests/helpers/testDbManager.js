@@ -15,7 +15,7 @@ class TestDbManager {
     this.container = null;
     this.sequelize = null;
     this.port = null;
-    this.database = "chartbrew_test";
+    this.database = "smartchart_test";
     this.username = "root";
     this.password = "test_password";
     this.useContainers = false; // Will be set during initialization
@@ -28,7 +28,7 @@ class TestDbManager {
     }
 
     // Check if we should use containers based on environment and availability
-    const dbDialect = process.env.CB_DB_DIALECT_DEV || "mysql";
+    const dbDialect = process.env.CB_DB_DIALECT || "postgres";
     const forceContainers = process.env.FORCE_CONTAINERS === "true";
 
     // Set PostgreSQL SSL environment variables early if using PostgreSQL
@@ -53,21 +53,17 @@ class TestDbManager {
         console.log("❌ Testcontainers not available:", error.message);
         if (forceContainers) {
           console.log("🔄 FORCE_CONTAINERS is true, falling back to SQLite");
-          process.env.CB_DB_DIALECT_DEV = "sqlite";
+          process.env.CB_DB_DIALECT = "sqlite";
         }
         this.useContainers = false;
       }
     }
 
-    if (this.useContainers && process.env.CB_DB_DIALECT_DEV !== "sqlite") {
+    if (this.useContainers && process.env.CB_DB_DIALECT !== "sqlite") {
       try {
         console.log("🐳 Starting test database container...");
 
-        if (process.env.CB_DB_DIALECT_DEV === "postgres") {
-          await this.startPostgres();
-        } else {
-          await this.startMySQL();
-        }
+        await this.startPostgres();
 
         console.log(`✅ Database container started on port ${this.port}`);
 
@@ -77,7 +73,7 @@ class TestDbManager {
         console.log("❌ Failed to start database container:", error.message);
         console.log("🔄 Falling back to SQLite...");
         this.useContainers = false;
-        process.env.CB_DB_DIALECT_DEV = "sqlite";
+        process.env.CB_DB_DIALECT = "sqlite";
         this.setTestEnvVarsSQLite();
       }
     } else {
@@ -87,29 +83,6 @@ class TestDbManager {
 
     // Initialize Sequelize and run migrations
     await this.initializeDatabase();
-  }
-
-  async startMySQL() {
-    this.container = await new GenericContainer("mysql:8.0")
-      .withEnvironment({
-        MYSQL_ROOT_PASSWORD: this.password,
-        MYSQL_DATABASE: this.database,
-      })
-      .withExposedPorts(3306)
-      .withWaitStrategy(
-        Wait.forAll([
-          Wait.forLogMessage("ready for connections"),
-          Wait.forListeningPorts()
-        ])
-      )
-      .withStartupTimeout(60000) // 60 seconds timeout
-      .start();
-
-    this.port = this.container.getMappedPort(3306);
-
-    // Additional wait to ensure MySQL is truly ready
-    console.log("⏳ Waiting for MySQL to be fully ready...");
-    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 
   async startPostgres() {
@@ -137,14 +110,14 @@ class TestDbManager {
   }
 
   setTestEnvVars() {
-    const dbDialect = process.env.CB_DB_DIALECT_DEV || "mysql";
+    const dbDialect = process.env.CB_DB_DIALECT || "postgres";
 
-    process.env.CB_DB_HOST_DEV = "127.0.0.1";
-    process.env.CB_DB_PORT_DEV = this.port.toString();
-    process.env.CB_DB_NAME_DEV = this.database;
-    process.env.CB_DB_USERNAME_DEV = this.username;
-    process.env.CB_DB_PASSWORD_DEV = this.password;
-    process.env.CB_DB_DIALECT_DEV = dbDialect;
+    process.env.CB_DB_HOST = "127.0.0.1";
+    process.env.CB_DB_PORT = this.port.toString();
+    process.env.CB_DB_NAME = this.database;
+    process.env.CB_DB_USERNAME = this.username;
+    process.env.CB_DB_PASSWORD = this.password;
+    process.env.CB_DB_DIALECT = dbDialect;
 
     // For PostgreSQL, set the standard pg driver environment variables
     if (dbDialect === "postgres") {
@@ -157,16 +130,16 @@ class TestDbManager {
   }
 
   setTestEnvVarsSQLite() {
-    process.env.CB_DB_HOST_DEV = "localhost";
-    process.env.CB_DB_PORT_DEV = "";
-    process.env.CB_DB_NAME_DEV = ":memory:";
-    process.env.CB_DB_USERNAME_DEV = "";
-    process.env.CB_DB_PASSWORD_DEV = "";
-    process.env.CB_DB_DIALECT_DEV = "sqlite";
+    process.env.CB_DB_HOST = "localhost";
+    process.env.CB_DB_PORT = "";
+    process.env.CB_DB_NAME = ":memory:";
+    process.env.CB_DB_USERNAME = "";
+    process.env.CB_DB_PASSWORD = "";
+    process.env.CB_DB_DIALECT = "sqlite";
   }
 
   async initializeDatabase() {
-    const dbDialect = process.env.CB_DB_DIALECT_DEV || "mysql";
+    const dbDialect = process.env.CB_DB_DIALECT || "postgres";
 
     let sequelizeOptions;
 
@@ -192,17 +165,6 @@ class TestDbManager {
         },
       };
 
-      // Add database-specific options
-      if (dbDialect === "mysql") {
-        sequelizeOptions.define = {
-          charset: "utf8mb4",
-          collate: "utf8mb4_general_ci",
-        };
-        sequelizeOptions.dialectOptions = {
-          charset: "utf8mb4",
-        };
-      }
-
       this.sequelize = new Sequelize(
         this.database,
         this.username,
@@ -216,7 +178,7 @@ class TestDbManager {
     console.log("✅ Database connection established successfully");
 
     // Run migrations (or create basic schema for SQLite)
-    const finalDbDialect = process.env.CB_DB_DIALECT_DEV || "mysql";
+    const finalDbDialect = process.env.CB_DB_DIALECT || "postgres";
     if (finalDbDialect === "sqlite") {
       await this.createBasicSQLiteSchema();
     } else {
@@ -521,7 +483,7 @@ class TestDbManager {
     // Get all table names
     const tables = await this.sequelize.getQueryInterface().showAllTables();
 
-    const dbDialect = process.env.CB_DB_DIALECT_DEV || "mysql";
+    const dbDialect = process.env.CB_DB_DIALECT || "postgres";
 
     // Handle different database dialects
     if (dbDialect === "sqlite") {
@@ -532,25 +494,11 @@ class TestDbManager {
         }
       }
     } else {
-      // Disable foreign key checks
-      if (dbDialect === "mysql") {
-        await this.sequelize.query("SET FOREIGN_KEY_CHECKS = 0");
-      }
-
       // Truncate all tables except SequelizeMeta (migration tracking)
       for (const table of tables) {
         if (table !== "SequelizeMeta") {
-          if (dbDialect === "postgres") {
-            await this.sequelize.query(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE`);
-          } else {
-            await this.sequelize.query(`TRUNCATE TABLE \`${table}\``);
-          }
+          await this.sequelize.query(`TRUNCATE TABLE "${table}" RESTART IDENTITY CASCADE`);
         }
-      }
-
-      // Re-enable foreign key checks for MySQL
-      if (dbDialect === "mysql") {
-        await this.sequelize.query("SET FOREIGN_KEY_CHECKS = 1");
       }
     }
 
@@ -562,7 +510,7 @@ class TestDbManager {
   }
 
   getConnectionDetails() {
-    const dbDialect = process.env.CB_DB_DIALECT_DEV || "mysql";
+    const dbDialect = process.env.CB_DB_DIALECT || "postgres";
 
     if (dbDialect === "sqlite") {
       return {

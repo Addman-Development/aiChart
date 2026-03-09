@@ -34,7 +34,7 @@ import connectionImages from "../../../config/connectionImages";
 import { useTheme } from "../../../modules/ThemeContext";
 
 function ChartDatasetConfig(props) {
-  const { chartId, cdcId, dataRequests, onRemove } = props;
+  const { chartId, cdcId, dataRequests = [], onRemove } = props;
 
   const [legend, setLegend] = useState("");
   const [formula, setFormula] = useState("");
@@ -389,7 +389,7 @@ function ChartDatasetConfig(props) {
         )}
       </Row>
 
-      {canAccess("teamAdmin", user.id, team.TeamRoles) && (
+      {canAccess("teamAdmin", user.id, team.TeamRoles, user) && (
         <>
           <Spacer y={2} />
           <div className="flex flex-row justify-between">
@@ -924,10 +924,6 @@ ChartDatasetConfig.propTypes = {
   dataRequests: PropTypes.array,
   cdcId: PropTypes.number.isRequired,
   onRemove: PropTypes.func.isRequired,
-};
-
-ChartDatasetConfig.defaultProps = {
-  dataRequests: [],
 };
 
 export default ChartDatasetConfig

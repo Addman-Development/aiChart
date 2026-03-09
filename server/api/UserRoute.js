@@ -1,5 +1,4 @@
 const jwt = require("jsonwebtoken");
-const request = require("request");
 const rateLimit = require("express-rate-limit");
 
 const UserController = require("../controllers/UserController");
@@ -33,7 +32,7 @@ module.exports = (app) => {
   });
 
   /*
-  ** [MASTER] Route to get all the users
+  ** Route to get all the users (global admin only)
   */
   app.get("/user", verifyToken, (req, res) => {
     if (!req.user.admin) {
@@ -103,11 +102,31 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
-  ** Route to delete a user
+  ** Route to promote/demote a user's global admin status (admin only)
+  */
+  app.put("/user/:id/admin", verifyToken, (req, res) => {
+    if (!req.user.admin) {
+      return res.status(401).send({ error: "Not Authorized" });
+    }
+
+    return userController.update(req.params.id, { admin: !!req.body.admin })
+      .then((user) => {
+        return res.status(200).send(userResponse(user));
+      })
+      .catch((error) => {
+        return res.status(400).send(error);
+      });
+  });
+  // --------------------------------------
+
+  /*
+  ** Route to delete a user (self or admin)
   */
   app.delete("/user/:id", verifyToken, (req, res) => {
-    if (req.user.id !== parseInt(req.params.id, 10)) return res.status(401).send("Unauthorised user");
-    return userController.deleteUser(req.user.id)
+    if (req.user.id !== parseInt(req.params.id, 10) && !req.user.admin) {
+      return res.status(401).send("Unauthorised user");
+    }
+    return userController.deleteUser(parseInt(req.params.id, 10))
       .then(() => {
         return res.status(200).send({});
       })
@@ -221,6 +240,29 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
+  ** Route to change password (authenticated, requires current password)
+  */
+  app.put("/user/:id/password", verifyUser, apiLimiter(10), (req, res) => {
+    if (!req.body.currentPassword || !req.body.newPassword) {
+      return res.status(400).send("Missing fields");
+    }
+
+    return userController.changePasswordAuthenticated(
+      req.params.id,
+      req.body.currentPassword,
+      req.body.newPassword
+    )
+      .then((result) => {
+        return res.status(200).send(result);
+      })
+      .catch((error) => {
+        if (error.message === "401") return res.status(401).send({ message: "Current password is incorrect" });
+        return res.status(400).send(error);
+      });
+  });
+  // --------------------------------------
+
+  /*
   ** Route to get all team invites for the user
   */
   app.get("/user/:id/teamInvites", verifyToken, (req, res) => {
@@ -259,20 +301,21 @@ module.exports = (app) => {
       ]
     };
 
-    const options = {
+    return fetch(`${app.settings.sendgridHost}/mail/send`, {
       method: "POST",
-      url: `${app.settings.sendgridHost}/mail/send`,
-      body: JSON.stringify(message),
       headers: {
         authorization: `Bearer ${app.settings.sendgridKey}`,
         "content-type": "application/json"
-      }
-    };
-
-    return request(options, (err) => {
-      if (err) return res.status(400).send(err);
-      return res.status(200).send({});
-    });
+      },
+      body: JSON.stringify(message),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(response.statusText);
+        return res.status(200).send({});
+      })
+      .catch((err) => {
+        return res.status(400).send(err);
+      });
   });
   // --------------------------------------
 
@@ -305,7 +348,10 @@ module.exports = (app) => {
   app.get("/app/users", (req, res) => {
     return userController.areThereAnyUsers()
       .then((result) => {
-        return res.status(200).send({ areThereAnyUsers: result });
+        return res.status(200).send({
+          areThereAnyUsers: result,
+          signupRestricted: app.settings.signupRestricted === "1",
+        });
       })
       .catch((error) => {
         return res.status(400).send(error);

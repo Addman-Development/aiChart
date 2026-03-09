@@ -1,5 +1,5 @@
 /**
- * Capability Question Handler for Chartbrew AI
+ * Capability Question Handler for ADDMAN-SmartChart AI
  *
  * Handles detection and response generation for capability/help questions
  * to avoid expensive OpenAI API calls for simple informational queries.
@@ -18,7 +18,7 @@ function isCapabilityQuestion(question) {
     /tell me about yourself/i,
     /introduce yourself/i,
     /who are you/i,
-    /what is chartbrew/i,
+    /what is smartchart/i,
     /how does this work/i,
     /how do you work/i,
     /what features/i,
@@ -37,7 +37,7 @@ function generateCapabilityResponse(semanticLayer) {
   const supportedConnections = connections.filter((c) => ["mysql", "postgres", "mongodb"].includes(c.type));
   const hasConnections = supportedConnections.length > 0;
 
-  let response = `# What can Chartbrew AI do?
+  let response = `# What can ADDMAN-SmartChart AI do?
 
 I help you query your data and create charts. Here's what I can do:
 

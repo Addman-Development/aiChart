@@ -723,7 +723,7 @@ function ProjectDashboard() {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _openExport = () => {
@@ -753,7 +753,7 @@ function ProjectDashboard() {
       }
 
       // Use client-side export with the already filtered data
-      exportMultipleChartsToExcel(exportableCharts, "chartbrew-dashboard-export.xlsx");
+      exportMultipleChartsToExcel(exportableCharts, "smartchart-dashboard-export.xlsx");
       toast.success(`${exportableCharts.length} chart(s) exported successfully`);
       setExportLoading(false);
       setViewExport(false);
@@ -1372,14 +1372,12 @@ function ProjectDashboard() {
       <UpdateSchedule
         isOpen={scheduleVisible}
         onClose={() => setScheduleVisible(false)}
-        timezone={project.timezone}
         openSnapshotSchedule={() => setSnapshotScheduleVisible(true)}
       />
 
       <SnapshotSchedule
         isOpen={snapshotScheduleVisible}
         onClose={() => setSnapshotScheduleVisible(false)}
-        timezone={project.timezone}
       />
 
       <CreateTemplateForm

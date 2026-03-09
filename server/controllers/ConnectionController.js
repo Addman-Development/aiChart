@@ -1,5 +1,4 @@
 const mongoose = require("mongoose");
-const request = require("request-promise");
 const Sequelize = require("sequelize");
 const querystring = require("querystring");
 const moment = require("moment");
@@ -14,18 +13,11 @@ const ProjectController = require("./ProjectController");
 const externalDbConnection = require("../modules/externalDbConnection");
 const assembleMongoUrl = require("../modules/assembleMongoUrl");
 const paginateRequests = require("../modules/paginateRequests");
-const firebaseConnector = require("../modules/firebaseConnector");
-const googleConnector = require("../modules/googleConnector");
-const FirestoreConnection = require("../connections/FirestoreConnection");
-const oauthController = require("./OAuthController");
 const determineType = require("../modules/determineType");
 const drCacheController = require("./DataRequestCacheController");
-const RealtimeDatabase = require("../connections/RealtimeDatabase");
-const CustomerioConnection = require("../connections/CustomerioConnection");
 const { getQueueOptions } = require("../redisConnection");
 const updateMongoSchema = require("../crons/workers/updateMongoSchema");
-const ClickhouseConnector = require("../modules/clickhouse/clickhouseConnector");
-const { applyApiVariables, applyVariables } = require("../modules/applyVariables");
+const { applyApiVariables } = require("../modules/applyVariables");
 
 const getMomentObj = (timezone) => {
   if (timezone) {
@@ -34,6 +26,72 @@ const getMomentObj = (timezone) => {
     return (...args) => moment.utc(...args);
   }
 };
+
+async function _fetchRequest(options) {
+  const fetchOptions = {
+    method: options.method || "GET",
+    headers: { ...options.headers },
+  };
+
+  let url = options.url;
+
+  // Handle query string parameters
+  if (options.qs) {
+    const params = new URLSearchParams();
+    Object.entries(options.qs).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, String(value));
+      }
+    });
+    const qsString = params.toString();
+    if (qsString) {
+      url += (url.includes("?") ? "&" : "?") + qsString;
+    }
+  }
+
+  // Handle basic auth
+  if (options.auth) {
+    const encoded = Buffer.from(`${options.auth.user}:${options.auth.pass}`).toString("base64");
+    fetchOptions.headers.authorization = `Basic ${encoded}`;
+  }
+
+  // Handle body
+  if (options.body) {
+    fetchOptions.body = options.body;
+  }
+
+  // Handle json option (auto-parse request/response)
+  if (options.json === true && fetchOptions.body && typeof fetchOptions.body === "object") {
+    fetchOptions.body = JSON.stringify(fetchOptions.body);
+    if (!fetchOptions.headers["Content-Type"] && !fetchOptions.headers["content-type"]) {
+      fetchOptions.headers["Content-Type"] = "application/json";
+    }
+  }
+
+  const response = await fetch(url, fetchOptions);
+  const body = await response.text();
+
+  if (options.resolveWithFullResponse) {
+    return { statusCode: response.status, body, headers: response.headers };
+  }
+
+  if (options.json === true) {
+    try {
+      return JSON.parse(body);
+    } catch (e) {
+      return body;
+    }
+  }
+
+  // When simple is not explicitly false, throw on non-2xx
+  if (options.simple !== false && !response.ok) {
+    const error = new Error(`${response.status} - ${body}`);
+    error.statusCode = response.status;
+    throw error;
+  }
+
+  return body;
+}
 
 async function checkAndGetCache(connection_id, dataRequest) {
   // check if there is a cache available and valid
@@ -206,9 +264,9 @@ class ConnectionController {
     const dataToSave = { ...data };
 
     if (!data.type) data.type = "mongodb"; // eslint-disable-line
-    if (data.type === "mysql" || data.type === "postgres") {
+    if (data.type === "postgres") {
       try {
-        const testData = await this.testMysql(data);
+        const testData = await this.testPostgres(data);
         dataToSave.schema = testData.schema;
       } catch (e) {
         //
@@ -361,18 +419,8 @@ class ConnectionController {
       return this.testApi(connectionParams);
     } else if (data.type === "mongodb") {
       return this.testMongo(connectionParams);
-    } else if (data.type === "mysql" || data.type === "postgres") {
-      return this.testMysql(connectionParams);
-    } else if (data.type === "realtimedb") {
-      return this.testFirebase(connectionParams);
-    } else if (data.type === "firestore") {
-      return this.testFirestore(connectionParams);
-    } else if (data.type === "googleAnalytics") {
-      return this.testGoogleAnalytics(connectionParams);
-    } else if (data.type === "customerio") {
-      return this.testCustomerio(connectionParams);
-    } else if (data.type === "clickhouse") {
-      return this.testClickhouse(connectionParams);
+    } else if (data.type === "postgres") {
+      return this.testPostgres(connectionParams);
     }
 
     return new Promise((resolve, reject) => reject(new Error("No request type specified")));
@@ -380,7 +428,7 @@ class ConnectionController {
 
   testApi(data) {
     const testOpt = this.getApiTestOptions(data);
-    return request(testOpt);
+    return _fetchRequest(testOpt);
   }
 
   testMongo(data) {
@@ -421,7 +469,7 @@ class ConnectionController {
       return acc;
     }, {});
 
-    // Format schema for postgres and mysql to be more terse
+    // Format schema for postgres to be more terse
     let formattedSchema = {};
     if (schema) {
       try {
@@ -444,7 +492,7 @@ class ConnectionController {
     };
   }
 
-  async testMysql(data) {
+  async testPostgres(data) {
     let sqlDb;
     try {
       sqlDb = await externalDbConnection(data);
@@ -464,65 +512,6 @@ class ConnectionController {
     }
   }
 
-  async testClickhouse(data) {
-    const clickhouse = new ClickhouseConnector(data);
-    return clickhouse.getDatabaseSchema();
-  }
-
-  async getClickhouseSchema(connectionId) {
-    const connection = await db.Connection.findByPk(connectionId);
-    const clickhouse = new ClickhouseConnector(connection);
-    return clickhouse.getDatabaseSchema();
-  }
-
-  testFirebase(data) {
-    const parsedData = data;
-    if (typeof data.firebaseServiceAccount !== "object") {
-      try {
-        parsedData.firebaseServiceAccount = JSON.parse(data.firebaseServiceAccount);
-      } catch (e) {
-        return Promise.reject("The authentication JSON is not formatted correctly.");
-      }
-    } else if (data.firebaseServiceAccount) {
-      parsedData.firebaseServiceAccount = data.firebaseServiceAccount;
-    } else {
-      return Promise.reject("The firebase authentication is missing");
-    }
-
-    const realtimeDatabase = new RealtimeDatabase(parsedData);
-
-    if (realtimeDatabase.db) {
-      return Promise.resolve("Connection successful");
-    }
-
-    return Promise.reject("Could not connect to the database. Please check if the Service Account details are correct.");
-  }
-
-  testFirestore(data) {
-    const parsedData = data;
-    if (typeof data.firebaseServiceAccount !== "object") {
-      try {
-        parsedData.firebaseServiceAccount = JSON.parse(data.firebaseServiceAccount);
-      } catch (e) {
-        return Promise.reject("The authentication JSON is not formatted correctly.");
-      }
-    } else if (data.firebaseServiceAccount) {
-      parsedData.firebaseServiceAccount = data.firebaseServiceAccount;
-    } else {
-      return Promise.reject("The firebase authentication is missing");
-    }
-
-    const firestore = new FirestoreConnection(parsedData);
-
-    return firestore.listCollections()
-      .then((data) => {
-        return Promise.resolve(data);
-      })
-      .catch((err) => {
-        return Promise.reject(err.message || err);
-      });
-  }
-
   testConnection(id) {
     let gConnection;
     let mongoConnection;
@@ -533,17 +522,9 @@ class ConnectionController {
           case "mongodb":
             return this.getConnectionUrl(id);
           case "api":
-            return request(this.getApiTestOptions(connection));
+            return _fetchRequest(this.getApiTestOptions(connection));
           case "postgres":
-          case "mysql":
             return externalDbConnection(connection);
-          case "realtimedb":
-          case "firestore":
-            return firebaseConnector.getAuthToken(connection);
-          case "googleAnalytics":
-            return this.testGoogleAnalytics(connection);
-          case "customerio":
-            return this.testCustomerio(connection);
           default:
             return new Promise((resolve, reject) => reject(new Error(400)));
         }
@@ -560,15 +541,7 @@ class ConnectionController {
             }
             return new Promise((resolve, reject) => reject(new Error(400)));
           case "postgres":
-          case "mysql":
             return new Promise((resolve) => resolve({ success: true }));
-          case "realtimedb":
-          case "firestore":
-            return new Promise((resolve) => resolve(response));
-          case "googleAnalytics":
-            return new Promise((resolve) => resolve(response));
-          case "customerio":
-            return new Promise((resolve) => resolve(response));
           default:
             return new Promise((resolve, reject) => reject(new Error(400)));
         }
@@ -649,7 +622,7 @@ class ConnectionController {
           }
         }
 
-        return request(options);
+        return _fetchRequest(options);
       })
       .then((response) => {
         if (pagination) {
@@ -680,71 +653,81 @@ class ConnectionController {
     let mongoConnection;
 
     // Use the processed query if provided, otherwise use the original query
-    let formattedQuery = queryOverride || dataRequest.query;
+    const formattedQuery = (() => {
+      let q = queryOverride || dataRequest.query;
+      if (!q) return null;
+      // formatting required since introducing the multiple mongo connection support
+      if (q.indexOf("connection.") === 0) {
+        q = q.replace("connection.", "");
+      }
+      return q;
+    })();
 
-    // formatting required since introducing the multiple mongo connection support
-    if (formattedQuery.indexOf("connection.") === 0) {
-      formattedQuery = formattedQuery.replace("connection.", "");
+    if (!formattedQuery) {
+      throw new Error("No query provided");
     }
 
-    return this.getConnectionUrl(id)
-      .then((url) => {
-        const options = {
-          connectTimeoutMS: 100000,
-        };
-        mongoConnection = mongoose.createConnection(url, options);
-        return mongoConnection.asPromise();
-      })
-      .then(() => {
-        return Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}.toArray()`)()(mongoConnection, ObjectId); // eslint-disable-line
-      })
-      // if array fails, check if it works with object (for example .findOne() return object)
-      .catch(() => {
-        return Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
-      })
-      .then(async (data) => {
-        let finalData = data;
-        if (data && typeof data?.next === "function") {
-          finalData = await data.toArray();
-        }
-        // MonogoDB returns a plain number when count() is used, transform this into an object
-        if (formattedQuery.indexOf("count(") > -1) {
-          finalData = { count: data };
-        }
-        // Ensure ObjectId instances are returned as strings for UI rendering
-        finalData = stringifyMongoIds(finalData);
-        // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
-        const dataToCache = {
-          dataRequest,
-          responseData: {
-            data: finalData,
-          },
-          connection_id: id,
-        };
+    try {
+      const url = await this.getConnectionUrl(id);
+      mongoConnection = mongoose.createConnection(url, { connectTimeoutMS: 100000 });
+      await mongoConnection.asPromise();
 
-        await drCacheController.create(dataRequest.id, dataToCache);
-
-        // close the mongodb connection
-        mongoConnection.close();
-
-        // Trigger schema update in the background
+      // Build the query function - try with .toArray() first, then without
+      let data;
+      try {
+        data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}.toArray()`)()(mongoConnection, ObjectId); // eslint-disable-line
+      } catch (toArrayErr) {
         try {
-          this.addMongoSchemaUpdateJob(id);
-        } catch (error) {
-          // do nothing
+          data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
+        } catch (queryErr) {
+          throw new Error(`Invalid MongoDB query: ${queryErr.message}`);
         }
+      }
 
-        return Promise.resolve(dataToCache);
-      })
-      .catch((error) => {
-        // close the mongodb connection
-        mongoConnection.close();
+      let finalData = data;
+      if (data && typeof data?.next === "function") {
+        finalData = await data.toArray();
+      }
+      // MongoDB returns a plain number when count() is used, transform this into an object
+      if (formattedQuery.indexOf("count(") > -1) {
+        finalData = { count: data };
+      }
+      // Ensure ObjectId instances are returned as strings for UI rendering
+      finalData = stringifyMongoIds(finalData);
+      // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
+      const dataToCache = {
+        dataRequest,
+        responseData: {
+          data: finalData,
+        },
+        connection_id: id,
+      };
 
-        return new Promise((resolve, reject) => reject(error));
-      });
+      await drCacheController.create(dataRequest.id, dataToCache);
+
+      // Trigger schema update in the background
+      try {
+        this.addMongoSchemaUpdateJob(id);
+      } catch (error) {
+        // do nothing
+      }
+
+      return dataToCache;
+    } catch (error) {
+      console.error("[runMongo] Error:", error.message);
+      throw error;
+    } finally {
+      if (mongoConnection) {
+        try {
+          mongoConnection.close();
+        } catch (closeErr) {
+          // ignore close errors
+        }
+      }
+    }
   }
 
-  async runMysqlOrPostgres(id, dataRequest, getCache, queryOverride = null) {
+  async runPostgres(id, dataRequest, getCache, queryOverride = null) {
     if (getCache) {
       const drCache = await checkAndGetCache(id, dataRequest);
       if (drCache) return drCache;
@@ -786,36 +769,6 @@ class ConnectionController {
       if (dbConnection && dbConnection.sshTunnel) {
         dbConnection.sshTunnel.close();
       }
-    }
-  }
-
-  async runClickhouse(id, dataRequest, getCache, queryOverride = null) {
-    if (getCache) {
-      const drCache = await checkAndGetCache(id, dataRequest);
-      if (drCache) return drCache;
-    }
-
-    try {
-      const connection = await this.findById(id);
-      const clickhouse = new ClickhouseConnector(connection);
-
-      // Use the processed query if provided, otherwise use the original query
-      const queryToExecute = queryOverride || dataRequest.query;
-      const result = await clickhouse.query(queryToExecute);
-
-      // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
-      const dataToCache = {
-        dataRequest,
-        responseData: {
-          data: result,
-        },
-        connection_id: id,
-      };
-
-      await drCacheController.create(dataRequest.id, dataToCache);
-      return dataToCache;
-    } catch (error) {
-      return Promise.reject(error);
     }
   }
 
@@ -1137,7 +1090,7 @@ class ConnectionController {
           }
         }
 
-        return request(options);
+        return _fetchRequest(options);
       })
       .then(async (response) => {
         if (dataRequest.pagination) {
@@ -1190,253 +1143,7 @@ class ConnectionController {
       });
   }
 
-  async runFirestore(id, dataRequest, getCache, runtimeVariables = {}) {
-    if (getCache) {
-      const drCache = await checkAndGetCache(id, dataRequest);
-      if (drCache) return drCache;
-    }
 
-    return this.findById(id)
-      .then((connection) => {
-        const firestoreConnection = new FirestoreConnection(connection);
-
-        // Apply variable substitution using the centralized function
-        let processedDataRequest = dataRequest;
-        if (dataRequest.VariableBindings && dataRequest.VariableBindings.length > 0) {
-          try {
-            // Add connection info to dataRequest for applyVariables to work
-            const dataRequestWithConnection = {
-              ...JSON.parse(JSON.stringify(dataRequest)),
-              Connection: connection,
-            };
-            const result = applyVariables(dataRequestWithConnection, runtimeVariables);
-            processedDataRequest = result.processedDataRequest;
-          } catch (error) {
-            // If there's an error in variable processing, return it
-            return Promise.reject(error);
-          }
-        }
-
-        return firestoreConnection.get(processedDataRequest);
-      })
-      .then(async (responseData) => {
-        // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
-        const dataToCache = {
-          dataRequest,
-          responseData,
-          connection_id: id,
-        };
-
-        await drCacheController.create(dataRequest.id, dataToCache);
-
-        return dataToCache;
-      })
-      .catch((err) => {
-        return new Promise((resolve, reject) => reject(err));
-      });
-  }
-
-  async runRealtimeDb(id, dataRequest, getCache, runtimeVariables = {}) {
-    if (getCache) {
-      const drCache = await checkAndGetCache(id, dataRequest);
-      if (drCache) return drCache;
-    }
-
-    return this.findById(id)
-      .then((connection) => {
-        const realtimeDatabase = new RealtimeDatabase(connection);
-
-        // Apply variable substitution using the centralized function
-        let processedDataRequest = dataRequest;
-        if (dataRequest.VariableBindings && dataRequest.VariableBindings.length > 0) {
-          try {
-            // Add connection info to dataRequest for applyVariables to work
-            const dataRequestWithConnection = {
-              ...JSON.parse(JSON.stringify(dataRequest)),
-              Connection: connection,
-            };
-            const result = applyVariables(dataRequestWithConnection, runtimeVariables);
-            processedDataRequest = result.processedDataRequest;
-          } catch (error) {
-            // If there's an error in variable processing, return it
-            return Promise.reject(error);
-          }
-        }
-
-        return realtimeDatabase.getData(processedDataRequest);
-      })
-      .then(async (responseData) => {
-        // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
-        const dataToCache = {
-          dataRequest,
-          responseData: {
-            data: responseData,
-          },
-          connection_id: id,
-        };
-
-        await drCacheController.create(dataRequest.id, dataToCache);
-
-        return dataToCache;
-      })
-      .catch((err) => {
-        return new Promise((resolve, reject) => reject(err));
-      });
-  }
-
-  async runGoogleAnalytics(conn, dataRequest, getCache) {
-    let connection = conn;
-    if (connection.id) {
-      try {
-        connection = await this.findById(connection.id);
-      } catch (e) {
-        connection = conn;
-      }
-    }
-
-    if (getCache) {
-      const drCache = await checkAndGetCache(connection.id, dataRequest);
-      if (drCache) return drCache;
-    }
-
-    if (!connection.oauth_id) return Promise.reject({ error: "No oauth token" });
-
-    const oauth = await oauthController.findById(connection.oauth_id);
-    return googleConnector.getAnalytics(oauth, dataRequest)
-      .then(async (responseData) => {
-        // cache the data for later use
-        const dataToCache = {
-          dataRequest,
-          responseData: {
-            data: responseData,
-          },
-          connection_id: connection.id,
-        };
-
-        await drCacheController.create(dataRequest.id, dataToCache);
-
-        return dataToCache;
-      })
-      .catch((err) => {
-        return new Promise((resolve, reject) => reject(err));
-      });
-  }
-
-  async testGoogleAnalytics(connection) {
-    if (!connection.oauth_id) return Promise.reject({ error: "No oauth token" });
-
-    const oauth = await oauthController.findById(connection.oauth_id);
-    return googleConnector.getAccounts(oauth.refreshToken, connection.oauth_id);
-  }
-
-  async runCustomerio(conn, dataRequest, getCache) {
-    let connection = conn;
-    if (getCache) {
-      const drCache = await checkAndGetCache(conn.id, dataRequest);
-      if (drCache) return drCache;
-    }
-
-    if (conn.id) {
-      try {
-        connection = await this.findById(conn.id);
-      } catch (e) {
-        connection = conn;
-      }
-    }
-
-    let cioRoute = "customers";
-    if (dataRequest?.route?.indexOf("campaigns") === 0) {
-      cioRoute = "campaigns";
-    } else if (dataRequest?.route?.indexOf("activities") === 0) {
-      cioRoute = "activities";
-    }
-
-    if (cioRoute === "customers") {
-      return CustomerioConnection.getCustomers(connection, dataRequest)
-        .then(async (responseData) => {
-          // cache the data for later use
-          const dataToCache = {
-            dataRequest,
-            responseData: {
-              data: responseData,
-            },
-            connection_id: connection.id,
-          };
-
-          await drCacheController.create(dataRequest.id, dataToCache);
-
-          return dataToCache;
-        })
-        .catch((err) => {
-          return new Promise((resolve, reject) => reject(err));
-        });
-    } else if (cioRoute === "campaigns") {
-      return CustomerioConnection.getCampaignMetrics(connection, dataRequest)
-        .then(async (responseData) => {
-          // cache the data for later use
-          const dataToCache = {
-            dataRequest,
-            responseData: {
-              data: responseData,
-            },
-            connection_id: connection.id,
-          };
-
-          await drCacheController.create(dataRequest.id, dataToCache);
-
-          return dataToCache;
-        })
-        .catch((err) => {
-          return new Promise((resolve, reject) => reject(err));
-        });
-    } else if (cioRoute === "activities") {
-      return CustomerioConnection.getActivities(connection, dataRequest)
-        .then(async (responseData) => {
-          // cache the data for later use
-          const dataToCache = {
-            dataRequest,
-            responseData: {
-              data: responseData,
-            },
-            connection_id: connection.id,
-          };
-
-          await drCacheController.create(dataRequest.id, dataToCache);
-
-          return dataToCache;
-        })
-        .catch((err) => {
-          return new Promise((resolve, reject) => reject(err));
-        });
-    }
-
-    return new Promise((resolve, reject) => reject(404));
-  }
-
-  async testCustomerio(connection) {
-    const options = CustomerioConnection
-      .getConnectionOpt(connection, {
-        method: "GET",
-        route: "activities"
-      });
-    options.json = true;
-
-    return request(options);
-  }
-
-  runHelperMethod(connectionId, method, body) {
-    return this.findById(connectionId)
-      .then((connection) => {
-        if (connection.type === "customerio") {
-          return CustomerioConnection[method](connection, body);
-        }
-
-        return Promise.reject("Method not found");
-      })
-      .catch((err) => {
-        return err;
-      });
-  }
 
   async duplicateConnection(connectionId, name) {
     const connection = await db.Connection.findByPk(connectionId);

@@ -114,6 +114,9 @@ const router = createBrowserRouter([
         path: "google-auth",
       },
       {
+        path: "azure-callback",
+      },
+      {
         path: "passwordReset"
       },
       {

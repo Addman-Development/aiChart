@@ -8,7 +8,7 @@ import Row from "./Row";
 import Text from "./Text";
 
 function Callout({
-  title, text, actionUrl, actionText,
+  title = "", text = "", actionUrl = "", actionText = "", color = "primary",
 }) {
 
   return (
@@ -49,14 +49,6 @@ Callout.propTypes = {
   actionUrl: PropTypes.string,
   actionText: PropTypes.string,
   color: PropTypes.oneOf(["primary", "secondary", "success", "error", "warning"]),
-};
-
-Callout.defaultProps = {
-  title: "",
-  text: "",
-  actionUrl: "",
-  actionText: "",
-  color: "primary",
 };
 
 export default Callout;

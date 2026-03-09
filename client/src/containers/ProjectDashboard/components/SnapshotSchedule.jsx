@@ -613,7 +613,6 @@ function SnapshotSchedule({ isOpen, onClose }) {
 SnapshotSchedule.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
-  timezone: PropTypes.string.isRequired,
 };
 
 export default SnapshotSchedule;

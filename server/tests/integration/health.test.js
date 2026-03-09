@@ -20,7 +20,7 @@ describe("Health Check API", () => {
         .expect(200);
 
       expect(response.body).toEqual({
-        message: "Chartbrew Test API",
+        message: "ADDMAN-SmartChart Test API",
         status: "ok"
       });
     });
@@ -62,7 +62,7 @@ describe("Health Check API", () => {
         expect(connectionDetails).toHaveProperty("host");
         expect(connectionDetails).toHaveProperty("port");
         expect(connectionDetails).toHaveProperty("username");
-        expect(connectionDetails.database).toBe("chartbrew_test");
+        expect(connectionDetails.database).toBe("smartchart_test");
       }
     });
   });

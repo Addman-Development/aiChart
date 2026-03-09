@@ -1,7 +1,10 @@
 /*
 ** this is used to improve the UX. The real role check is done in the backend
 */
-export default function canAccess(role, userId, teamRoles) {
+export default function canAccess(role, userId, teamRoles, user) {
+  // Global admins bypass all role checks
+  if (user?.admin) return true;
+
   let teamRole = "guest";
   if (teamRoles) {
     for (let i = 0; i < teamRoles.length; i++) {

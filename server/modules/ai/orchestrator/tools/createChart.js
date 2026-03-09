@@ -3,7 +3,7 @@ const ChartController = require("../../../../controllers/ChartController");
 
 const chartController = new ChartController();
 
-const clientUrl = process.env.NODE_ENV === "production" ? process.env.VITE_APP_CLIENT_HOST : process.env.VITE_APP_CLIENT_HOST_DEV;
+const clientUrl = process.env.VITE_APP_CLIENT_HOST;
 
 async function createChart(payload) {
   const {
