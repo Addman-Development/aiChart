@@ -1338,13 +1338,17 @@ function AiModal({ isOpen, onClose }) {
 
   return (
     <Modal
-      classNames={{ wrapper: conversation ? "sm:mt-4" : "" }}
+      classNames={{
+        wrapper: conversation ? "sm:mt-4" : "",
+        base: "border-1 border-divider",
+      }}
+      backdrop="blur"
       isOpen={isOpen}
       onClose={onClose}
       size={conversation ? "6xl" : "xl"}
       scrollBehavior="outside"
     >
-      <ModalContent>
+      <ModalContent>{(closeModal) => (<>
         {!conversation && (
           <ModalBody className="pt-8">
             <div className="flex flex-col gap-2 items-center justify-center">
@@ -1920,7 +1924,7 @@ function AiModal({ isOpen, onClose }) {
             </div>
           </ModalBody>
         )}
-      </ModalContent>
+      </>)}</ModalContent>
     </Modal>
   )
 }

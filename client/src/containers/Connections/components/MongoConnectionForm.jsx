@@ -85,16 +85,11 @@ function MongoConnectionForm(props) {
   const _onTestRequest = (data) => {
     const newTestResult = {};
     return dispatch(testRequest({ team_id: team.id, connection: data }))
-      .then(async (response) => {
+      .then((response) => {
         newTestResult.status = response.payload.status;
-        newTestResult.body = await response.payload.text();
-
-        try {
-          newTestResult.body = JSON.parse(newTestResult.body);
-          newTestResult.body = JSON.stringify(newTestResult, null, 2);
-        } catch (e) {
-          // the response is not in JSON format
-        }
+        newTestResult.body = typeof response.payload.body === "object"
+          ? JSON.stringify(response.payload.body, null, 2)
+          : response.payload.body;
 
         setTestResult(newTestResult);
         return Promise.resolve(newTestResult);
