@@ -72,7 +72,7 @@ function UserDashboard(props) {
   useEffect(() => {
     if (teamsLength > 0 && !teamsRef.current) {
       teamsRef.current = true;
-      let selectedTeam = teams.find((t) => t.TeamRoles.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id));
+      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id));
 
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
       if (storageActiveTeam) {

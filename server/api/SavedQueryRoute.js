@@ -35,7 +35,7 @@ module.exports = (app) => {
   };
 
   /**
-   * [MASTER] Route to get all saved queries
+   * Route to get all saved queries (global admin only)
    */
   app.get("/savedQuery", verifyToken, (req, res) => {
     if (!req.user.admin) {

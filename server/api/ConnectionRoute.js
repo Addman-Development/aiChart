@@ -93,7 +93,7 @@ module.exports = (app) => {
   };
 
   /*
-  ** [MASTER] Route to get all the connections
+  ** Route to get all the connections (global admin only)
   */
   app.get("/connection", verifyToken, (req, res) => {
     if (!req.user.admin) {

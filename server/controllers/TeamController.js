@@ -24,6 +24,21 @@ class TeamController {
       });
   }
 
+  getAllTeams() {
+    return db.Team.findAll({
+      include: [
+        { model: db.TeamRole },
+        {
+          model: db.Project,
+          include: [
+            { model: db.Chart, attributes: ["id"] },
+          ],
+        },
+        { model: db.Connection, attributes: ["id"] },
+      ],
+    });
+  }
+
   // create a new team
   async createTeam(data, userId) {
     const team = await db.Team.create({ "name": data.name });

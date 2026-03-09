@@ -78,7 +78,7 @@ function Dataset() {
 
   useEffect(() => {
     if (user?.id && team?.id) {
-      if (!canAccess("projectAdmin", user.id, team.TeamRoles)) {
+      if (!canAccess("projectAdmin", user.id, team.TeamRoles, user)) {
         setDatasetMenu("configure");
       }
     }
@@ -384,7 +384,7 @@ function Dataset() {
             selectedKey={datasetMenu}
             onSelectionChange={(key) => setDatasetMenu(key)}
           >
-            {canAccess("projectAdmin", user.id, team.TeamRoles) && (
+            {canAccess("projectAdmin", user.id, team.TeamRoles, user) && (
               <Tab key="query" title={(
                 <div className="flex flex-row items-center gap-2">
                   <LuDatabase size={18} />
@@ -392,7 +392,7 @@ function Dataset() {
                 </div>
               )} />
             )}
-            {canAccess("projectEditor", user.id, team.TeamRoles) && (
+            {canAccess("projectEditor", user.id, team.TeamRoles, user) && (
               <Tab key="configure" title={(
                 <div className="flex flex-row items-center gap-2">
                   <LuChartArea size={18} />

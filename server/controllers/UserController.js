@@ -25,6 +25,9 @@ class UserController {
       .then(async (foundUser) => {
         if (foundUser) return new Promise((resolve, reject) => reject(new Error(409)));
 
+        // Check if this is the first user — make them global admin
+        const isFirstUser = !(await this.areThereAnyUsers());
+
         // Hash password only if provided (local users)
         const bcryptHash = user.password ? await bcrypt.hash(user.password, 10) : null;
 
@@ -35,6 +38,7 @@ class UserController {
           password: bcryptHash,
           icon: user.icon,
           active: user.active !== undefined ? user.active : true,
+          admin: isFirstUser,
         };
 
         // Add Azure fields if provided (optional)
@@ -454,6 +458,21 @@ class UserController {
       .catch((error) => {
         return new Promise((resolve, reject) => reject(error));
       });
+  }
+
+  async changePasswordAuthenticated(userId, currentPassword, newPassword) {
+    const user = await db.User.findByPk(userId);
+    if (!user) throw new Error(404);
+
+    if (!user.password) throw new Error(401);
+
+    const isCorrect = await bcrypt.compare(currentPassword, user.password);
+    if (!isCorrect) throw new Error(401);
+
+    const bcryptHash = await bcrypt.hash(newPassword, 10);
+    await db.User.update({ password: bcryptHash }, { where: { id: userId } });
+
+    return { completed: true };
   }
 
   areThereAnyUsers() {

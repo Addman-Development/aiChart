@@ -1,4 +1,4 @@
-import React, { useEffect, lazy, Suspense, useRef } from "react";
+import React, { useEffect, lazy, Suspense, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { connect, useDispatch, useSelector } from "react-redux";
 import { Route, Routes, useLocation, useNavigate } from "react-router";
@@ -92,6 +92,7 @@ function Main(props) {
   const feedbackModal = useSelector(selectFeedbackModalOpen);
   const aiModalOpen = useSelector(selectAiModalOpen);
   const teamsRef = useRef(null);
+  const [signupAllowed, setSignupAllowed] = useState(false);
 
   const { isDark } = useTheme();
   const location = useLocation();
@@ -130,8 +131,24 @@ function Main(props) {
 
       dispatch(areThereAnyUsers())
         .then((anyUsers) => {
-          if (!anyUsers?.payload?.areThereAnyUsers && (pathname === "/login" || pathname === "/")) {
-            navigate("/signup");
+          const hasUsers = anyUsers?.payload?.areThereAnyUsers;
+          const restricted = anyUsers?.payload?.signupRestricted;
+
+          if (!hasUsers) {
+            // No users yet — allow first signup
+            setSignupAllowed(true);
+            if (pathname === "/login" || pathname === "/") {
+              navigate("/signup");
+            }
+          } else if (!restricted) {
+            // Users exist but signups are open
+            setSignupAllowed(true);
+          } else {
+            // Users exist and signups are restricted
+            setSignupAllowed(false);
+            if (pathname === "/signup") {
+              navigate("/login");
+            }
           }
         });
     }
@@ -161,7 +178,7 @@ function Main(props) {
       teamsRef.current = true;
 
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
-      let selectedTeam = teams.find((t) => t.TeamRoles.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id));
+      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id));
       if (storageActiveTeam) {
         const storageTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
         if (storageTeam) selectedTeam = storageTeam;
@@ -222,7 +239,7 @@ function Main(props) {
                 <Route path="connections/:connectionId" element={<ConnectionWizard />} />
                 <Route path="datasets" element={<DatasetList />} />
                 <Route path="datasets/:datasetId" element={<Dataset />} />
-                {canAccess("teamAdmin", user.id, team?.TeamRoles) ? (
+                {canAccess("teamAdmin", user.id, team?.TeamRoles, user) ? (
                   <>
                     <Route path="integrations" element={<Integrations />} />
                     <Route path="integrations/auth/:integrationType" element={<Auth />} />
@@ -257,7 +274,9 @@ function Main(props) {
                   </div>
                 )}
               />
-              <Route exact path="/signup" element={<Signup />} />
+              {signupAllowed && (
+                <Route exact path="/signup" element={<Signup />} />
+              )}
               <Route exact path="/azure-callback" element={<AzureCallback />} />
               <Route exact path="/login" element={<Login />} />
               <Route exact path="/user" element={<UserDashboard />} />
@@ -307,7 +326,7 @@ function Main(props) {
         </ModalContent>
       </Modal>
 
-      {canAccess("teamAdmin", user.id, team?.TeamRoles) && (
+      {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
         <AiModal isOpen={aiModalOpen} onClose={() => dispatch(hideAiModal())} />
       )}
 

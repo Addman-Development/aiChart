@@ -89,7 +89,7 @@ function ApiKeys() {
     navigator.clipboard.writeText(createdKey.token);
   };
 
-  if (!canAccess("teamAdmin", user.id, team.TeamRoles)) {
+  if (!canAccess("teamAdmin", user.id, team.TeamRoles, user)) {
     return (
       <div className="container mx-auto">
         <Alert

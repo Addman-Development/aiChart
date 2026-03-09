@@ -161,7 +161,7 @@ function TeamMembers(props) {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _teamsOwned = () => {

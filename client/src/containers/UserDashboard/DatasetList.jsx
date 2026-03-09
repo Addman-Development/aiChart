@@ -97,7 +97,7 @@ function DatasetList() {
   };
 
   const _canAccess = (role, teamRoles) => {
-    return canAccess(role, user.id, teamRoles);
+    return canAccess(role, user.id, teamRoles, user);
   };
 
   const _getDatasetTags = (projectIds) => {

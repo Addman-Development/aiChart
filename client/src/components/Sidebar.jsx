@@ -35,7 +35,7 @@ function Sidebar() {
   const dispatch = useDispatch();
 
   const _canAccess = (role, teamRoles) => {
-    return canAccess(role, user.data.id, teamRoles);
+    return canAccess(role, user.data.id, teamRoles, user.data);
   };
 
   const _getActiveMenu = () => {

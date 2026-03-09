@@ -93,7 +93,7 @@ module.exports = (app) => {
   };
 
   /*
-  ** [MASTER] Route to get all the charts
+  ** Route to get all the charts (global admin only)
   */
   app.get("/chart", verifyToken, (req, res) => {
     if (!req.user.admin) {

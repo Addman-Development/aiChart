@@ -65,7 +65,7 @@ function ChartDescription(props) {
   };
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   return (
@@ -149,7 +149,7 @@ function ChartDescription(props) {
                 projectId={params.projectId}
                 connections={connections}
                 onComplete={_onCompleteTemplate}
-                isAdmin={canAccess("teamAdmin", user.id, team.TeamRoles)}
+                isAdmin={canAccess("teamAdmin", user.id, team.TeamRoles, user)}
               />
             </Row>
           )}

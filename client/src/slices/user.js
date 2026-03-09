@@ -227,6 +227,27 @@ export const changePasswordWithToken = createAsyncThunk(
   }
 );
 
+export const changePassword = createAsyncThunk(
+  "user/changePassword",
+  async ({ user_id, currentPassword, newPassword }) => {
+    const url = `${API_HOST}/user/${user_id}/password`;
+    const body = JSON.stringify({ currentPassword, newPassword });
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${getAuthToken()}`,
+    });
+
+    const response = await fetch(url, { body, headers, method: "PUT" });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || "Error changing password");
+    }
+
+    return await response.json();
+  }
+);
+
 export const areThereAnyUsers = createAsyncThunk(
   "user/areThereAnyUsers",
   async () => {

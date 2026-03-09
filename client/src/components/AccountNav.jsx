@@ -53,9 +53,9 @@ function AccountNav() {
 
   const _canAccess = (role, teamData) => {
     if (teamData) {
-      return canAccess(role, user.id, teamData.TeamRoles);
+      return canAccess(role, user.id, teamData.TeamRoles, user);
     }
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _onDropdownAction = (key) => {

@@ -7,7 +7,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { LuClipboardCheck, LuClipboardCopy, LuShieldCheck, LuTrash } from "react-icons/lu";
 
 import {
-  updateUser, deleteUser, requestEmailUpdate, updateEmail, selectUser, get2faAppCode, verify2faApp, get2faMethods, remove2faMethod
+  updateUser, deleteUser, requestEmailUpdate, updateEmail, selectUser, get2faAppCode, verify2faApp, get2faMethods, remove2faMethod, changePassword
 } from "../../slices/user";
 import { useTheme } from "../../modules/ThemeContext";
 import { useNavigate } from "react-router";
@@ -36,6 +36,10 @@ function ManageUser() {
   const [removeLoading, setRemoveLoading] = useState(false);
   const [codesCopied, setCodesCopied] = useState(false);
   const [confirmationText, setConfirmationText] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const userProp = useSelector(selectUser);
   const authMethods = useSelector((state) => state.user.auths);
@@ -202,6 +206,39 @@ function ManageUser() {
     }, 2000);
   };
 
+  const _onChangePassword = () => {
+    if (newPassword.length < 6) {
+      toast.error("New password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+
+    setPasswordLoading(true);
+    dispatch(changePassword({
+      user_id: userProp.id,
+      currentPassword,
+      newPassword,
+    }))
+      .then((res) => {
+        setPasswordLoading(false);
+        if (res?.error) {
+          toast.error(res.error.message || "Error changing password. Check your current password.");
+          return;
+        }
+        toast.success("Password updated successfully.");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      })
+      .catch(() => {
+        setPasswordLoading(false);
+        toast.error("Error changing password. Please try again.");
+      });
+  };
+
   if (!user.name) {
     return (
       <div>
@@ -287,6 +324,56 @@ function ManageUser() {
           size="sm"
         >
           {successEmail ? "We sent you an email" : "Update email" }
+        </Button>
+      </div>
+
+      <Spacer y={4} />
+      <Divider />
+      <Spacer y={4} />
+
+      <div className="text-lg font-semibold font-tw">Change password</div>
+      <Spacer y={1} />
+      <div className="text-sm text-gray-500">Update your account password</div>
+      <Spacer y={2} />
+      <Input
+        label="Current password"
+        type="password"
+        value={currentPassword}
+        onChange={(e) => setCurrentPassword(e.target.value)}
+        variant="bordered"
+        className="max-w-md"
+      />
+      <Spacer y={2} />
+      <Input
+        label="New password"
+        type="password"
+        value={newPassword}
+        onChange={(e) => setNewPassword(e.target.value)}
+        variant="bordered"
+        className="max-w-md"
+        description="Minimum 6 characters"
+      />
+      <Spacer y={2} />
+      <Input
+        label="Confirm new password"
+        type="password"
+        value={confirmPassword}
+        onChange={(e) => setConfirmPassword(e.target.value)}
+        variant="bordered"
+        className="max-w-md"
+        isInvalid={confirmPassword && newPassword !== confirmPassword}
+        errorMessage={confirmPassword && newPassword !== confirmPassword ? "Passwords do not match" : ""}
+      />
+      <Spacer y={2} />
+      <div>
+        <Button
+          color="primary"
+          onPress={_onChangePassword}
+          isDisabled={!currentPassword || !newPassword || !confirmPassword || newPassword !== confirmPassword}
+          isLoading={passwordLoading}
+          size="sm"
+        >
+          Update password
         </Button>
       </div>
 

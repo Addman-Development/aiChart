@@ -26,6 +26,12 @@ module.exports = (app) => {
     return async (req, res, next) => {
       const { id } = req.params;
 
+      // Global admins bypass all team-level permission checks
+      if (req.user.admin) {
+        req.user.isEditor = true;
+        return next();
+      }
+
       // Fetch the TeamRole for the user
       const teamRole = await teamController.getTeamRole(id, req.user.id);
 
@@ -47,11 +53,6 @@ module.exports = (app) => {
       }
 
       if (role === "projectAdmin" || role === "projectViewer" || role === "projectEditor") {
-        // const connections = await connectionController.findByProjects(projects);
-        // if (!connections || connections.length === 0) {
-        //   return res.status(404).json({ message: "No connections found" });
-        // }
-
         return next();
       }
 
@@ -63,7 +64,12 @@ module.exports = (app) => {
    * Get all teams based on the authentication token
    */
   app.get("/team", verifyToken, (req, res) => {
-    return teamController.getUserTeams(req.user.id)
+    // Global admins can see all teams
+    const teamsPromise = req.user.admin
+      ? teamController.getAllTeams()
+      : teamController.getUserTeams(req.user.id);
+
+    return teamsPromise
       .then((teams) => {
         return res.status(200).send(teams);
       })
@@ -91,7 +97,7 @@ module.exports = (app) => {
 
   // route to create a team
   app.post("/team", verifyToken, apiLimiter(10), async (req, res) => {
-    if (app.settings.teamRestricted === "1") {
+    if (app.settings.teamRestricted === "1" && !req.user.admin) {
       return res.status(400).send({ error: "Team restricted" });
     }
 

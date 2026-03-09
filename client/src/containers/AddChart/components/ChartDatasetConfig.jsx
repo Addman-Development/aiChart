@@ -389,7 +389,7 @@ function ChartDatasetConfig(props) {
         )}
       </Row>
 
-      {canAccess("teamAdmin", user.id, team.TeamRoles) && (
+      {canAccess("teamAdmin", user.id, team.TeamRoles, user) && (
         <>
           <Spacer y={2} />
           <div className="flex flex-row justify-between">

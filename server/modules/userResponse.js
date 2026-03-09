@@ -5,6 +5,7 @@ module.exports = (user) => {
     name: user.name,
     icon: user.icon,
     active: user.active,
+    admin: user.admin || false,
     tutorials: user.tutorials,
     createdAt: user.createdAt,
     User2fas: user.User2fas,

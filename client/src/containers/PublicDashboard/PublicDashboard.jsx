@@ -350,7 +350,7 @@ function PublicDashboard() {
   const _canAccess = (role) => {
     const team = teams.filter((t) => t.id === project.team_id)[0];
     if (!team) return false;
-    const canReallyAccess = canAccess(role, user.id, team.TeamRoles);
+    const canReallyAccess = canAccess(role, user.id, team.TeamRoles, user);
     return canReallyAccess;
   };
 

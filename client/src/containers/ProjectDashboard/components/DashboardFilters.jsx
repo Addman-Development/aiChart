@@ -255,7 +255,7 @@ function DashboardFilters({
   }
 
   const _canAccess = (role) => {
-    return canAccess(role, user.id, team.TeamRoles);
+    return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   return (

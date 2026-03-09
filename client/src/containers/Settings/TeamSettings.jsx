@@ -184,7 +184,7 @@ function TeamSettings() {
         </div>
       </div>
 
-      {canAccess("teamOwner", user.id, team.TeamRoles) && (
+      {canAccess("teamOwner", user.id, team.TeamRoles, user) && (
         <>
           <Spacer y={4} />
           <Divider />

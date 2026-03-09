@@ -73,7 +73,7 @@ module.exports = (app) => {
   };
 
   /*
-  ** [MASTER] Route to get all the projects
+  ** Route to get all the projects (global admin only)
   */
   app.get("/project", verifyToken, (req, res) => {
     if (!req.user.admin) {

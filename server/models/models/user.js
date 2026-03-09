@@ -110,8 +110,6 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   User.beforeValidate((user) => {
-    user.admin = false; // eslint-disable-line
-
     // Only validate Azure-specific constraints when explicitly creating Azure users
     const azureEnabled = settings.azure && settings.azure.clientId;
 

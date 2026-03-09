@@ -159,7 +159,7 @@ function ChartDatasets(props) {
       <div className="flex flex-row justify-between items-center">
         <Text size="h4">Datasets</Text>
         <div className="flex flex-row gap-1 items-center">
-          {canAccess("teamAdmin", user.id, team?.TeamRoles) && (
+          {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
             <Button
               size="sm"
               color="primary"
@@ -278,7 +278,7 @@ function ChartDatasets(props) {
                   <Divider />
                   <CardFooter className="justify-between">
                     <Text className={"text-[12px]"}>{`Created ${moment(dataset.createdAt).calendar()}`}</Text>
-                    {canAccess("teamAdmin", user.id, team?.TeamRoles) && (
+                    {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
                       <div className="z-50">
                         <Button
                           className="z-50"
@@ -303,7 +303,7 @@ function ChartDatasets(props) {
         </>
       )}
 
-      {datasets.length === 0 && canAccess("teamAdmin", user.id, team?.TeamRoles) && (
+      {datasets.length === 0 && canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
         <div>
           <Spacer y={4} />
           <Divider />

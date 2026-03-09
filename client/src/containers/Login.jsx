@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { connect, useDispatch } from "react-redux";
 import PropTypes from "prop-types";
 import { Link, useNavigate } from "react-router";
@@ -13,7 +13,7 @@ import { cleanErrors as cleanErrorsAction } from "../actions/error";
 import cbLogoSmall from "../assets/logo_inverted.png";
 import Row from "../components/Row";
 import Text from "../components/Text";
-import { relog } from "../slices/user";
+import { areThereAnyUsers, relog } from "../slices/user";
 import { isAzureConfigured } from "../config/azureConfig";
 
 /*
@@ -26,6 +26,7 @@ function Login(props) {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const azureEnabled = isAzureConfigured();
+  const [signupAllowed, setSignupAllowed] = useState(false);
 
   // Check for Azure error in URL params
   const params = new URLSearchParams(window.location.search);
@@ -40,6 +41,13 @@ function Login(props) {
         if (data?.payload?.id) {
           navigate("/");
         }
+      });
+
+    dispatch(areThereAnyUsers())
+      .then((result) => {
+        const hasUsers = result?.payload?.areThereAnyUsers;
+        const restricted = result?.payload?.signupRestricted;
+        setSignupAllowed(!hasUsers || !restricted);
       });
   }, []);
 
@@ -93,15 +101,19 @@ function Login(props) {
           )}
         </Card>
       </div>
-      <Spacer y={8} />
-      <Row justify="center" align="center">
-        <div>
-          <p>
-            {" You don't have an account yet? "}
-            <Link to={"/signup"} className="underline decoration-2">Sign up here</Link>
-          </p>
-        </div>
-      </Row>
+      {signupAllowed && (
+        <>
+          <Spacer y={8} />
+          <Row justify="center" align="center">
+            <div>
+              <p>
+                {" You don't have an account yet? "}
+                <Link to={"/signup"} className="underline decoration-2">Sign up here</Link>
+              </p>
+            </div>
+          </Row>
+        </>
+      )}
     </div>
   );
 }
