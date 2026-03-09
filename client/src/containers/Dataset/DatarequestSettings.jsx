@@ -52,7 +52,7 @@ function DatarequestSettings(props) {
   useEffect(() => {
     if (dataset?.joinSettings?.joins && !initRef.current) {
       initRef.current = true;
-      const newJoins = dataset.joinSettings.joins.map(join => ({...join}));
+      const newJoins = dataset.joinSettings.joins.map(join => ({...join, key: join.key || nanoid(6)}));
       setJoins(newJoins);
 
       // also change the first item of joins

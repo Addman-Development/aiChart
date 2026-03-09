@@ -1253,7 +1253,7 @@ Chart.propTypes = {
   isPublic: PropTypes.bool,
   onChangeOrder: PropTypes.func,
   print: PropTypes.string,
-  height: PropTypes.number,
+  height: PropTypes.oneOfType([PropTypes.number, PropTypes.func]),
   showExport: PropTypes.bool,
   password: PropTypes.string,
   editingLayout: PropTypes.bool,

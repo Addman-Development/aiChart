@@ -192,7 +192,7 @@ function AddFilters(props) {
 
 AddFilters.propTypes = {
   charts: PropTypes.array.isRequired,
-  projectId: PropTypes.number.isRequired,
+  projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
   onAddFilter: PropTypes.func.isRequired,
   open: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,

@@ -121,8 +121,7 @@ function MainContent({ mobile = false } = {}) {
 }
 
 MainContent.propTypes = {
-  onPrint: PropTypes.func.isRequired,
-  _canAccess: PropTypes.func.isRequired,
+  _canAccess: PropTypes.func,
   mobile: PropTypes.bool,
 };
 

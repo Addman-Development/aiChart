@@ -390,8 +390,8 @@ function DashboardFilters({
 }
 
 DashboardFilters.propTypes = {
-  filters: PropTypes.object.isRequired,
-  projectId: PropTypes.number.isRequired,
+  filters: PropTypes.object,
+  projectId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
   onRemoveFilter: PropTypes.func.isRequired,
   onApplyFilterValue: PropTypes.func.isRequired,
   onReport: PropTypes.bool,

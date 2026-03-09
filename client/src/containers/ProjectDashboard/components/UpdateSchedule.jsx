@@ -280,7 +280,6 @@ function UpdateSchedule({ isOpen, onClose, openSnapshotSchedule }) {
 UpdateSchedule.propTypes = {
   isOpen: PropTypes.bool.isRequired,
   onClose: PropTypes.func.isRequired,
-  timezone: PropTypes.string.isRequired,
   openSnapshotSchedule: PropTypes.func.isRequired,
 };
 

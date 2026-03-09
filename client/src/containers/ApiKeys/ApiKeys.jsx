@@ -269,8 +269,6 @@ function ApiKeys() {
   );
 }
 
-ApiKeys.propTypes = {
-  teamId: PropTypes.number.isRequired,
-};
+ApiKeys.propTypes = {};
 
 export default ApiKeys;

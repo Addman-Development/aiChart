@@ -1372,14 +1372,12 @@ function ProjectDashboard() {
       <UpdateSchedule
         isOpen={scheduleVisible}
         onClose={() => setScheduleVisible(false)}
-        timezone={project.timezone}
         openSnapshotSchedule={() => setSnapshotScheduleVisible(true)}
       />
 
       <SnapshotSchedule
         isOpen={snapshotScheduleVisible}
         onClose={() => setSnapshotScheduleVisible(false)}
-        timezone={project.timezone}
       />
 
       <CreateTemplateForm

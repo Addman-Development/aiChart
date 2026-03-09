@@ -430,7 +430,7 @@ function DatasetBuilder(props) {
           selectedKeys={[dataset.yAxisOperation]}
           selectionMode="single"
           variant="bordered"
-          renderValue={(
+          renderValue={() => (
             <Text>
               {(dataset.yAxisOperation
                 && operations.find((i) => i.value === dataset.yAxisOperation).text
