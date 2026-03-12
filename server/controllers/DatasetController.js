@@ -377,6 +377,15 @@ class DatasetController {
                 processedQuery,
               )
             );
+          } else if (connection.type === "mssql") {
+            drPromises.push(
+              this.connectionController.runMssql(
+                connection.id,
+                originalDataRequest,
+                getCache,
+                processedQuery,
+              )
+            );
           } else {
             drPromises.push(
               new Promise((resolve, reject) => reject(new Error("Invalid connection type")))

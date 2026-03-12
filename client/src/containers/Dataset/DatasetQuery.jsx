@@ -321,7 +321,7 @@ function DatasetQuery(props) {
                     onDelete={() => _onDeleteRequest(dr.id)}
                   />
                 )}
-                {selectedRequest.Connection?.type === "postgres" && selectedRequest.id === dr.id && (
+                {(selectedRequest.Connection?.type === "postgres" || selectedRequest.Connection?.type === "mssql") && selectedRequest.id === dr.id && (
                   <SqlBuilder
                     dataRequest={dr}
                     connection={dr.Connection}
@@ -427,7 +427,7 @@ function DatasetQuery(props) {
                         <div className="flex flex-row items-center justify-between">
                           <div className="flex flex-col gap-1">
                             <Text size="h4">{c.name}</Text>
-                            {(c.type === "postgres" || c.type === "mongodb") && (
+                            {(c.type === "postgres" || c.type === "mongodb" || c.type === "mssql") && (
                               <Chip color="secondary" variant="flat" size="sm" startContent={<LuBrainCircuit />}>
                                 {"AI-powered"}
                               </Chip>

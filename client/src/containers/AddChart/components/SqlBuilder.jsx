@@ -335,7 +335,7 @@ function SqlBuilder(props) {
                 <VisualSQL
                   query={sqlRequest.query}
                   schema={connection.schema}
-                  updateQuery={(query) => _onChangeQuery(query, true)}
+                  updateQuery={(query) => _onChangeQuery(query)}
                   type={connection.type}
                   onVariableClick={_onVariableClick}
                 />

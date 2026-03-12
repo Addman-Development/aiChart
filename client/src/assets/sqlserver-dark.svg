@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" width="500" height="500">
+  <rect width="500" height="500" fill="#000000"/>
+  <g transform="translate(250,250)">
+    <!-- Database cylinder body -->
+    <rect x="-100" y="-80" width="200" height="160" rx="4" fill="#CC2927"/>
+    <!-- Top ellipse -->
+    <ellipse cx="0" cy="-80" rx="100" ry="35" fill="#E8534E"/>
+    <!-- Bottom ellipse (visible part) -->
+    <path d="M-100,80 Q-100,115 0,115 Q100,115 100,80" fill="#A31F1D"/>
+    <!-- Horizontal line accents -->
+    <line x1="-100" y1="-30" x2="100" y2="-30" stroke="white" stroke-width="2" opacity="0.3"/>
+    <line x1="-100" y1="20" x2="100" y2="20" stroke="white" stroke-width="2" opacity="0.3"/>
+    <!-- "SQL" text -->
+    <text x="0" y="5" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="52" font-weight="bold" fill="white">SQL</text>
+  </g>
+</svg>

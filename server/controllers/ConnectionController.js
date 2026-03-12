@@ -264,9 +264,11 @@ class ConnectionController {
     const dataToSave = { ...data };
 
     if (!data.type) data.type = "mongodb"; // eslint-disable-line
-    if (data.type === "postgres") {
+    if (data.type === "postgres" || data.type === "mssql") {
       try {
-        const testData = await this.testPostgres(data);
+        const testData = data.type === "mssql"
+          ? await this.testMssql(data)
+          : await this.testPostgres(data);
         dataToSave.schema = testData.schema;
       } catch (e) {
         //
@@ -421,6 +423,8 @@ class ConnectionController {
       return this.testMongo(connectionParams);
     } else if (data.type === "postgres") {
       return this.testPostgres(connectionParams);
+    } else if (data.type === "mssql") {
+      return this.testMssql(connectionParams);
     }
 
     return new Promise((resolve, reject) => reject(new Error("No request type specified")));
@@ -457,6 +461,13 @@ class ConnectionController {
   }
 
   async getSchema(dbConnection) {
+    const dialect = dbConnection.getDialect();
+
+    // For MSSQL, use a single INFORMATION_SCHEMA query instead of N+1 describeTable calls
+    if (dialect === "mssql") {
+      return this._getMssqlSchema(dbConnection);
+    }
+
     const tables = await dbConnection.getQueryInterface().showAllTables();
     const schemaPromises = tables.map((table) => {
       return dbConnection.getQueryInterface().describeTable(table)
@@ -492,6 +503,59 @@ class ConnectionController {
     };
   }
 
+  async _getMssqlSchema(dbConnection) {
+    let results;
+
+    try {
+      // Try filtering out empty tables using sys.dm_db_partition_stats
+      results = await dbConnection.query(
+        `SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS c
+         INNER JOIN (
+           SELECT s.name AS TABLE_SCHEMA, t.name AS TABLE_NAME
+           FROM sys.tables t
+           INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+           INNER JOIN sys.dm_db_partition_stats ps
+             ON t.object_id = ps.object_id AND ps.index_id IN (0, 1)
+           GROUP BY s.name, t.name
+           HAVING SUM(ps.row_count) > 0
+         ) populated ON c.TABLE_SCHEMA = populated.TABLE_SCHEMA
+                     AND c.TABLE_NAME = populated.TABLE_NAME
+         ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION`,
+        { type: Sequelize.QueryTypes.SELECT }
+      );
+    } catch (err) {
+      console.warn("[_getMssqlSchema] Filtered query failed, falling back to INFORMATION_SCHEMA only:", err.message);
+      // Fallback: just use INFORMATION_SCHEMA (no empty-table filtering)
+      results = await dbConnection.query(
+        `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME NOT LIKE 'sys%'
+         ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
+        { type: Sequelize.QueryTypes.SELECT }
+      );
+    }
+
+    const tables = [];
+    const formattedSchema = {};
+    const seen = new Set();
+
+    for (const row of results) {
+      const fullName = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}`;
+      if (!seen.has(fullName)) {
+        seen.add(fullName);
+        tables.push(fullName);
+        formattedSchema[fullName] = [];
+      }
+      formattedSchema[fullName].push(row.COLUMN_NAME);
+    }
+
+    return {
+      tables,
+      description: formattedSchema,
+    };
+  }
+
   async testPostgres(data) {
     let sqlDb;
     try {
@@ -512,6 +576,23 @@ class ConnectionController {
     }
   }
 
+  async testMssql(data) {
+    let sqlDb;
+    try {
+      sqlDb = await externalDbConnection(data);
+      const schema = await this.getSchema(sqlDb);
+
+      return { success: true, schema };
+    } catch (err) {
+      console.error("[testMssql] Error:", err.message || err, err.original?.message || "");
+      throw new Error(err.message || err);
+    } finally {
+      if (sqlDb) {
+        try { await sqlDb.close(); } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
   testConnection(id) {
     let gConnection;
     let mongoConnection;
@@ -524,6 +605,7 @@ class ConnectionController {
           case "api":
             return _fetchRequest(this.getApiTestOptions(connection));
           case "postgres":
+          case "mssql":
             return externalDbConnection(connection);
           default:
             return new Promise((resolve, reject) => reject(new Error(400)));
@@ -541,6 +623,7 @@ class ConnectionController {
             }
             return new Promise((resolve, reject) => reject(new Error(400)));
           case "postgres":
+          case "mssql":
             return new Promise((resolve) => resolve({ success: true }));
           default:
             return new Promise((resolve, reject) => reject(new Error(400)));
@@ -768,6 +851,54 @@ class ConnectionController {
       // Close SSH tunnel if it exists
       if (dbConnection && dbConnection.sshTunnel) {
         dbConnection.sshTunnel.close();
+      }
+    }
+  }
+
+  async runMssql(id, dataRequest, getCache, queryOverride = null) {
+    if (getCache) {
+      const drCache = await checkAndGetCache(id, dataRequest);
+      if (drCache) return drCache;
+    }
+
+    const queryToExecute = queryOverride || dataRequest.query;
+    if (!queryToExecute) {
+      throw new Error("No query provided");
+    }
+
+    let dbConnection = null;
+
+    try {
+      const connection = await this.findById(id);
+      dbConnection = await externalDbConnection(connection);
+
+      // Update schema in the background
+      this.getSchema(dbConnection)
+        .then((schema) => {
+          db.Connection.update({ schema }, { where: { id } });
+        })
+        .catch(() => {});
+
+      const results = await dbConnection
+        .query(queryToExecute, { type: Sequelize.QueryTypes.SELECT });
+
+      // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
+      const dataToCache = {
+        dataRequest,
+        responseData: {
+          data: results,
+        },
+        connection_id: id,
+      };
+
+      await drCacheController.create(dataRequest.id, dataToCache);
+
+      return dataToCache;
+    } catch (error) {
+      throw error;
+    } finally {
+      if (dbConnection) {
+        try { await dbConnection.close(); } catch (e) { /* ignore */ }
       }
     }
   }

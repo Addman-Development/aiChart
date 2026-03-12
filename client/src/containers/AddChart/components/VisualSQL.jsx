@@ -169,20 +169,40 @@ const restoreVariablesInQuery = (query, variables) => {
   return restoredQuery;
 };
 
+// Safely extract a string from an AST node that may be a string, object with .value, or nested .expr.value
+const _astStr = (node) => {
+  if (!node) return "";
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (node.value != null) return _astStr(node.value);
+  if (node.expr?.value != null) return _astStr(node.expr.value);
+  return "";
+};
+
+// Build "table.column" display string from an AST expr node
+const _exprLabel = (expr) => {
+  const tbl = _astStr(expr?.table);
+  const col = _astStr(expr?.column);
+  return tbl ? `${tbl}.${col}` : col;
+};
+
 function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
   const [ast, setAst] = useState(null);
   const [viewJoin, setViewJoin] = useState(false);
   const [viewAddColumn, setViewAddColumn] = useState(false);
   const [selectedColumns, setSelectedColumns] = useState([]);
   const [viewFilter, setViewFilter] = useState(false);
+  const [editingFilter, setEditingFilter] = useState(null); // tracks condition being edited
   const [newFilter, setNewFilter] = useState({
     column: "",
     operator: "",
     value: ""
   });
   const [viewGroupBy, setViewGroupBy] = useState(false);
+  const [editingGroupBy, setEditingGroupBy] = useState(null);
   const [groupByColumn, setGroupByColumn] = useState("");
   const [viewOrderBy, setViewOrderBy] = useState(false);
+  const [editingOrderBy, setEditingOrderBy] = useState(null);
   const [orderByColumn, setOrderByColumn] = useState("");
   const [orderByOrder, setOrderByOrder] = useState("ASC");
   const [viewLimit, setViewLimit] = useState(false);
@@ -207,7 +227,17 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       const { processedQuery, variables: extractedVariables } = preprocessQueryForParsing(query, type);
       setVariables(extractedVariables);
 
-      const newAst = parser.astify(processedQuery, opt);
+      // For MSSQL, convert TOP N back to LIMIT N so the PostgreSQL parser can handle it
+      let parserQuery = processedQuery;
+      if (type === "mssql") {
+        const topMatch = parserQuery.match(/^SELECT\s+TOP\s+(\d+)\b/i);
+        if (topMatch) {
+          parserQuery = parserQuery.replace(/^SELECT\s+TOP\s+\d+\b/i, "SELECT");
+          parserQuery = parserQuery.replace(/;?\s*$/, ` LIMIT ${topMatch[1]}`);
+        }
+      }
+
+      const newAst = parser.astify(parserQuery, opt);
       const formattedAst = newAst?.[0] || newAst;
       setAst(formattedAst);
       setQueryError(false);
@@ -231,19 +261,37 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     // Restore variables in the generated query
     const queryWithVariables = restoreVariablesInQuery(parsedQuery, currentVariables);
 
+    // For MSSQL, convert LIMIT N to TOP N (MSSQL doesn't support LIMIT)
+    let finalQuery = queryWithVariables;
+    if (type === "mssql") {
+      const limitMatch = finalQuery.match(/\bLIMIT\s+(\d+)/i);
+      if (limitMatch) {
+        finalQuery = finalQuery.replace(/\bLIMIT\s+\d+/i, "");
+        finalQuery = finalQuery.replace(/^SELECT\b/i, `SELECT TOP ${limitMatch[1]}`);
+      }
+    }
+
     // before updating the query, enter new lines after major operations
-    // INNER JOIN, WHERE, GROUP BY, ORDER BY, LIMIT
-    const formattedQuery = queryWithVariables
+    const formattedQuery = finalQuery
       .replace(/ INNER JOIN /g, "\nINNER JOIN ")
       .replace(/ WHERE /g, "\nWHERE ")
       .replace(/ GROUP BY /g, "\nGROUP BY ")
       .replace(/ ORDER BY /g, "\nORDER BY ")
       .replace(/ LIMIT /g, "\nLIMIT ");
-    
+
     updateQuery(formattedQuery);
   };
 
-  const _onChangeMainTable = (table) => {
+  const _onChangeMainTable = (fullTable) => {
+    // Split schema-qualified names like "dbo.ORDER000_mst" into db (schema) and table
+    let tableSchema = null;
+    let table = fullTable;
+    if (fullTable && fullTable.includes(".")) {
+      const parts = fullTable.split(".");
+      tableSchema = parts[0];
+      table = parts.slice(1).join(".");
+    }
+
     let newFrom;
     let selects;
     let newAst;
@@ -251,8 +299,8 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     if (!ast?.from) {
       newFrom = [{
         table,
-        as: table,
-        db: null,
+        as: null,
+        db: tableSchema,
         join: null,
         on: null
       }];
@@ -284,6 +332,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       newFrom = ast.from.map((fromItem) => {
         if (!fromItem.on) {
           fromItem.table = table;
+          fromItem.db = tableSchema;
         }
         return fromItem;
       });
@@ -463,6 +512,19 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     setSelectedColumns([]);
   };
 
+  // Resolve a table name to its schema description key
+  // Handles both plain ("users") and split schema-qualified names (db: "dbo", table: "users" -> "dbo.users")
+  const _resolveSchemaKey = (fromItem) => {
+    const tableName = fromItem.table;
+    if (schema?.description[tableName]) return tableName;
+    // Try with db prefix (schema-qualified)
+    if (fromItem.db) {
+      const qualified = `${fromItem.db}.${tableName}`;
+      if (schema?.description[qualified]) return qualified;
+    }
+    return null;
+  };
+
   const _getAvailableColumns = () => {
     if (!ast?.from || !ast?.columns) return [];
     let availableColumns = [];
@@ -470,19 +532,28 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     const selectedColumnNames = ast.columns.map(col => `${col.expr.table?.value}.${col.expr.column}`);
 
     flattenFrom(ast.from).forEach((fromItem) => {
-      if (!processedTables.includes(fromItem.table) && schema?.description[fromItem.table]) {
+      const schemaKey = _resolveSchemaKey(fromItem);
+      if (!processedTables.includes(fromItem.table) && schemaKey) {
         processedTables.push(fromItem.table);
-        const tableColumns = Object.keys(schema?.description[fromItem.table])
+        const desc = schema.description[schemaKey];
+        const colNames = Array.isArray(desc) ? desc : Object.keys(desc);
+        const tableColumns = colNames
           .map((column) => `${fromItem.as || fromItem.table}.${column}`)
           .filter((fullColumnName) => !selectedColumnNames.includes(fullColumnName));
         availableColumns = availableColumns.concat(tableColumns);
       }
-      if (!processedTables.includes(fromItem.joinTable) && schema?.description[fromItem.joinTable]) {
-        processedTables.push(fromItem.joinTable);
-        const joinTableColumns = Object.keys(schema?.description[fromItem.joinTable])
-          .map((column) => `${fromItem.joinTableAs || fromItem.joinTable}.${column}`)
-          .filter((fullColumnName) => !selectedColumnNames.includes(fullColumnName));
-        availableColumns = availableColumns.concat(joinTableColumns);
+      if (fromItem.joinTable) {
+        const joinSchemaKey = schema?.description[fromItem.joinTable] ? fromItem.joinTable
+          : fromItem.db ? `${fromItem.db}.${fromItem.joinTable}` : null;
+        if (!processedTables.includes(fromItem.joinTable) && joinSchemaKey && schema?.description[joinSchemaKey]) {
+          processedTables.push(fromItem.joinTable);
+          const desc = schema.description[joinSchemaKey];
+          const colNames = Array.isArray(desc) ? desc : Object.keys(desc);
+          const joinTableColumns = colNames
+            .map((column) => `${fromItem.joinTableAs || fromItem.joinTable}.${column}`)
+            .filter((fullColumnName) => !selectedColumnNames.includes(fullColumnName));
+          availableColumns = availableColumns.concat(joinTableColumns);
+        }
       }
     });
     return availableColumns;
@@ -510,29 +581,72 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
 
     let allColumns = [];
     flattenFrom(ast.from).forEach((fromItem) => {
-      if (schema?.description[fromItem.table]) {
-        const tableColumns = Object.keys(schema?.description[fromItem.table])
-          .map((column) => ({
-            name: `${fromItem.as || fromItem.table}.${column}`,
-            type: schema?.description[fromItem.table][column].type,
-            table: { value: fromItem.as || fromItem.table, type: type === "mysql" ? "backticks_quote_string" : "double_quote_string" }
-          }));
+      const schemaKey = _resolveSchemaKey(fromItem);
+      if (schemaKey) {
+        const desc = schema.description[schemaKey];
+        const colEntries = Array.isArray(desc) ? desc : Object.keys(desc);
+        const tableColumns = colEntries.map((column) => ({
+          name: `${fromItem.as || fromItem.table}.${column}`,
+          type: Array.isArray(desc) ? null : desc[column]?.type,
+          table: { value: fromItem.as || fromItem.table, type: type === "mysql" ? "backticks_quote_string" : "double_quote_string" }
+        }));
         allColumns = allColumns.concat(tableColumns);
       }
-      if (schema?.description[fromItem.joinTable]) {
-        const joinTableColumns = Object.keys(schema?.description[fromItem.joinTable])
-          .map((column) => ({
+      if (fromItem.joinTable) {
+        const joinSchemaKey = schema?.description[fromItem.joinTable] ? fromItem.joinTable
+          : fromItem.db ? `${fromItem.db}.${fromItem.joinTable}` : null;
+        if (joinSchemaKey && schema?.description[joinSchemaKey]) {
+          const desc = schema.description[joinSchemaKey];
+          const colEntries = Array.isArray(desc) ? desc : Object.keys(desc);
+          const joinTableColumns = colEntries.map((column) => ({
             name: `${fromItem.joinTableAs || fromItem.joinTable}.${column}`,
-            type: schema?.description[fromItem.joinTable][column].type,
+            type: Array.isArray(desc) ? null : desc[column]?.type,
             table: { value: fromItem.joinTableAs || fromItem.joinTable, type: type === "mysql" ? "backticks_quote_string" : "double_quote_string" }
           }));
-        allColumns = allColumns.concat(joinTableColumns);
+          allColumns = allColumns.concat(joinTableColumns);
+        }
       }
     });
     return allColumns;
   };
 
+  const _onEditFilter = (condition) => {
+    // Extract column name and find the column object
+    const colName = typeof condition.left?.column === "object"
+      ? condition.left.column?.expr?.value
+      : condition.left?.column;
+    const tableName = condition.left?.table?.value || condition.left?.table || "";
+    const fullColName = tableName ? `${tableName}.${colName}` : colName;
+    const columnObj = _getColumnsForFilter().find(col => col.name === fullColName);
+
+    // Resolve value — check if it's a variable placeholder
+    let value = condition.right?.value;
+    if (typeof value === "string" && value.startsWith("__VAR_")) {
+      const varIndex = parseInt(value.replace("__VAR_", "").replace("__", ""), 10);
+      const variable = variables.find(v => v.index === varIndex);
+      if (variable) value = variable.placeholder;
+    }
+    // Strip LIKE wildcards for display
+    if ((condition.operator === "LIKE" || condition.operator === "NOT LIKE") && typeof value === "string") {
+      value = value.replace(/^%|%$/g, "");
+    }
+
+    setEditingFilter(condition);
+    setNewFilter({
+      column: columnObj || { name: fullColName },
+      operator: condition.operator,
+      value: value != null ? String(value) : "",
+    });
+    setViewFilter(true);
+  };
+
   const _onAddFilter = () => {
+    // If editing, remove the old filter first
+    let workingAst = ast;
+    if (editingFilter) {
+      workingAst = { ...ast, where: _removeConditionFromWhere(ast.where, editingFilter) };
+    }
+
     let conditionValue = newFilter.value;
     let valueType = _determineValueTypeFromSchema(newFilter.column.name);
 
@@ -541,11 +655,11 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     const isVariable = variableRegex.test(conditionValue);
 
     let updatedVariables = variables;
-    
+
     if (isVariable) {
       // Check if this variable already exists
       const existingVariable = variables.find(v => v.placeholder === conditionValue);
-      
+
       if (existingVariable) {
         // Use existing variable's placeholder
         conditionValue = `__VAR_${existingVariable.index}__`;
@@ -555,7 +669,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
         // For new variables, use the next available index
         const maxIndex = variables.length > 0 ? Math.max(...variables.map(v => v.index)) : -1;
         const variableIndex = maxIndex + 1;
-        
+
         // Add the variable to our variables array
         const newVariable = {
           placeholder: conditionValue,
@@ -564,7 +678,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
         };
         updatedVariables = [...variables, newVariable];
         setVariables(updatedVariables);
-        
+
         // Use a quoted placeholder as the value (consistent with preprocessing)
         conditionValue = `__VAR_${variableIndex}__`;
         valueType = type === "mysql" ? "double_quote_string" : "single_quote_string";
@@ -587,64 +701,59 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       }
     };
 
-    const updatedWhere = ast.where ? {
+    const updatedWhere = workingAst.where ? {
       type: "binary_expr",
-      operator: ast.where.operator === "OR" ? "OR" : "AND",
-      left: ast.where,
+      operator: workingAst.where.operator === "OR" ? "OR" : "AND",
+      left: workingAst.where,
       right: newFilterCondition
     } : newFilterCondition;
 
-    const newAst = { ...ast, where: updatedWhere };
+    const newAst = { ...workingAst, where: updatedWhere };
     setAst(newAst);
     _onUpdateQuery(newAst, updatedVariables);
 
     setViewFilter(false);
+    setEditingFilter(null);
     setNewFilter({});
   };
 
-  const _onRemoveFilter = (condition) => {
-    const isConditionMatch = (node, condition) => {
-      return node.operator === condition.operator &&
-        node.left.type === condition.left.type &&
-        node.left.column === condition.left.column &&
-        ((!condition.left.table && !node.left.table) ||
-          (node.left.table && node.left.table.value === condition.left.table.value)) &&
-        node.right.type === condition.right.type &&
-        node.right.value === condition.right.value;
+  const _removeConditionFromWhere = (where, condition) => {
+    const isConditionMatch = (node, cond) => {
+      return node.operator === cond.operator &&
+        node.left.type === cond.left.type &&
+        node.left.column === cond.left.column &&
+        ((!cond.left.table && !node.left.table) ||
+          (node.left.table && node.left.table.value === cond.left.table.value)) &&
+        node.right.type === cond.right.type &&
+        node.right.value === cond.right.value;
     };
 
     const removeConditionRecursively = (node) => {
       if (!node) return null;
 
-      // Check if the node is a binary expression with the condition to remove
       if (node.type === "binary_expr" && isConditionMatch(node, condition)) {
         return null;
       }
 
-      // If the node is a binary expression, recursively process its left and right
       if (node.type === "binary_expr") {
         const newLeft = removeConditionRecursively(node.left);
         const newRight = removeConditionRecursively(node.right);
 
-        // If both left and right are null, this node should be removed
         if (!newLeft && !newRight) return null;
-
-        // If one of them is null, return the other
         if (!newLeft) return newRight;
         if (!newRight) return newLeft;
 
-        return {
-          ...node,
-          left: newLeft,
-          right: newRight
-        };
+        return { ...node, left: newLeft, right: newRight };
       }
 
-      // If the node is not a binary expression, return it unchanged
       return node;
     };
 
-    const newWhere = removeConditionRecursively(ast.where);
+    return removeConditionRecursively(where);
+  };
+
+  const _onRemoveFilter = (condition) => {
+    const newWhere = _removeConditionFromWhere(ast.where, condition);
     setAst({ ...ast, where: newWhere });
     _onUpdateQuery({ ...ast, where: newWhere });
   };
@@ -679,11 +788,22 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       table: groupByColumn.table
     };
 
-    const newAst = { ...ast, groupby: { columns: [...(ast.groupby?.columns || []), newColumn] } };
+    let existingColumns = ast.groupby?.columns || [];
+    if (editingGroupBy) {
+      existingColumns = existingColumns.filter((g) => {
+        if (editingGroupBy.table && g.table) {
+          return !(g.table.value === editingGroupBy.table.value && g.column === editingGroupBy.column);
+        }
+        return g.column !== editingGroupBy.column;
+      });
+    }
+
+    const newAst = { ...ast, groupby: { columns: [...existingColumns, newColumn] } };
 
     setAst(newAst);
     _onUpdateQuery(newAst);
     setViewGroupBy(false);
+    setEditingGroupBy(null);
     setGroupByColumn("");
   };
 
@@ -731,12 +851,23 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       type: orderByOrder
     };
 
-    const newAst = { ...ast, orderby: [...(ast.orderby || []), newOrder] };
+    let existingOrders = ast.orderby || [];
+    if (editingOrderBy) {
+      existingOrders = existingOrders.filter((o) => {
+        if (editingOrderBy.expr.table && o.expr.table) {
+          return !(o.expr.table.value === editingOrderBy.expr.table.value && o.expr.column === editingOrderBy.expr.column);
+        }
+        return o.expr.column !== editingOrderBy.expr.column;
+      });
+    }
+
+    const newAst = { ...ast, orderby: [...existingOrders, newOrder] };
 
     setAst(newAst);
     _onUpdateQuery(newAst);
 
     setViewOrderBy(false);
+    setEditingOrderBy(null);
     setOrderByColumn("");
     setOrderByOrder("ASC");
   };
@@ -766,43 +897,64 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     _onUpdateQuery("");
   };
 
+  // Extract the table name text after FROM in the current query (for pre-filling the selector)
+  const _getFromTableHint = () => {
+    if (!query) return "";
+    const match = query.match(/\bFROM\s+([\w.[\]`"]+)/i);
+    if (match) {
+      return match[1].replace(/[[\]`"]/g, "");
+    }
+    return "";
+  };
+
   if (queryError && query) {
-    // Check if the query contains variables
-    const hasVariables = /\{\{([^}]+)\}\}/g.test(query);
-    
+    const tableHint = _getFromTableHint();
+
     return (
       <Container className={"flex flex-col gap-4"}>
         <Alert
           color="primary"
-          title="We could not parse your query"
-          description={
-            hasVariables 
-              ? "The query contains variables that may be causing parsing issues. You can try modifying the query manually or restart from here."
-              : "Modify the query manually or restart the query from here."
-          }
+          title="We could not parse your query visually"
+          description="Select a table below to start a new visual query, or switch back to SQL mode to edit manually."
           variant="bordered"
+        />
+        <Autocomplete
+          label="Select a table to get started"
+          size="sm"
+          variant="bordered"
+          defaultInputValue={tableHint}
+          aria-label="Select main database table"
+          onSelectionChange={(key) => {
+            if (key) {
+              setQueryError(false);
+              _onChangeMainTable(key);
+            }
+          }}
+          className="max-w-[300px]"
         >
-          <Button
-            color="primary"
-            size="sm"
-            onPress={() => _onResetQuery()}
-            className="mt-2"
-          >
-            Restart query
-          </Button>
-        </Alert>
+          {schema?.tables.map((table) => (
+            <AutocompleteItem
+              key={table}
+              textValue={table}
+            >
+              {table}
+            </AutocompleteItem>
+          ))}
+        </Autocomplete>
       </Container>
     );
   }
 
   if (!ast?.from || !schema) {
+    const tableHint = _getFromTableHint();
+
     return (
       <Container className={"flex flex-col gap-4"}>
         <Autocomplete
           label="Select a table to get started"
           size="sm"
           variant="bordered"
-          selectedKey={""}
+          defaultInputValue={tableHint}
           aria-label="Select main database table"
           onSelectionChange={(key) => _onChangeMainTable(key)}
           className="max-w-[300px]"
@@ -848,25 +1000,24 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       )}
       {!ast?.from && (
         <div className="flex flex-col gap-2">
-          <Select
+          <Autocomplete
             label="Select a table to get started"
             size="sm"
             variant="bordered"
-            selectedKeys={[]}
-            selectionMode="single"
+            defaultInputValue={_getFromTableHint()}
             aria-label="Select main database table"
-            onSelectionChange={(keys) => _onChangeMainTable(keys.currentKey)}
+            onSelectionChange={(key) => _onChangeMainTable(key)}
             className="max-w-[300px]"
           >
             {schema?.tables.map((table) => (
-              <SelectItem
+              <AutocompleteItem
                 key={table}
                 textValue={table}
               >
                 {table}
-              </SelectItem>
+              </AutocompleteItem>
             ))}
-          </Select>
+          </Autocomplete>
         </div>
       )}
       {ast?.from && flattenFrom(ast.from).map((fromItem, index) => (
@@ -874,25 +1025,24 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
           {fromItem.type === "main" && <Code variant="flat">Get data from</Code>}
           {fromItem.type === "join" && <Code variant="flat">Join</Code>}
           {fromItem.table && (
-            <Select
+            <Autocomplete
               size="sm"
               color="primary"
               variant="flat"
-              selectedKeys={fromItem.table ? [fromItem.table] : []}
-              selectionMode="single"
+              selectedKey={fromItem.db ? `${fromItem.db}.${fromItem.table}` : fromItem.table || ""}
               aria-label="Select main database table"
-              onSelectionChange={(keys) => _onChangeMainTable(keys.currentKey)}
+              onSelectionChange={(key) => { if (key) _onChangeMainTable(key); }}
               className="max-w-[300px]"
             >
               {schema?.tables.map((table) => (
-                <SelectItem
+                <AutocompleteItem
                   key={table}
                   textValue={table}
                 >
                   {table}
-                </SelectItem>
+                </AutocompleteItem>
               ))}
-            </Select>
+            </Autocomplete>
           )}
           {fromItem.joinTable && (
             <Button
@@ -985,6 +1135,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
             size="sm"
             color="primary"
             variant="flat"
+            onPress={() => _onEditFilter(condition)}
           >
             {typeof condition.left?.column === "object" ? condition.left.column?.expr?.value : condition.left?.column}
           </Button>
@@ -992,6 +1143,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
             size="sm"
             color="primary"
             variant="flat"
+            onPress={() => _onEditFilter(condition)}
           >
             {condition.operator}
           </Button>
@@ -999,6 +1151,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
             size="sm"
             color="primary"
             variant="flat"
+            onPress={() => _onEditFilter(condition)}
           >
             {condition.right?.value}
           </Button>
@@ -1014,14 +1167,21 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       ))}
 
       {ast?.groupby?.columns && ast.groupby.columns.map((group) => (
-        <div key={`${group?.table?.value}.${group.column}`} className="flex flex-wrap gap-1 items-center">
+        <div key={_exprLabel(group)} className="flex flex-wrap gap-1 items-center">
           <Code variant="flat">Group by</Code>
           <Button
             size="sm"
             color="primary"
             variant="flat"
+            onPress={() => {
+              const fullName = _exprLabel(group);
+              const colObj = _getColumnsForFilter().find(col => col.name === fullName);
+              setEditingGroupBy(group);
+              setGroupByColumn(colObj || { name: fullName });
+              setViewGroupBy(true);
+            }}
           >
-            {`${group.table.value ? `${group.table.value}.` : ""}${group.column}`}
+            {_exprLabel(group)}
           </Button>
           <Button
             isIconOnly
@@ -1035,14 +1195,22 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       ))}
 
       {ast?.orderby && ast.orderby.map((order) => (
-        <div key={`${order.expr?.table?.value}.${order.expr.column}`} className="flex gap-1 items-center">
+        <div key={`${_exprLabel(order.expr)}.${order.type}`} className="flex gap-1 items-center">
           <Code variant="flat">Order by</Code>
           <Button
             size="sm"
             color="primary"
             variant="flat"
+            onPress={() => {
+              const fullName = _exprLabel(order.expr);
+              const colObj = _getColumnsForFilter().find(col => col.name === fullName);
+              setEditingOrderBy(order);
+              setOrderByColumn(colObj || { name: fullName });
+              setOrderByOrder(order.type || "ASC");
+              setViewOrderBy(true);
+            }}
           >
-            {`${order.expr?.table?.value ? `${order.expr.table.value}.` : ""}${order.expr.column} ${order.type}`}
+            {`${_exprLabel(order.expr)} ${order.type}`}
           </Button>
           <Button
             isIconOnly
@@ -1062,6 +1230,10 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
             size="sm"
             color="primary"
             variant="flat"
+            onPress={() => {
+              setLimit(ast.limit.value[0]?.value);
+              setViewLimit(true);
+            }}
           >
             {ast.limit.value[0]?.value}
           </Button>
@@ -1245,32 +1417,32 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={viewFilter} onClose={() => setViewFilter(false)} size="xl">
+      <Modal isOpen={viewFilter} onClose={() => { setViewFilter(false); setEditingFilter(null); setNewFilter({}); }} size="xl">
         <ModalContent>
           <ModalHeader>
-            <div className="font-bold">Filter data</div>
+            <div className="font-bold">{editingFilter ? "Edit filter" : "Filter data"}</div>
           </ModalHeader>
           <ModalBody className="flex flex-col gap-2">
-            <Select
+            <Autocomplete
               label="Column"
-              placeholder="Select column"
+              placeholder="Search columns"
               variant="bordered"
-              selectedKeys={[newFilter.column?.name || ""]}
+              selectedKey={newFilter.column?.name || ""}
               aria-label="Select column to filter on"
-              onSelectionChange={(keys) => {
-                const selectedColumn = _getColumnsForFilter().find(col => col.name === keys.currentKey);
+              onSelectionChange={(key) => {
+                const selectedColumn = _getColumnsForFilter().find(col => col.name === key);
                 setNewFilter({ ...newFilter, column: selectedColumn });
               }}
             >
               {_getColumnsForFilter().map((column) => (
-                <SelectItem
+                <AutocompleteItem
                   key={column.name}
                   textValue={column.name}
                 >
                   {column.name}
-                </SelectItem>
+                </AutocompleteItem>
               ))}
-            </Select>
+            </Autocomplete>
             <Select
               label="Operator"
               placeholder="Select operator"
@@ -1300,7 +1472,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
           <ModalFooter>
             <Button
               variant="bordered"
-              onPress={() => setViewFilter(false)}
+              onPress={() => { setViewFilter(false); setEditingFilter(null); setNewFilter({}); }}
             >
               Close
             </Button>
@@ -1309,40 +1481,39 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
               onPress={() => _onAddFilter(newFilter)}
               isDisabled={!newFilter.column || !newFilter.operator || !newFilter.value}
             >
-              Add
+              {editingFilter ? "Update" : "Add"}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={viewGroupBy} onClose={() => setViewGroupBy(false)} size="xl">
+      <Modal isOpen={viewGroupBy} onClose={() => { setViewGroupBy(false); setEditingGroupBy(null); setGroupByColumn(""); }} size="xl">
         <ModalContent>
           <ModalHeader>
-            <div className="font-bold">Group by</div>
+            <div className="font-bold">{editingGroupBy ? "Edit group by" : "Group by"}</div>
           </ModalHeader>
           <ModalBody>
-            <Select
-              placeholder="Select column"
+            <Autocomplete
+              placeholder="Search columns"
               variant="bordered"
-              selectedKeys={[groupByColumn?.name || ""]}
+              selectedKey={groupByColumn?.name || ""}
               aria-label="Select column to group by"
-              onSelectionChange={(keys) => setGroupByColumn(_getColumnsForFilter().find(col => col.name === keys.currentKey))}
-              selectionMode="single"
+              onSelectionChange={(key) => setGroupByColumn(_getColumnsForFilter().find(col => col.name === key))}
             >
               {_getColumnsForFilter().map((column) => (
-                <SelectItem
+                <AutocompleteItem
                   key={column.name}
                   textValue={column.name}
                 >
                   {column.name}
-                </SelectItem>
+                </AutocompleteItem>
               ))}
-            </Select>
+            </Autocomplete>
           </ModalBody>
           <ModalFooter>
             <Button
               variant="bordered"
-              onPress={() => setViewGroupBy(false)}
+              onPress={() => { setViewGroupBy(false); setEditingGroupBy(null); setGroupByColumn(""); }}
             >
               Close
             </Button>
@@ -1350,35 +1521,34 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
               color="primary"
               onPress={() => _onAddGroupBy()}
             >
-              Add
+              {editingGroupBy ? "Update" : "Add"}
             </Button>
           </ModalFooter>
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={viewOrderBy} onClose={() => setViewOrderBy(false)} size="xl">
+      <Modal isOpen={viewOrderBy} onClose={() => { setViewOrderBy(false); setEditingOrderBy(null); setOrderByColumn(""); setOrderByOrder("ASC"); }} size="xl">
         <ModalContent>
           <ModalHeader>
-            <div className="font-bold">Order by</div>
+            <div className="font-bold">{editingOrderBy ? "Edit order by" : "Order by"}</div>
           </ModalHeader>
           <ModalBody>
-            <Select
-              placeholder="Select column"
+            <Autocomplete
+              placeholder="Search columns"
               variant="bordered"
-              selectedKeys={[orderByColumn?.name || ""]}
-              selectionMode="single"
-              onSelectionChange={(keys) => setOrderByColumn(_getColumnsForFilter().find(col => col.name === keys.currentKey))}
+              selectedKey={orderByColumn?.name || ""}
+              onSelectionChange={(key) => setOrderByColumn(_getColumnsForFilter().find(col => col.name === key))}
               aria-label="Select column to order by"
             >
               {_getColumnsForFilter().map((column) => (
-                <SelectItem
+                <AutocompleteItem
                   key={column.name}
                   textValue={column.name}
                 >
                   {column.name}
-                </SelectItem>
+                </AutocompleteItem>
               ))}
-            </Select>
+            </Autocomplete>
             <RadioGroup
               label="Order"
               value={orderByOrder}
@@ -1391,7 +1561,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
           <ModalFooter>
             <Button
               variant="bordered"
-              onPress={() => setViewOrderBy(false)}
+              onPress={() => { setViewOrderBy(false); setEditingOrderBy(null); setOrderByColumn(""); setOrderByOrder("ASC"); }}
             >
               Close
             </Button>
@@ -1399,7 +1569,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
               color="primary"
               onPress={() => _onAddOrderBy()}
             >
-              Add
+              {editingOrderBy ? "Update" : "Add"}
             </Button>
           </ModalFooter>
         </ModalContent>

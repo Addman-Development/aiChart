@@ -611,7 +611,7 @@ class ChartController {
       .then((connection) => {
         if (connection.type === "mongodb") {
           return this.testMongoQuery(chart, projectId);
-        } else if (connection.type === "postgres") {
+        } else if (connection.type === "postgres" || connection.type === "mssql") {
           return this.getPostgresData(chart, projectId, connection);
         } else {
           return new Promise((resolve, reject) => reject("The connection type is not supported"));
@@ -663,7 +663,7 @@ class ChartController {
           return this.testQuery(chart, projectId);
         } else if (connection.type === "api") {
           return this.getApiChartData(chart, projectId);
-        } else if (connection.type === "postgres") {
+        } else if (connection.type === "postgres" || connection.type === "mssql") {
           return this.getPostgresData(chart, projectId, connection);
         } else {
           return new Promise((resolve, reject) => reject("The connection type is not supported"));

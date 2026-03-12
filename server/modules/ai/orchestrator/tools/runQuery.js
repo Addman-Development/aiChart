@@ -80,6 +80,13 @@ async function runQuery(payload) {
           false, // don't use cache
           limitedQuery
         );
+      } else if (dialect === "mssql") {
+        result = await connectionController.runMssql(
+          connection_id,
+          tempDataRequest,
+          false, // don't use cache
+          limitedQuery
+        );
       } else if (dialect === "mongodb") {
         result = await connectionController.runMongo(
           connection_id,

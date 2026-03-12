@@ -12,7 +12,10 @@
       "Bash(ls:*)",
       "Bash(curl:*)",
       "Bash(grep:*)",
-      "Bash(ls \"C:\\\\Users\\\\ali.bahar\\\\Documents\\\\gitHub\\\\aichart\\\\server\\\\modules\\\\ai\\\\generateMongoQuery.js\" 2>/dev/null; echo \"exit: $?\")"
+      "Bash(ls \"C:\\\\Users\\\\ali.bahar\\\\Documents\\\\gitHub\\\\aichart\\\\server\\\\modules\\\\ai\\\\generateMongoQuery.js\" 2>/dev/null; echo \"exit: $?\")",
+      "Bash(git log:*)",
+      "Bash(find /c/Users/ali.bahar/Documents/gitHub/aiChart/server -type f -name \"*.js\" 2>/dev/null | head -30)",
+      "Bash(find /c/Users/ali.bahar/Documents/gitHub/aiChart -path ./node_modules -prune -o -path ./migrations -prune -o -type f -name \"*.js\" -print 2>/dev/null | xargs grep -l \"mssql\\\\|sqlserver\\\\|sql server\\\\|tedious\\\\|microsoft sql\" 2>/dev/null | grep -v node_modules | grep -v migrations)"
     ]
   }
 }

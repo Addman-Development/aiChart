@@ -188,6 +188,10 @@ class RequestController {
           return this.connectionController.runPostgres(
             connection.id, originalDataRequest, getCache, processedQuery,
           );
+        } else if (connection.type === "mssql") {
+          return this.connectionController.runMssql(
+            connection.id, originalDataRequest, getCache, processedQuery,
+          );
         } else {
           return new Promise((resolve, reject) => reject(new Error("Invalid connection type")));
         }
@@ -242,7 +246,7 @@ class RequestController {
             const updatedConnection = await this.connectionController
               .updateMongoSchema(connection.id);
             schema = updatedConnection?.schema;
-          } else if (connection.type === "postgres") {
+          } else if (connection.type === "postgres" || connection.type === "mssql") {
             const dbConnection = await externalDbConnection(connection);
             schema = await this.connectionController.getSchema(dbConnection);
           }

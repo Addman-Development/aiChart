@@ -13,6 +13,7 @@ import { useTheme } from "../../modules/ThemeContext";
 import ApiConnectionForm from "./components/ApiConnectionForm";
 import MongoConnectionForm from "./components/MongoConnectionForm";
 import PostgresConnectionForm from "./components/PostgresConnectionForm";
+import MssqlConnectionForm from "./components/MssqlConnectionForm";
 import { addConnection, addFilesToConnection, getConnection, getTeamConnections, saveConnection, selectConnections } from "../../slices/connection";
 import HelpBanner from "../../components/HelpBanner";
 import { generateInviteUrl, selectTeam } from "../../slices/team";
@@ -287,6 +288,12 @@ function ConnectionWizard() {
           )}
           {selectedType === "postgres" && (
             <PostgresConnectionForm
+              onComplete={_onAddNewConnection}
+              editConnection={newConnection}
+            />
+          )}
+          {selectedType === "mssql" && (
+            <MssqlConnectionForm
               onComplete={_onAddNewConnection}
               editConnection={newConnection}
             />
