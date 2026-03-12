@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { nanoid } = require("nanoid");
+const busboy = require("connect-busboy");
 const _ = require("lodash");
 const jwt = require("jsonwebtoken");
 
@@ -147,7 +148,7 @@ module.exports = (app) => {
   /*
   ** Route to update a project's Logo
   */
-  app.post("/project/:id/logo", verifyToken, checkPermissions("updateOwn"), (req, res) => {
+  app.post("/project/:id/logo", verifyToken, checkPermissions("updateOwn"), busboy(), (req, res) => {
     let logoPath;
 
     req.pipe(req.busboy);

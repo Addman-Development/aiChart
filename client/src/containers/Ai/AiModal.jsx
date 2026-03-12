@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useRef } from "react"
 import PropTypes from "prop-types"
 import { Modal, ModalContent, ModalBody, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
-import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard } from "react-icons/lu"
+import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useParams } from "react-router";
 
-import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, getAiUsage } from "../../api/ai";
+import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage } from "../../api/ai";
 import { selectTeam } from "../../slices/team";
 import { selectUser } from "../../slices/user";
 import { getChart, moveChartToDashboard } from "../../slices/chart";
@@ -65,6 +65,8 @@ function AiModal({ isOpen, onClose }) {
   const [contextSearch, setContextSearch] = useState("");
   const [isContextPopoverOpen, setIsContextPopoverOpen] = useState(false);
   const [isSecondContextPopoverOpen, setIsSecondContextPopoverOpen] = useState(false);
+  const [renamingConversationId, setRenamingConversationId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
 
   const params = useParams();
   const team = useSelector(selectTeam);
@@ -530,6 +532,40 @@ function AiModal({ isOpen, onClose }) {
 
       // Reload conversations list
       await loadConversations();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const _onStartRename = (conv) => {
+    setRenamingConversationId(conv.id);
+    setRenameValue(conv.title);
+  };
+
+  const _onCancelRename = () => {
+    setRenamingConversationId(null);
+    setRenameValue("");
+  };
+
+  const _onConfirmRename = async (conversationId) => {
+    if (!renameValue.trim()) {
+      _onCancelRename();
+      return;
+    }
+
+    try {
+      await renameAiConversation(conversationId, team.id, renameValue.trim());
+      toast.success("Conversation renamed");
+
+      // Update local state
+      setConversations((prev) =>
+        prev.map((c) => c.id === conversationId ? { ...c, title: renameValue.trim() } : c)
+      );
+      if (conversation?.id === conversationId) {
+        setConversation((prev) => ({ ...prev, title: renameValue.trim() }));
+      }
+
+      _onCancelRename();
     } catch (error) {
       toast.error(error.message);
     }
@@ -1549,7 +1585,29 @@ function AiModal({ isOpen, onClose }) {
                         {conv.source === "slack" ? <LuSlack size={16} /> : <LuMessageSquare size={16} />}
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
-                        <div className="text-sm text-foreground font-medium">{conv.title}</div>
+                        {renamingConversationId === conv.id ? (
+                          <div className="flex flex-row items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              size="sm"
+                              value={renameValue}
+                              onValueChange={setRenameValue}
+                              autoFocus
+                              classNames={{ inputWrapper: "h-7" }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") _onConfirmRename(conv.id);
+                                if (e.key === "Escape") _onCancelRename();
+                              }}
+                            />
+                            <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(conv.id)}>
+                              <LuCheck size={14} />
+                            </Button>
+                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
+                              <LuX size={14} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-foreground font-medium">{conv.title}</div>
+                        )}
                         <div className="flex flex-row items-center gap-3 text-xs text-foreground-500">
                           <div className="flex items-center gap-1">
                             <LuClock size={12} />
@@ -1571,7 +1629,10 @@ function AiModal({ isOpen, onClose }) {
                             </Button>
                           </DropdownTrigger>
                           <DropdownMenu>
-                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conv.id)} startContent={<LuTrash2 size={16} />}>
+                            <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conv)} startContent={<LuPencil size={16} />}>
+                              Rename conversation
+                            </DropdownItem>
+                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conv.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                               Delete conversation
                             </DropdownItem>
                           </DropdownMenu>
@@ -1629,7 +1690,29 @@ function AiModal({ isOpen, onClose }) {
                           {c.source === "slack" ? <LuSlack size={14} /> : <LuMessageSquare size={14} />}
                         </div>
                         <div className="flex flex-col gap-1 flex-1 min-w-0">
-                          <div className="text-sm text-foreground truncate pr-6">{c.title}</div>
+                          {renamingConversationId === c.id ? (
+                            <div className="flex flex-row items-center gap-1 pr-6" onClick={(e) => e.stopPropagation()}>
+                              <Input
+                                size="sm"
+                                value={renameValue}
+                                onValueChange={setRenameValue}
+                                autoFocus
+                                classNames={{ inputWrapper: "h-7" }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") _onConfirmRename(c.id);
+                                  if (e.key === "Escape") _onCancelRename();
+                                }}
+                              />
+                              <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(c.id)}>
+                                <LuCheck size={14} />
+                              </Button>
+                              <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
+                                <LuX size={14} />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-foreground truncate pr-6">{c.title}</div>
+                          )}
                           <div className="flex flex-col gap-1">
                             <div className="text-xs text-foreground-500 flex items-center gap-1">
                               <LuClock size={10} />
@@ -1651,7 +1734,10 @@ function AiModal({ isOpen, onClose }) {
                               </Button>
                             </DropdownTrigger>
                             <DropdownMenu>
-                              <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(c.id)} startContent={<LuTrash2 size={16} />}>
+                              <DropdownItem key="rename_conversation" onPress={() => _onStartRename(c)} startContent={<LuPencil size={16} />}>
+                                Rename conversation
+                              </DropdownItem>
+                              <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(c.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                                 Delete conversation
                               </DropdownItem>
                             </DropdownMenu>
@@ -1686,19 +1772,46 @@ function AiModal({ isOpen, onClose }) {
                     />
                     <div className="flex flex-col gap-1 flex-1">
                       <div className="flex flex-row items-center gap-2">
-                        <div className="text-md text-foreground font-medium">{conversation.title}</div>
-                        <Dropdown>
-                          <DropdownTrigger>
-                            <Button isIconOnly size="sm" variant="light">
-                              <LuEllipsis size={16} />
+                        {renamingConversationId === conversation.id ? (
+                          <div className="flex flex-row items-center gap-1 flex-1">
+                            <Input
+                              size="sm"
+                              value={renameValue}
+                              onValueChange={setRenameValue}
+                              autoFocus
+                              classNames={{ inputWrapper: "h-8" }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") _onConfirmRename(conversation.id);
+                                if (e.key === "Escape") _onCancelRename();
+                              }}
+                            />
+                            <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(conversation.id)}>
+                              <LuCheck size={14} />
                             </Button>
-                          </DropdownTrigger>
-                          <DropdownMenu>
-                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conversation.id)} startContent={<LuTrash2 size={16} />}>
-                              Delete conversation
-                            </DropdownItem>
-                          </DropdownMenu>
-                        </Dropdown>
+                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
+                              <LuX size={14} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-md text-foreground font-medium">{conversation.title}</div>
+                            <Dropdown>
+                              <DropdownTrigger>
+                                <Button isIconOnly size="sm" variant="light">
+                                  <LuEllipsis size={16} />
+                                </Button>
+                              </DropdownTrigger>
+                              <DropdownMenu>
+                                <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conversation)} startContent={<LuPencil size={16} />}>
+                                  Rename conversation
+                                </DropdownItem>
+                                <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conversation.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
+                                  Delete conversation
+                                </DropdownItem>
+                              </DropdownMenu>
+                            </Dropdown>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-row items-center gap-3 text-xs text-foreground-500">
                         <div className="flex items-center gap-1">

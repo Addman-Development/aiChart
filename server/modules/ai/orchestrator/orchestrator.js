@@ -82,14 +82,14 @@ async function availableTools() {
     },
     {
       name: "generate_query",
-      description: "Generate SQL queries from natural language for supported database connections (MySQL, PostgreSQL, MongoDB).",
+      description: "Generate queries from natural language for supported database connections (PostgreSQL, MongoDB). For PostgreSQL generates SQL. For MongoDB generates Mongoose method chains like collection('name').find({}).sort({}) — never raw aggregation arrays.",
       parameters: {
         type: "object",
         properties: {
           question: { type: "string" },
           schema: { type: "object" }, // database schema from get_schema
           hints: { type: "object" }, // optional project-level entity hints
-          preferred_dialect: { type: "string", enum: ["postgres", "mysql", "mongodb"] } // supported database types
+          preferred_dialect: { type: "string", enum: ["postgres", "mongodb"] } // supported database types
         },
         required: ["question"]
       }
@@ -116,12 +116,12 @@ async function availableTools() {
     },
     {
       name: "run_query",
-      description: "Execute SQL queries on supported database connections (MySQL, PostgreSQL, MongoDB) with guardrails.",
+      description: "Execute queries on supported database connections (PostgreSQL, MongoDB) with guardrails. For PostgreSQL use standard SQL. For MongoDB the query must be a Mongoose method chain WITHOUT 'db.' prefix — e.g. collection('myCollection').find({}).sort({createdAt:-1}) or collection('myCollection').aggregate([{$group:{_id:'$status',count:{$sum:1}}}]). Do NOT use raw arrays like [{$match:...}].",
       parameters: {
         type: "object",
         properties: {
           connection_id: { type: "string" },
-          dialect: { type: "string", enum: ["mysql", "postgres", "mongodb"] },
+          dialect: { type: "string", enum: ["postgres", "mongodb"] },
           query: { type: "string" },
           params: { type: "object" },
           row_limit: { type: "integer", default: 1000 },

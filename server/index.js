@@ -48,10 +48,10 @@ app.settings = settings;
 
 app.set("trust proxy", 1);
 
-app.use(busboy());
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }
+app.use(cors());
 app.use(cookieParser());
 app.use(urlencoded({
   extended: true,
@@ -65,6 +65,7 @@ app.use(urlencoded({
 }));
 app.set("query parser", "simple");
 app.use(json({
+  limit: "5mb",
   verify: (req, res, buf, encoding) => {
     // Save raw body for Slack signature verification (JSON requests)
     if (req.headers["content-type"]?.includes("application/json")) {
@@ -78,7 +79,6 @@ app.use(helmet({
   crossOriginResourcePolicy: false,
 }));
 // app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
-app.use(cors());
 //---------------------------------------
 
 app.get("/", (req, res) => {

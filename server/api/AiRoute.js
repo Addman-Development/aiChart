@@ -6,6 +6,7 @@ const {
   getConversations,
   getConversation,
   deleteConversation,
+  renameConversation,
   getAiUsage
 } = require("../controllers/AiController");
 const verifyToken = require("../modules/verifyToken");
@@ -22,14 +23,14 @@ const checkAccess = async (req, res, next) => {
   const teamId = req.body?.teamId || req.query?.teamId || req.params?.teamId;
 
   if (!teamId) {
-    res.status(400).json({ error: "teamId is required" });
+    return res.status(400).json({ error: "teamId is required" });
   }
 
   const teamController = new TeamController();
   const teamRole = await teamController.getTeamRole(teamId, req.user.id);
 
   if (!teamRole?.role || !["teamOwner", "teamAdmin"].includes(teamRole.role)) {
-    res.status(403).json({ error: "Access denied" });
+    return res.status(403).json({ error: "Access denied" });
   }
 
   next();
@@ -126,6 +127,27 @@ module.exports = (app) => {
 
     try {
       const result = await deleteConversation(conversationId, teamId);
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Rename a conversation
+  app.patch("/ai/conversations/:conversationId", apiLimiter(10), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId } = req.params;
+    const { teamId, title } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "title is required" });
+    }
+
+    try {
+      const result = await renameConversation(conversationId, teamId, title.trim());
       return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: error.message });

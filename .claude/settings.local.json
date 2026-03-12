@@ -11,7 +11,8 @@
       "Bash(grep \"\"dev\"\":*)",
       "Bash(ls:*)",
       "Bash(curl:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ls \"C:\\\\Users\\\\ali.bahar\\\\Documents\\\\gitHub\\\\aichart\\\\server\\\\modules\\\\ai\\\\generateMongoQuery.js\" 2>/dev/null; echo \"exit: $?\")"
     ]
   }
 }

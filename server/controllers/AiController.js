@@ -380,11 +380,29 @@ async function getAiUsage(teamId, startDate, endDate) {
   }
 }
 
+async function renameConversation(conversationId, teamId, title) {
+  const conversation = await db.AiConversation.findOne({
+    where: {
+      id: conversationId,
+      team_id: teamId,
+    },
+  });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  await conversation.update({ title });
+
+  return { success: true, title };
+}
+
 module.exports = {
   getOrchestration,
   getAvailableTools,
   getConversations,
   getConversation,
   deleteConversation,
+  renameConversation,
   getAiUsage,
 };

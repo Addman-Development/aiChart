@@ -1,10 +1,10 @@
 const { generateSqlQuery } = require("../../generateSqlQuery");
+const { generateMongoQuery } = require("../../generateMongoQuery");
 
 async function generateQuery(payload) {
   const {
     question, schema, preferred_dialect
   } = payload;
-  // hints could be used for entity-level hints in the future
 
   if (!global.openaiClient) {
     return {
@@ -14,13 +14,39 @@ async function generateQuery(payload) {
   }
 
   try {
-    // For database connections, use SQL generation
-    // Validate schema input (make optional for robustness)
     if (schema && typeof schema !== "object") {
       throw new Error("Schema must be a valid object if provided");
     }
 
-    // If no schema provided, create a minimal one (AI should provide schema)
+    if (preferred_dialect === "mongodb") {
+      const result = await generateMongoQuery(schema, question, []);
+
+      if (!result || !result.query || result.query.trim() === "") {
+        throw new Error("Query generation failed - no query returned");
+      }
+
+      // Validate no destructive operations
+      const mongoForbidden = ["deleteMany", "deleteOne", "drop", "remove", "insertOne", "insertMany", "updateOne", "updateMany", "replaceOne"];
+      const hasForbidden = mongoForbidden.some((op) => result.query.includes(`.${op}(`));
+      if (hasForbidden) {
+        return {
+          status: "unsupported",
+          message: "Generated query contains forbidden operations (only read queries are allowed)",
+          query: result.query,
+        };
+      }
+
+      return {
+        status: "ok",
+        dialect: preferred_dialect,
+        query: result.query,
+        rationale: {
+          message: "MongoDB query generated successfully",
+        },
+      };
+    }
+
+    // SQL path (postgres)
     const effectiveSchema = schema || {
       tables: ["User"],
       description: {
@@ -33,19 +59,15 @@ async function generateQuery(payload) {
       }
     };
 
-    // Use the existing SQL generation module
     const result = await generateSqlQuery(effectiveSchema, question, []);
 
-    // Check if query generation succeeded
     if (!result || !result.query || result.query.trim() === "") {
       throw new Error("Query generation failed - no query returned");
     }
 
-    // Basic validation: check for forbidden keywords (whole words only)
     const forbiddenKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "TRUNCATE", "ALTER", "CREATE"];
     const upperQuery = result.query.toUpperCase();
     const hasForbiddenKeyword = forbiddenKeywords.some((keyword) => {
-      // Use word boundaries to avoid false positives
       const regex = new RegExp(`\\b${keyword}\\b`, "i");
       return regex.test(upperQuery);
     });

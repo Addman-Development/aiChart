@@ -12,26 +12,40 @@ async function runQuery(payload) {
     throw new Error("team_id is required to run queries");
   }
 
-  // Validate that the query is read-only (whole words only)
-  const forbiddenKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "TRUNCATE", "ALTER", "CREATE"];
-  const upperQuery = query.toUpperCase();
-  const hasForbiddenKeyword = forbiddenKeywords.some((keyword) => {
-    // Use word boundaries to avoid false positives
-    const regex = new RegExp(`\\b${keyword}\\b`, "i");
-    return regex.test(upperQuery);
-  });
-
-  if (hasForbiddenKeyword) {
-    throw new Error("Only read-only queries (SELECT) are allowed");
-  }
-
   try {
     const startTime = Date.now();
 
-    // Add LIMIT clause if not present to respect row_limit
     let limitedQuery = query.trim();
-    if (!upperQuery.includes("LIMIT") && dialect === "postgres") {
-      limitedQuery = `${limitedQuery.replace(/;$/, "")} LIMIT ${row_limit}`;
+
+    if (dialect === "mongodb") {
+      // For MongoDB, validate no destructive operations
+      const mongoForbidden = ["deleteMany", "deleteOne", "drop", "remove", "insertOne", "insertMany", "updateOne", "updateMany", "replaceOne"];
+      const hasForbidden = mongoForbidden.some((op) => limitedQuery.includes(`.${op}(`));
+      if (hasForbidden) {
+        throw new Error("Only read-only queries (find, aggregate) are allowed for MongoDB");
+      }
+
+      // Add .limit() if not already present (skip for aggregate queries)
+      if (!limitedQuery.includes(".limit(") && !limitedQuery.includes(".aggregate(")) {
+        limitedQuery = `${limitedQuery}.limit(${row_limit})`;
+      }
+    } else {
+      // SQL validation - read-only check
+      const forbiddenKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "TRUNCATE", "ALTER", "CREATE"];
+      const upperQuery = query.toUpperCase();
+      const hasForbiddenKeyword = forbiddenKeywords.some((keyword) => {
+        const regex = new RegExp(`\\b${keyword}\\b`, "i");
+        return regex.test(upperQuery);
+      });
+
+      if (hasForbiddenKeyword) {
+        throw new Error("Only read-only queries (SELECT) are allowed");
+      }
+
+      // Add LIMIT clause for SQL if not present
+      if (!upperQuery.includes("LIMIT")) {
+        limitedQuery = `${limitedQuery.replace(/;$/, "")} LIMIT ${row_limit}`;
+      }
     }
 
     // Create a temporary Dataset and DataRequest for proper database relationships
