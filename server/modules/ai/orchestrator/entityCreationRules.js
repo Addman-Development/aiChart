@@ -23,6 +23,7 @@ const ENTITY_CREATION_RULES = `## Entity Creation Rules
 **Supported Connection Types and Subtypes:**
 - MySQL: mysql, rdsMysql
 - PostgreSQL: postgres, timescaledb, supabasedb, rdsPostgres
+- SQL Server: mssql
 - MongoDB: mongodb
 
 **DataRequest:**
@@ -33,7 +34,7 @@ const ENTITY_CREATION_RULES = `## Entity Creation Rules
 - variables: array - parameterized query variables (default: [])
 - transform: object - data transformation rules (optional)
 
-Note: Currently only MySQL, PostgreSQL, and MongoDB connections are supported. API connections will be available in future updates.
+Note: Currently only MySQL, PostgreSQL, SQL Server (MSSQL), and MongoDB connections are supported. API connections will be available in future updates.
 
 **Chart:**
 - Required: project_id, dataset_id
@@ -99,6 +100,10 @@ const SUPPORTED_CONNECTIONS = {
     subtypes: ["postgres", "timescaledb", "supabasedb", "rdsPostgres"],
     description: "PostgreSQL database connections including TimescaleDB, Supabase, and Amazon RDS PostgreSQL"
   },
+  mssql: {
+    subtypes: ["mssql"],
+    description: "Microsoft SQL Server database connections"
+  },
   mongodb: {
     subtypes: ["mongodb"],
     description: "MongoDB NoSQL database connections"
@@ -129,7 +134,7 @@ const FIELD_SPECS = {
       variables: [],
       transform: null
     },
-    description: "Define how to fetch data from supported database connections (MySQL, PostgreSQL, MongoDB)"
+    description: "Define how to fetch data from supported database connections (MySQL, PostgreSQL, SQL Server, MongoDB)"
   },
 
   Chart: {

@@ -51,7 +51,7 @@ async function availableTools() {
   return [
     {
       name: "list_connections",
-      description: "List supported database connections (MySQL, PostgreSQL, MongoDB) available to the project/user context.",
+      description: "List supported database connections (MySQL, PostgreSQL, SQL Server, MongoDB) available to the project/user context.",
       parameters: {
         type: "object",
         properties: {
@@ -64,7 +64,7 @@ async function availableTools() {
     },
     {
       name: "get_schema",
-      description: "Get database schema information for supported connections (MySQL, PostgreSQL, MongoDB).",
+      description: "Get database schema information for supported connections (MySQL, PostgreSQL, SQL Server, MongoDB).",
       parameters: {
         type: "object",
         properties: {
@@ -455,7 +455,7 @@ async function callTool(name, payload) {
   }
 }
 
-function buildSystemPrompt(semanticLayer, conversation = null) {
+function buildSystemPrompt(semanticLayer, conversation = null, context = null) {
   const { connections, projects, chartCatalog } = semanticLayer;
 
   const isNewConversation = !conversation || conversation.message_count === 0;
@@ -470,15 +470,29 @@ The title should be actionable and descriptive based on the user's question.`
     : `\n## Current Conversation
 This is a continuing conversation. Be aware of previous interactions and maintain context.`;
 
+  // Filter connections to only those selected in context (if any connection entities are provided)
+  const supportedTypes = ["mysql", "postgres", "mongodb", "mssql"];
+  const contextConnectionIds = context?.filter((e) => e.entity_type === "connection").map((e) => e.id) || [];
+  let availableConnections = connections.filter((c) => supportedTypes.includes(c.type));
+  if (contextConnectionIds.length > 0) {
+    availableConnections = availableConnections.filter((c) => contextConnectionIds.includes(c.id));
+  }
+
+  const connectionScopeNote = contextConnectionIds.length > 0
+    ? "\nNote: The user has scoped this conversation to the connections listed above. Only use these connections."
+    : "";
+
   return `You are an AI assistant for ADDMAN-SmartChart, a data visualization platform. Your role is to help users query their data and create charts.${conversationContext}
 
 ## Available Connections
-${connections.filter((c) => ["mysql", "postgres", "mongodb"].includes(c.type)).map((c) => `- ${c.name} (${c.type}${c.subType ? `/${c.subType}` : ""}) [ID: ${c.id}]`).join("\n")}
+${availableConnections.map((c) => `- ${c.name} (${c.type}${c.subType ? `/${c.subType}` : ""}) [ID: ${c.id}]`).join("\n")}
+${connectionScopeNote}
 
 Note: Currently only the following database connections are supported:
 - MySQL: Standard MySQL and Amazon RDS MySQL
 - PostgreSQL: Standard PostgreSQL, TimescaleDB, Supabase, and Amazon RDS PostgreSQL
 - MongoDB: Standard MongoDB
+- SQL Server: Microsoft SQL Server (MSSQL)
 
 API connections and other sources will be available in future updates.
 
@@ -492,6 +506,7 @@ ${chartCatalog.map((catalog) => Object.entries(catalog).map(([type, info]) => `-
 1. **Connections**: Store database credentials and schemas. Currently supported:
    - **MySQL connections**: SQL databases with tables/columns
    - **PostgreSQL connections**: SQL databases with tables/columns
+   - **SQL Server (MSSQL) connections**: SQL databases with tables/columns
    - **MongoDB connections**: NoSQL databases with collections/documents
    - *API connections and other sources will be available in future updates*
 2. **DataRequests**: Define how to fetch data using SQL queries
@@ -502,7 +517,7 @@ ${chartCatalog.map((catalog) => Object.entries(catalog).map(([type, info]) => `-
 ${ENTITY_CREATION_RULES}
 
 ## Your Capabilities
-- List and identify appropriate database connections (MySQL, PostgreSQL, MongoDB only)
+- List and identify appropriate database connections (MySQL, PostgreSQL, SQL Server, MongoDB only)
 - Retrieve database schemas with tables, columns, and sample data
 - Generate SQL queries from natural language for supported databases
 - Execute database queries and summarize results
@@ -522,13 +537,13 @@ ${ENTITY_CREATION_RULES}
 - **Only ask questions when**: Context is truly ambiguous, multiple valid options exist with no clear preference, or you need clarification on user intent.
 
 ## Limitations
-**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. ADDMAN-SmartChart visualizes data from connected databases. Connect MySQL, PostgreSQL, or MongoDB via the Connections page."
+**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. ADDMAN-SmartChart visualizes data from connected databases. Connect MySQL, PostgreSQL, SQL Server, or MongoDB via the Connections page."
 
 ## Workflow Guidelines
 1. When a user asks a data question:
    - If they request data generation, fake data, manual input, or unsupported sources: Use the Limitations response above. Do not proceed.
-   - Check if they have supported database connections (MySQL, PostgreSQL, MongoDB)
-   - If they request unsupported sources (APIs, Firebase, etc.): Briefly state only MySQL, PostgreSQL, and MongoDB are supported. API/other sources coming soon.
+   - Check if they have supported database connections (MySQL, PostgreSQL, SQL Server, MongoDB)
+   - If they request unsupported sources (APIs, Firebase, etc.): Briefly state only MySQL, PostgreSQL, SQL Server, and MongoDB are supported. API/other sources coming soon.
    - For supported database connections:
      * Call get_schema to get database schema information
      * Call generate_query with the schema to generate SQL queries
@@ -982,7 +997,7 @@ async function orchestrate(
     };
   }
 
-  const systemPrompt = buildSystemPrompt(semanticLayer, conversation);
+  const systemPrompt = buildSystemPrompt(semanticLayer, conversation, context);
 
   // Prepare messages
   const messages = [

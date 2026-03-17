@@ -48,6 +48,16 @@ const operations = [
     name: "not contains",
     operator: "NOT LIKE",
     types: ["CHAR", "VARCHAR", "TEXT"]
+  },
+  {
+    name: "is null",
+    operator: "IS",
+    types: ["TINYINT", "SMALLINT", "INT", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "BOOLEAN", "CHAR", "VARCHAR", "TEXT", "DATE", "TIME", "DATETIME", "TIMESTAMP"]
+  },
+  {
+    name: "is not null",
+    operator: "IS NOT",
+    types: ["TINYINT", "SMALLINT", "INT", "BIGINT", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL", "BOOLEAN", "CHAR", "VARCHAR", "TEXT", "DATE", "TIME", "DATETIME", "TIMESTAMP"]
   }
 ];
 
@@ -191,6 +201,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
   const [viewJoin, setViewJoin] = useState(false);
   const [viewAddColumn, setViewAddColumn] = useState(false);
   const [selectedColumns, setSelectedColumns] = useState([]);
+  const [columnSearch, setColumnSearch] = useState("");
   const [viewFilter, setViewFilter] = useState(false);
   const [editingFilter, setEditingFilter] = useState(null); // tracks condition being edited
   const [newFilter, setNewFilter] = useState({
@@ -619,8 +630,10 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     const fullColName = tableName ? `${tableName}.${colName}` : colName;
     const columnObj = _getColumnsForFilter().find(col => col.name === fullColName);
 
+    const isNullOp = condition.operator === "IS" || condition.operator === "IS NOT";
+
     // Resolve value — check if it's a variable placeholder
-    let value = condition.right?.value;
+    let value = isNullOp ? "" : condition.right?.value;
     if (typeof value === "string" && value.startsWith("__VAR_")) {
       const varIndex = parseInt(value.replace("__VAR_", "").replace("__", ""), 10);
       const variable = variables.find(v => v.index === varIndex);
@@ -635,7 +648,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
     setNewFilter({
       column: columnObj || { name: fullColName },
       operator: condition.operator,
-      value: value != null ? String(value) : "",
+      value: isNullOp ? "" : (value != null ? String(value) : ""),
     });
     setViewFilter(true);
   };
@@ -647,44 +660,46 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
       workingAst = { ...ast, where: _removeConditionFromWhere(ast.where, editingFilter) };
     }
 
+    const isNullOp = newFilter.operator === "IS" || newFilter.operator === "IS NOT";
+
     let conditionValue = newFilter.value;
     let valueType = _determineValueTypeFromSchema(newFilter.column.name);
-
-    // Check if the value is a variable placeholder
-    const variableRegex = /^\{\{([^}]+)\}\}$/;
-    const isVariable = variableRegex.test(conditionValue);
-
     let updatedVariables = variables;
 
-    if (isVariable) {
-      // Check if this variable already exists
-      const existingVariable = variables.find(v => v.placeholder === conditionValue);
+    if (isNullOp) {
+      conditionValue = null;
+      valueType = "null";
+    } else {
+      // Check if the value is a variable placeholder
+      const variableRegex = /^\{\{([^}]+)\}\}$/;
+      const isVariable = variableRegex.test(conditionValue);
 
-      if (existingVariable) {
-        // Use existing variable's placeholder
-        conditionValue = `__VAR_${existingVariable.index}__`;
-        valueType = type === "mysql" ? "double_quote_string" : "single_quote_string";
-        updatedVariables = variables;
-      } else {
-        // For new variables, use the next available index
-        const maxIndex = variables.length > 0 ? Math.max(...variables.map(v => v.index)) : -1;
-        const variableIndex = maxIndex + 1;
+      if (isVariable) {
+        // Check if this variable already exists
+        const existingVariable = variables.find(v => v.placeholder === conditionValue);
 
-        // Add the variable to our variables array
-        const newVariable = {
-          placeholder: conditionValue,
-          variable: conditionValue.slice(2, -2).trim(), // Remove {{ and }}
-          index: variableIndex
-        };
-        updatedVariables = [...variables, newVariable];
-        setVariables(updatedVariables);
+        if (existingVariable) {
+          conditionValue = `__VAR_${existingVariable.index}__`;
+          valueType = type === "mysql" ? "double_quote_string" : "single_quote_string";
+          updatedVariables = variables;
+        } else {
+          const maxIndex = variables.length > 0 ? Math.max(...variables.map(v => v.index)) : -1;
+          const variableIndex = maxIndex + 1;
 
-        // Use a quoted placeholder as the value (consistent with preprocessing)
-        conditionValue = `__VAR_${variableIndex}__`;
-        valueType = type === "mysql" ? "double_quote_string" : "single_quote_string";
+          const newVariable = {
+            placeholder: conditionValue,
+            variable: conditionValue.slice(2, -2).trim(),
+            index: variableIndex
+          };
+          updatedVariables = [...variables, newVariable];
+          setVariables(updatedVariables);
+
+          conditionValue = `__VAR_${variableIndex}__`;
+          valueType = type === "mysql" ? "double_quote_string" : "single_quote_string";
+        }
+      } else if (newFilter.operator === "LIKE" || newFilter.operator === "NOT LIKE") {
+        conditionValue = `%${conditionValue}%`;
       }
-    } else if (newFilter.operator === "LIKE" || newFilter.operator === "NOT LIKE") {
-      conditionValue = `%${conditionValue}%`;
     }
 
     const newFilterCondition = {
@@ -1147,14 +1162,25 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
           >
             {condition.operator}
           </Button>
-          <Button
-            size="sm"
-            color="primary"
-            variant="flat"
-            onPress={() => _onEditFilter(condition)}
-          >
-            {condition.right?.value}
-          </Button>
+          {(condition.right?.type === "null" || condition.right?.value === null) ? (
+            <Button
+              size="sm"
+              variant="flat"
+              onPress={() => _onEditFilter(condition)}
+              className="font-bold text-purple-600"
+            >
+              NULL
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              color="primary"
+              variant="flat"
+              onPress={() => _onEditFilter(condition)}
+            >
+              {condition.right?.value}
+            </Button>
+          )}
           <Button
             isIconOnly
             size="sm"
@@ -1359,12 +1385,22 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
         </ModalContent>
       </Modal>
 
-      <Modal isOpen={viewAddColumn} onClose={() => setViewAddColumn(false)} size="xl">
+      <Modal isOpen={viewAddColumn} onClose={() => { setViewAddColumn(false); setColumnSearch(""); }} size="xl">
         <ModalContent>
           <ModalHeader>
             <div className="font-bold">Add column</div>
           </ModalHeader>
           <ModalBody>
+            <Input
+              placeholder="Search columns..."
+              variant="bordered"
+              size="sm"
+              value={columnSearch}
+              onValueChange={setColumnSearch}
+              isClearable
+              onClear={() => setColumnSearch("")}
+              className="mb-2"
+            />
             <Select
               placeholder="Select column"
               variant="bordered"
@@ -1374,7 +1410,9 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
               disallowEmptySelection
               selectionMode="multiple"
             >
-              {_getAvailableColumns().map((column) => (
+              {_getAvailableColumns()
+                .filter((column) => !columnSearch || column.toLowerCase().includes(columnSearch.toLowerCase()))
+                .map((column) => (
                 <SelectItem
                   key={column}
                   textValue={column}
@@ -1460,14 +1498,22 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
                 </SelectItem>
               ))}
             </Select>
-            <Input
-              label="Value"
-              placeholder="Enter value or {{variable_name}}"
-              variant="bordered"
-              value={newFilter.value}
-              onChange={(e) => setNewFilter({ ...newFilter, value: e.target.value })}
-              description="You can use variables like {{variable_name}} as values"
-            />
+            {newFilter.operator !== "IS" && newFilter.operator !== "IS NOT" && (
+              <Input
+                label="Value"
+                placeholder="Enter value or {{variable_name}}"
+                variant="bordered"
+                value={newFilter.value}
+                onChange={(e) => setNewFilter({ ...newFilter, value: e.target.value })}
+                description="You can use variables like {{variable_name}} as values"
+              />
+            )}
+            {(newFilter.operator === "IS" || newFilter.operator === "IS NOT") && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-content2">
+                <span className="text-sm text-default-500">Value:</span>
+                <span className="font-bold text-purple-600">NULL</span>
+              </div>
+            )}
           </ModalBody>
           <ModalFooter>
             <Button
@@ -1479,7 +1525,7 @@ function VisualSQL({ schema, query, updateQuery, type, onVariableClick }) {
             <Button
               color="primary"
               onPress={() => _onAddFilter(newFilter)}
-              isDisabled={!newFilter.column || !newFilter.operator || !newFilter.value}
+              isDisabled={!newFilter.column || !newFilter.operator || (!newFilter.value && newFilter.operator !== "IS" && newFilter.operator !== "IS NOT")}
             >
               {editingFilter ? "Update" : "Add"}
             </Button>
