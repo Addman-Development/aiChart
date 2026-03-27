@@ -3,6 +3,7 @@ FROM oven/bun:1 AS base
 WORKDIR /code
 COPY . .
 
+RUN sed -i 's/\r$//' entrypoint.sh && chmod +x entrypoint.sh
 RUN cd client && bun install && cd ../server && bun install
 RUN cd client && bun run build
 

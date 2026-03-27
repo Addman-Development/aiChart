@@ -1,6 +1,6 @@
 services:
   aichart:
-    image: dockerdude63/smart-chart:latest
+    image: addmangroup/smart-chart:latest
     container_name: smart-chart
     build: .
     restart: unless-stopped
@@ -9,4 +9,4 @@ services:
       - 4018:4018 # Frontend
       - 4019:4019 # API
 
-# docker buildx build --push -t dockerdude63/smart-chart:latest .
+# docker buildx build --push -t addmangroup/smart-chart:latest .

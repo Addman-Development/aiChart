@@ -6,6 +6,7 @@ const db = require("../models/models");
 const { generateSqlQuery } = require("../modules/ai/generateSqlQuery");
 const { generateMongoQuery } = require("../modules/ai/generateMongoQuery");
 const externalDbConnection = require("../modules/externalDbConnection");
+const moment = require("moment");
 const { applyTransformation } = require("../modules/dataTransformations");
 const { applyVariables } = require("../modules/applyVariables");
 
@@ -153,10 +154,21 @@ class RequestController {
       })
       .then((dataset) => {
         gDataset = dataset;
+
+        // Inject fallback start_date/end_date (last 7 days) when the query
+        // uses these variables but no values were provided by the caller
+        const runtimeVars = { ...variables };
+        if (dataRequest.query && dataRequest.query.includes("{{start_date}}") && !runtimeVars.start_date) {
+          runtimeVars.start_date = moment().subtract(7, "days").startOf("day").toISOString();
+        }
+        if (dataRequest.query && dataRequest.query.includes("{{end_date}}") && !runtimeVars.end_date) {
+          runtimeVars.end_date = moment().endOf("day").toISOString();
+        }
+
         const {
           dataRequest: originalDataRequest,
           processedQuery,
-        } = applyVariables(dataRequest, variables);
+        } = applyVariables(dataRequest, runtimeVars);
 
         // go through all data requests
         const connection = originalDataRequest.Connection;

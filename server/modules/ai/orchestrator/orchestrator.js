@@ -82,14 +82,15 @@ async function availableTools() {
     },
     {
       name: "generate_query",
-      description: "Generate queries from natural language for supported database connections (PostgreSQL, MongoDB). For PostgreSQL generates SQL. For MongoDB generates Mongoose method chains like collection('name').find({}).sort({}) — never raw aggregation arrays.",
+      description: "Generate queries from natural language for supported database connections (PostgreSQL, MongoDB). For PostgreSQL generates SQL. For MongoDB generates Mongoose method chains like collection('name').find({}).sort({}) — never raw aggregation arrays. When modifying an existing query, ALWAYS pass the current_query parameter so the generator preserves existing structure.",
       parameters: {
         type: "object",
         properties: {
           question: { type: "string" },
           schema: { type: "object" }, // database schema from get_schema
           hints: { type: "object" }, // optional project-level entity hints
-          preferred_dialect: { type: "string", enum: ["postgres", "mongodb"] } // supported database types
+          preferred_dialect: { type: "string", enum: ["postgres", "mongodb"] }, // supported database types
+          current_query: { type: "string", description: "The existing query to use as base when making modifications. The generator will preserve all existing structure and only apply the requested change." }
         },
         required: ["question"]
       }
@@ -596,7 +597,15 @@ ${ENTITY_CREATION_RULES}
    - When answering data questions, give the direct answer first, then show the chart
    - **REMEMBER: Temporary charts give users control over what gets saved to their dashboards. Users can always edit charts and datasets afterwards**
 
-3. Best practices:
+3. Date-scoped queries (Scope dates to query):
+   ADDMAN-SmartChart has a "Scope dates to query" feature that injects the chart's date range directly into the query using {{start_date}} and {{end_date}} reserved variables. When the user asks for a date-filtered query or wants the chart date picker to control the query's time range:
+   - Include {{start_date}} and {{end_date}} in the SQL/Mongo WHERE clause (e.g. WHERE created_at >= {{start_date}} AND created_at <= {{end_date}})
+   - The user must enable "Scope dates to query" in Chart Settings and set a date range via the date picker
+   - The date format is controlled by the chart's "Date format" setting (dateVarsFormat). If unset, ISO 8601 is used.
+   - When this toggle is enabled, date filtering happens at the database level (more efficient for large datasets) instead of filtering in memory after fetching all rows.
+   - Only use {{start_date}}/{{end_date}} when the user explicitly requests date-scoped queries. Don't add them by default.
+
+4. Best practices:
    - **CRITICAL: Default to temporary charts.** Only place in dashboards when explicitly requested.
    - **CRITICAL: Respect user instructions exactly.** If the user specifies a dashboard, use that exact dashboard. Never create charts in other dashboards for any reason.
    - **CRITICAL: No validation or test runs.** Create charts once, as temporary previews by default.

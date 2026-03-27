@@ -3,7 +3,7 @@ const { generateMongoQuery } = require("../../generateMongoQuery");
 
 async function generateQuery(payload) {
   const {
-    question, schema, preferred_dialect
+    question, schema, preferred_dialect, current_query
   } = payload;
 
   if (!global.openaiClient) {
@@ -19,7 +19,7 @@ async function generateQuery(payload) {
     }
 
     if (preferred_dialect === "mongodb") {
-      const result = await generateMongoQuery(schema, question, []);
+      const result = await generateMongoQuery(schema, question, [], current_query || "");
 
       if (!result || !result.query || result.query.trim() === "") {
         throw new Error("Query generation failed - no query returned");
@@ -59,7 +59,7 @@ async function generateQuery(payload) {
       }
     };
 
-    const result = await generateSqlQuery(effectiveSchema, question, []);
+    const result = await generateSqlQuery(effectiveSchema, question, [], current_query || "");
 
     if (!result || !result.query || result.query.trim() === "") {
       throw new Error("Query generation failed - no query returned");

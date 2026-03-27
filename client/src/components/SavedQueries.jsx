@@ -11,6 +11,8 @@ import { secondaryTransparent } from "../config/colors";
 import Row from "./Row";
 import Text from "./Text";
 import { selectTeam } from "../slices/team";
+import SqlAceEditor from "./SqlAceEditor";
+import { useTheme } from "../modules/ThemeContext";
 
 /*
   Contains the project creation functionality
@@ -21,6 +23,7 @@ function SavedQueries(props) {
   const [editQuery, setEditQuery] = useState();
   const [editLoading, setEditLoading] = useState();
   const [savedQuerySummary, setSavedQuerySummary] = useState();
+  const [savedQueryText, setSavedQueryText] = useState();
   const [removeQuery, setRemoveQuery] = useState();
   const [removeLoading, setRemoveLoading] = useState();
 
@@ -29,6 +32,7 @@ function SavedQueries(props) {
   } = props;
 
   const savedQueries = useSelector(selectSavedQueries);
+  const { isDark } = useTheme();
 
   const dispatch = useDispatch();
   const team = useSelector(selectTeam);
@@ -55,23 +59,28 @@ function SavedQueries(props) {
 
   const _onEditQueryConfirmation = (query) => {
     setEditQuery(query);
+    setSavedQuerySummary(query.summary);
+    setSavedQueryText(query.query);
   };
 
   const _onEditQuery = () => {
     setEditLoading(true);
-    dispatch(updateSavedQuery({ team_id: team.id, data: {
-      id: editQuery.id,
-      summary: savedQuerySummary,
-    }}))
+    const updateData = { id: editQuery.id };
+    if (savedQuerySummary) updateData.summary = savedQuerySummary;
+    if (savedQueryText) updateData.query = savedQueryText;
+
+    dispatch(updateSavedQuery({ team_id: team.id, data: updateData }))
       .then(() => {
         setEditLoading(false);
         setEditQuery(null);
         setSavedQuerySummary("");
+        setSavedQueryText("");
       })
       .catch(() => {
         setEditLoading(false);
         setEditQuery(null);
         setSavedQuerySummary("");
+        setSavedQueryText("");
       });
   };
 
@@ -133,7 +142,7 @@ function SavedQueries(props) {
                         <LuCheck />
                       </Button>
                     </Tooltip>
-                    <Tooltip content="Edit the summary">
+                    <Tooltip content="Edit saved query">
                       <Button
                         isIconOnly
                         isDisabled={editQuery && editQuery.id === query.id}
@@ -168,21 +177,30 @@ function SavedQueries(props) {
       {savedQueries.length < 1 && !loading
         && <p><i>{"The project doesn't have any saved queries yet"}</i></p>}
 
-      {/* Update query modal */}
-      <Modal isOpen={!!editQuery} onClose={() => setEditQuery(null)}>
+      {/* Edit query modal */}
+      <Modal isOpen={!!editQuery} onClose={() => setEditQuery(null)} size="3xl">
         <ModalContent>
           <ModalHeader>
-            <Text b>Edit the query</Text>
+            <Text b>Edit saved query</Text>
           </ModalHeader>
           <ModalBody>
             <Input
-              label="Edit the description of the query"
+              label="Description"
               placeholder="Type a summary here"
-              value={savedQuerySummary ? savedQuerySummary
-                : editQuery ? editQuery.summary : ""}
+              value={savedQuerySummary || ""}
               onChange={(e) => setSavedQuerySummary(e.target.value)}
               variant="bordered"
               fullWidth
+            />
+            <Spacer y={1} />
+            <Text size="sm">Query</Text>
+            <SqlAceEditor
+              mode={type === "mongodb" ? "javascript" : "pgsql"}
+              theme={isDark ? "one_dark" : "tomorrow"}
+              value={savedQueryText || ""}
+              onChange={(val) => setSavedQueryText(val)}
+              height="300px"
+              name="editSavedQueryEditor"
             />
           </ModalBody>
           <ModalFooter>
@@ -193,12 +211,12 @@ function SavedQueries(props) {
               Close
             </Button>
             <Button
-              isDisabled={!savedQuerySummary}
+              isDisabled={!savedQuerySummary && !savedQueryText}
               onClick={_onEditQuery}
               color="primary"
               isLoading={editLoading}
             >
-              Save the query
+              Save
             </Button>
           </ModalFooter>
         </ModalContent>

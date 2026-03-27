@@ -183,10 +183,10 @@ ChartDescription.propTypes = {
   name: PropTypes.string,
   onChange: PropTypes.func.isRequired,
   onCreate: PropTypes.func.isRequired,
-  teamId: PropTypes.string.isRequired,
-  projectId: PropTypes.string.isRequired,
+  teamId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  projectId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   connections: PropTypes.array.isRequired,
-  templates: PropTypes.object.isRequired,
+  templates: PropTypes.array.isRequired,
 };
 
 export default ChartDescription;

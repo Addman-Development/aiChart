@@ -301,8 +301,8 @@ function DatasetBuilder(props) {
 
   const _onChangeGlobalSettings = ({
     pointRadius, displayLegend, dateRange, includeZeros, timeInterval, currentEndDate,
-    fixedStartDate, maxValue, minValue, xLabelTicks, stacked, horizontal, dataLabels,
-    dateVarsFormat, isLogarithmic, dashedLastPoint,
+    fixedStartDate, scopeDateToQuery, maxValue, minValue, xLabelTicks, stacked, horizontal,
+    dataLabels, dateVarsFormat, isLogarithmic, dashedLastPoint,
   }) => {
     const tempChart = {
       pointRadius: typeof pointRadius !== "undefined" ? pointRadius : chart.pointRadius,
@@ -315,6 +315,7 @@ function DatasetBuilder(props) {
       includeZeros: typeof includeZeros !== "undefined" ? includeZeros : chart.includeZeros,
       currentEndDate: typeof currentEndDate !== "undefined" ? currentEndDate : chart.currentEndDate,
       fixedStartDate: typeof fixedStartDate !== "undefined" ? fixedStartDate : chart.fixedStartDate,
+      scopeDateToQuery: typeof scopeDateToQuery !== "undefined" ? scopeDateToQuery : chart.scopeDateToQuery,
       minValue: typeof minValue !== "undefined" ? minValue : chart.minValue,
       maxValue: typeof maxValue !== "undefined" ? maxValue : chart.maxValue,
       xLabelTicks: typeof xLabelTicks !== "undefined" ? xLabelTicks : chart.xLabelTicks,

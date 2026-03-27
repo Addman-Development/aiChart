@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import AceEditor from "react-ace";
 
 import "ace-builds/src-min-noconflict/mode-json";
+import "ace-builds/src-min-noconflict/mode-javascript";
 import "ace-builds/src-min-noconflict/mode-pgsql";
 import "ace-builds/src-min-noconflict/theme-tomorrow";
 import "ace-builds/src-min-noconflict/theme-one_dark";
@@ -295,6 +296,16 @@ function SqlAceEditor({
 
   // Use the custom hook for moustache variable highlighting
   useMoustacheVariables(editorInstance, onVariableClick);
+
+  // Disable the lint worker when the document contains moustache variables ({{...}})
+  // The JS/SQL parser hits an unrecoverable syntax error on {{ which cascades
+  // false errors to every subsequent line — disabling the worker prevents this entirely
+  useEffect(() => {
+    if (!editorInstance) return;
+    const session = editorInstance.getSession();
+    const hasMoustache = value && value.includes("{{");
+    session.setUseWorker(!hasMoustache);
+  }, [editorInstance, value]);
 
   return (
     <div className="w-full">

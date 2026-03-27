@@ -27,6 +27,7 @@ import { chartColors, primary } from "../../../config/colors";
 import { flatMap } from "lodash";
 import TableConfiguration from "../../../components/TableConfiguration";
 import FormulaTips from "../../../components/FormulaTips";
+import FormulaInput from "../../../components/FormulaInput";
 import canAccess from "../../../config/canAccess";
 import { selectTeam } from "../../../slices/team";
 import { selectUser } from "../../../slices/user";
@@ -685,9 +686,7 @@ function ChartDatasetConfig(props) {
                 </div>
                 <div className="flex flex-col">
                   <div className="flex flex-row gap-3 items-center w-full">
-                    <Input
-                      labelPlacement="outside"
-                      placeholder="Enter your formula here: {val}"
+                    <FormulaInput
                       value={formula}
                       onChange={(e) => setFormula(e.target.value)}
                       variant="bordered"
@@ -920,9 +919,9 @@ function ChartDatasetConfig(props) {
 }
 
 ChartDatasetConfig.propTypes = {
-  chartId: PropTypes.number.isRequired,
+  chartId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   dataRequests: PropTypes.array,
-  cdcId: PropTypes.number.isRequired,
+  cdcId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
   onRemove: PropTypes.func.isRequired,
 };
 

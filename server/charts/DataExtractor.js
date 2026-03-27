@@ -50,7 +50,7 @@ module.exports = (data, filters, timezone) => {
 
     let filteredData = filterData.data;
 
-    if (dateField && chart.startDate && chart.endDate && canDateFilter) {
+    if (dateField && chart.startDate && chart.endDate && canDateFilter && !chart.scopeDateToQuery) {
       if (chart.currentEndDate) {
         const timeDiff = endDate.diff(startDate, "days");
         endDate = moment().endOf("day");

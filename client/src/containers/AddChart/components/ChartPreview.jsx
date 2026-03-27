@@ -122,20 +122,14 @@ function ChartPreview(props) {
   };
 
   const _onChangeMode = () => {
-    setRedraw(true);
-
     return onChange({ mode: chart.mode === "chart" ? "kpichart" : "chart" });
   };
 
   const _onChangeGrowth = () => {
-    setRedraw(true);
-
     return onChange({ showGrowth: !chart.showGrowth });
   };
 
   const _onChangeInvertGrowth = () => {
-    setRedraw(true);
-
     return onChange({ invertGrowth: !chart.invertGrowth });
   };
 

@@ -9,7 +9,9 @@ cd server
 NODE_ENV=production nohup node index.js &
 
 cd ../client
-nohup sh -c 'echo "The UI is rebuilding. Please wait..." && bun run build && echo "UI built successfully!"' &
+echo "The UI is rebuilding. Please wait..."
+bun run build
+echo "UI built successfully!"
 
 # Serve the UI
 bunx serve -s dist -l ${VITE_APP_CLIENT_PORT}

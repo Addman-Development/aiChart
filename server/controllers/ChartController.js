@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 
 const externalDbConnection = require("../modules/externalDbConnection");
 const { calculateChartLayout, ensureCompleteLayout, DEFAULT_CHART_LAYOUT } = require("../modules/chartLayoutEngine");
+const resolveChartDates = require("../modules/resolveChartDates");
 
 const db = require("../models/models");
 const DatasetController = require("./DatasetController");
@@ -326,6 +327,12 @@ class ChartController {
           gCache = cache;
         }
 
+        // Resolve chart dates for query-scoped injection when the toggle is enabled
+        let resolvedDates = null;
+        if (gChart.scopeDateToQuery && gChart.startDate && gChart.endDate) {
+          resolvedDates = resolveChartDates(gChart, filters, project?.timezone);
+        }
+
         const requestPromises = [];
         gChart.ChartDatasetConfigs.forEach((cdc) => {
           // Build variables per CDC: start with provided variables and merge CDC-specific overrides
@@ -338,6 +345,22 @@ class ChartController {
                 cdcVariables[configVar.name] = configVar.value;
               }
             });
+          }
+
+          // Inject resolved chart dates as runtime variables for query scoping
+          // Falls back to last 7 days if the chart dates aren't configured yet,
+          // so {{start_date}}/{{end_date}} in queries always have a usable value
+          if (resolvedDates) {
+            cdcVariables.start_date = resolvedDates.formattedStartDate;
+            cdcVariables.end_date = resolvedDates.formattedEndDate;
+          } else if (!cdcVariables.start_date || !cdcVariables.end_date) {
+            const format = gChart.dateVarsFormat || undefined;
+            const fallbackEnd = moment().endOf("day");
+            const fallbackStart = moment().subtract(7, "days").startOf("day");
+            cdcVariables.start_date = format
+              ? fallbackStart.format(format) : fallbackStart.toISOString();
+            cdcVariables.end_date = format
+              ? fallbackEnd.format(format) : fallbackEnd.toISOString();
           }
 
           if (noSource && gCache && gCache.data) {
@@ -1116,7 +1139,7 @@ class ChartController {
     const allowedFields = [
       "project_id", "name", "type", "subType", "public", "shareable",
       "displayLegend", "pointRadius", "dataLabels", "startDate", "endDate",
-      "dateVarsFormat", "includeZeros", "currentEndDate", "fixedStartDate",
+      "dateVarsFormat", "includeZeros", "currentEndDate", "fixedStartDate", "scopeDateToQuery",
       "timeInterval", "autoUpdate", "draft", "mode", "maxValue", "minValue",
       "disabledExport", "onReport", "xLabelTicks", "stacked", "horizontal",
       "showGrowth", "invertGrowth", "layout", "snapshotToken", "isLogarithmic",

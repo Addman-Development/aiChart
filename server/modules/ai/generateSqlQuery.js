@@ -42,32 +42,34 @@ async function generateSqlQuery(schema, question, conversationHistory = [], curr
       {
         role: "system",
         content: `You are an expert SQL query generator. Use the following database schema to generate an SQL query that matches the user's intent.
-The user might also provide a current query, which you should use to generate the final query but only if it's relevant.
 
 Database Schema:
 ${formattedSchema}
 
 IMPORTANT RULES:
-- Output ONLY the raw SQL query. No explanations, no markdown, no code fences, no comments outside the query.
+- Output ONLY the raw SQL query. No explanations, no markdown, no code fences, no comments outside the query, no descriptions of what changed.
+- When a current query is provided, treat it as the BASE. Apply ONLY the specific change the user requested. Preserve all existing columns, joins, WHERE clauses, GROUP BY, ORDER BY, and structure. Do NOT rewrite, simplify, or restructure the query beyond what was asked.
 - If the user's request is ambiguous, make a reasonable assumption and generate the query. Do NOT ask clarifying questions.
 - If the user asks for a query with variables, use the variables in the query. Example: SELECT * FROM movies WHERE status = {{status}} LIMIT 10;
 - Don't add variables if not specified by the user.
-- Never wrap the output in \`\`\`sql or \`\`\` blocks. Return plain SQL only.`,
+- Never wrap the output in \`\`\`sql or \`\`\` blocks. Return plain SQL only.
+- ADDMAN-SmartChart supports a "Scope dates to query" feature. When the user asks to filter by date range or wants the chart date range applied at the query level, use the reserved variables {{start_date}} and {{end_date}} in WHERE clauses. Example: SELECT * FROM orders WHERE created_at >= {{start_date}} AND created_at <= {{end_date}} ORDER BY created_at;
+- Only use {{start_date}} and {{end_date}} when the user explicitly asks for date-scoped queries or mentions filtering by the chart's date range. These variables are automatically populated from the chart's date picker when the "Scope dates to query" toggle is enabled.`,
       },
       ...conversationHistory,
     ];
+
+    if (currentQuery) {
+      messages.push({
+        role: "system",
+        content: `The user has an existing query that MUST be used as the base. Apply only the changes they request. Preserve everything else exactly as-is.\n\nCurrent Query:\n${currentQuery}`,
+      });
+    }
 
     messages.push({
       role: "user",
       content: question,
     });
-
-    if (currentQuery) {
-      messages.push({
-        role: "user",
-        content: `Current Query: ${currentQuery}`,
-      });
-    }
 
     const response = await aiClient.chat.completions.create({
       model: aiModel,

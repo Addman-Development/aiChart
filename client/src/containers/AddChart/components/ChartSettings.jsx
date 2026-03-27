@@ -296,6 +296,43 @@ function ChartSettings({ chart, onChange }) {
           >
             Fix the start date
           </Checkbox>
+          {chart.startDate && chart.endDate && (
+            <>
+              <Spacer y={1} />
+              <div className="flex flex-row items-center gap-2">
+                <Checkbox
+                  isSelected={chart.scopeDateToQuery}
+                  onValueChange={(selected) => {
+                    onChange({ scopeDateToQuery: selected });
+                  }}
+                  size="sm"
+                >
+                  Scope dates to query
+                </Checkbox>
+                <Tooltip
+                  content={(
+                    <div style={{ padding: 5 }}>
+                      <Text>
+                        {"When enabled, the date range is injected directly into your query using "}
+                        <Code>{"{{start_date}}"}</Code>
+                        {" and "}
+                        <Code>{"{{end_date}}"}</Code>
+                        {" variables, instead of filtering results after the query runs."}
+                      </Text>
+                      <Spacer y={1} />
+                      <Text>
+                        {"Make sure your query contains these placeholders for the dates to take effect."}
+                      </Text>
+                    </div>
+                  )}
+                >
+                  <div>
+                    <LuInfo />
+                  </div>
+                </Tooltip>
+              </div>
+            </>
+          )}
         </div>
       </div>
       <Spacer y={4} />

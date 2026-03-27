@@ -320,7 +320,7 @@ function Dataset() {
           if (loadingCounter === completeProjects.length) {
             setCompleteDatasetLoading(false);
             if (completeProjects.length === 1) {
-              navigate(`/dashboard/${completeProjects[0]}/dashboard`);
+              navigate(`/dashboard/${completeProjects[0]}`);
             } else {
               navigate("/");
             }
