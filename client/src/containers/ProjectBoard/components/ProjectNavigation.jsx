@@ -69,7 +69,7 @@ function ProjectNavigation(props) {
   const projects = useSelector(selectProjects);
   const project = useSelector(selectProject) || {};
   const team = useSelector(selectTeam);
-  const pinnedDashboards = useSelector((state) => state.user?.data?.PinnedDashboards);
+  const pinnedDashboards = useSelector((state) => state.user?.data?.PinnedDashboards) || [];
 
   const { height } = useWindowSize();
   const navigate = useNavigate();

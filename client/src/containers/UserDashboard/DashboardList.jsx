@@ -161,7 +161,7 @@ function DashboardList() {
 
   const _onPinDashboard = (projectId) => {
     if (pinnedDashboards.find((p) => p.project_id === projectId)) {
-      dispatch(unpinDashboard({ pin_id: pinnedDashboards.find((p) => p.project_id === projectId).id }));
+      dispatch(unpinDashboard({ pin_id: pinnedDashboards.find((p) => p.project_id === projectId).id, user_id: user.id }));
     } else {
       dispatch(pinDashboard({ project_id: projectId, user_id: user.id }));
     }

@@ -648,7 +648,7 @@ export const userSlice = createSlice({
     builder.addCase(pinDashboard.fulfilled, (state, action) => {
       state.loading = false;
       state.data.PinnedDashboards = [
-        ...state.data.PinnedDashboards,
+        ...(state.data.PinnedDashboards || []),
         action.payload,
       ];
     });
@@ -663,7 +663,7 @@ export const userSlice = createSlice({
     });
     builder.addCase(unpinDashboard.fulfilled, (state, action) => {
       state.loading = false;
-      state.data.PinnedDashboards = state.data.PinnedDashboards.filter((p) => p.id !== action.meta.arg.pin_id);
+      state.data.PinnedDashboards = (state.data.PinnedDashboards || []).filter((p) => p.id !== action.meta.arg.pin_id);
     });
     builder.addCase(unpinDashboard.rejected, (state) => {
       state.loading = false;
