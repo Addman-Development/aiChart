@@ -1,11 +1,13 @@
 const { v4: uuidv4 } = require("uuid");
 const _ = require("lodash");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 const { nanoid } = require("nanoid");
 const { Op } = require("sequelize");
 
 const db = require("../models/models");
 const UserController = require("./UserController");
+const mail = require("../modules/mail");
 
 const settings = require("../settings");
 
@@ -468,6 +470,107 @@ class TeamController {
       .catch((error) => {
         return new Promise((resolve, reject) => reject(error));
       });
+  }
+
+  async getAvailableUsers(teamId) {
+    const teamRoles = await db.TeamRole.findAll({ where: { team_id: teamId } });
+    const existingUserIds = teamRoles.map((r) => r.user_id);
+
+    const users = await db.User.findAll({
+      where: existingUserIds.length > 0
+        ? { id: { [Op.notIn]: existingUserIds } }
+        : {},
+      attributes: ["id", "name", "email", "icon", "active"],
+    });
+
+    return users;
+  }
+
+  async addExistingUserToTeam(teamId, userId, { role, projects, canExport }) {
+    const existingRole = await db.TeamRole.findOne({
+      where: { team_id: teamId, user_id: userId }
+    });
+    if (existingRole) {
+      throw new Error("User is already a member of this team");
+    }
+
+    const user = await db.User.findByPk(userId, {
+      attributes: ["id", "name", "email", "icon"],
+    });
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    await this.addTeamRole(teamId, userId, role || "projectViewer", projects, canExport);
+
+    return { user, addedToTeam: true };
+  }
+
+  async createUserForTeam(teamId, { name, email, role, projects, canExport, sendEmail }) {
+    // Check if user already exists
+    const existingUser = await db.User.findOne({ where: { email } });
+    if (existingUser) {
+      // If user exists, just add them to the team
+      const existingRole = await db.TeamRole.findOne({
+        where: { team_id: teamId, user_id: existingUser.id }
+      });
+      if (existingRole) {
+        throw new Error("User is already a member of this team");
+      }
+
+      await this.addTeamRole(teamId, existingUser.id, role || "projectViewer", projects, canExport);
+      return { user: existingUser, created: false, addedToTeam: true };
+    }
+
+    // Generate a temporary password
+    const temporaryPassword = nanoid(12);
+    const bcryptHash = await bcrypt.hash(temporaryPassword, 10);
+
+    const icon = name.substring(0, 2).toUpperCase();
+
+    // Create the user with mustChangePassword flag
+    const newUser = await db.User.create({
+      name,
+      email,
+      password: bcryptHash,
+      icon,
+      active: true,
+      mustChangePassword: true,
+    });
+
+    // Add team role
+    await this.addTeamRole(teamId, newUser.id, role || "projectViewer", projects, canExport);
+
+    // Send invite email if requested
+    if (sendEmail) {
+      const team = await db.Team.findByPk(teamId);
+      try {
+        await mail.sendUserCreatedInvite({
+          email,
+          name,
+          teamName: team ? team.name : "ADDMAN-SmartChart",
+          loginUrl: `${settings.client}/login`,
+          temporaryPassword,
+        });
+      } catch (emailErr) {
+        console.error("Failed to send invite email:", emailErr); // eslint-disable-line no-console
+        // Don't fail the user creation if email fails
+      }
+    }
+
+    return {
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        icon: newUser.icon,
+        active: newUser.active,
+      },
+      temporaryPassword: sendEmail ? undefined : temporaryPassword,
+      created: true,
+      addedToTeam: true,
+      emailSent: !!sendEmail,
+    };
   }
 
   async createApiKey(teamId, userData, body) {

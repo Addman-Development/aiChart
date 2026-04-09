@@ -266,6 +266,69 @@ module.exports = (app) => {
   });
   // --------------------------------------
 
+  // route to get users available to add to the team (not already members)
+  app.get("/team/:id/availableUsers", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
+    try {
+      const users = await teamController.getAvailableUsers(req.params.id);
+      return res.status(200).json(users);
+    } catch (error) {
+      return res.status(400).json({ error: error.message || "Error fetching available users" });
+    }
+  });
+  // --------------------------------------
+
+  // route to add an existing user to the team (admin/owner only)
+  app.post("/team/:id/addExistingUser", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
+    const { userId, role, projects, canExport } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "User ID is required" });
+    }
+
+    try {
+      const result = await teamController.addExistingUserToTeam(req.params.id, userId, {
+        role,
+        projects,
+        canExport,
+      });
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error.message === "User is already a member of this team") {
+        return res.status(409).json({ error: error.message });
+      }
+      return res.status(400).json({ error: error.message || "Error adding user to team" });
+    }
+  });
+  // --------------------------------------
+
+  // route to create a new user and add them to the team (admin/owner only)
+  app.post("/team/:id/createUser", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
+    const { name, email, role, projects, canExport, sendEmail } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({ error: "Name and email are required" });
+    }
+
+    try {
+      const result = await teamController.createUserForTeam(req.params.id, {
+        name,
+        email,
+        role,
+        projects,
+        canExport,
+        sendEmail,
+      });
+
+      return res.status(200).json(result);
+    } catch (error) {
+      if (error.message === "User is already a member of this team") {
+        return res.status(409).json({ error: error.message });
+      }
+      return res.status(400).json({ error: error.message || "Error creating user" });
+    }
+  });
+  // --------------------------------------
+
   // route to create a new API key to access the team content
   app.post("/team/:id/apikey", verifyToken, checkPermissions("createAny", "apiKey"), (req, res) => {
     if (!req.body.name) return res.status(400).send("Missing required fields.");

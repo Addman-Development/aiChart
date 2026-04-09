@@ -46,6 +46,7 @@ const EmbeddedChart = lazy(() => import("./EmbeddedChart"));
 const AzureCallback = lazy(() => import("./AzureCallback"));
 const ProjectRedirect = lazy(() => import("./ProjectRedirect"));
 import FeedbackForm from "../components/FeedbackForm";
+import ForcePasswordChange from "../components/ForcePasswordChange";
 import canAccess from "../config/canAccess";
 import AiModal from "./Ai/AiModal";
 import Auth from "./Integrations/Auth/Auth";
@@ -329,6 +330,8 @@ function Main(props) {
       {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
         <AiModal isOpen={aiModalOpen} onClose={() => dispatch(hideAiModal())} />
       )}
+
+      <ForcePasswordChange />
 
       <Toaster
         position="top-center"

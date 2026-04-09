@@ -154,6 +154,75 @@ export const generateInviteUrl = createAsyncThunk(
   }
 );
 
+export const getAvailableUsers = createAsyncThunk(
+  "team/getAvailableUsers",
+  async ({ team_id }) => {
+    const token = getAuthToken();
+    const headers = new Headers({
+      "Accept": "application/json",
+      "authorization": `Bearer ${token}`,
+    });
+
+    const response = await fetch(`${API_HOST}/team/${team_id}/availableUsers`, { method: "GET", headers });
+    if (!response.ok) {
+      throw new Error("Error fetching available users");
+    }
+
+    return await response.json();
+  }
+);
+
+export const addExistingUserToTeam = createAsyncThunk(
+  "team/addExistingUserToTeam",
+  async ({ team_id, userId, role, projects, canExport }) => {
+    const token = getAuthToken();
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "authorization": `Bearer ${token}`,
+    });
+    const body = JSON.stringify({ userId, role, projects, canExport });
+
+    const response = await fetch(`${API_HOST}/team/${team_id}/addExistingUser`, { method: "POST", headers, body });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Error adding user to team");
+    }
+
+    return await response.json();
+  }
+);
+
+export const createTeamUser = createAsyncThunk(
+  "team/createTeamUser",
+  async ({ team_id, name, email, role, projects, canExport, sendEmail }) => {
+    const token = getAuthToken();
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "authorization": `Bearer ${token}`,
+    });
+    const body = JSON.stringify({
+      name,
+      email,
+      role,
+      projects,
+      canExport,
+      sendEmail,
+    });
+
+    const response = await fetch(`${API_HOST}/team/${team_id}/createUser`, { method: "POST", headers, body });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Error creating user");
+    }
+
+    const responseJson = await response.json();
+    return responseJson;
+  }
+);
+
 export const inviteMembers = createAsyncThunk(
   "team/inviteMembers",
   async ({ team_id, email, projects, canExport }) => {

@@ -359,6 +359,12 @@ function SqlBuilder(props) {
                     onVariableClick={_onVariableClick}
                     name="queryEditor"
                     className="sqlbuilder-query-tut"
+                    aiCompletion={{
+                      enabled: !!dataRequest?.id,
+                      teamId: team?.id,
+                      datasetId: params.datasetId,
+                      dataRequestId: dataRequest?.id,
+                    }}
                   />
                 </Row>
               </div>

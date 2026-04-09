@@ -210,6 +210,25 @@ module.exports = (app) => {
   // -------------------------------------------------
 
   /*
+  ** Route for inline AI query completion (ghost text suggestions)
+  */
+  app.post(`${root}/:id/completeQuery`, verifyToken, checkPermissions, apiLimiter(20), (req, res) => {
+    return dataRequestController.completeQuery(
+      req.params.id,
+      req.body.currentQuery || "",
+      req.body.cursorPosition || 0,
+    )
+      .then((result) => res.status(200).send(result))
+      .catch((error) => {
+        if (error?.message) {
+          return res.status(400).send({ error: error.message });
+        }
+        return res.status(400).send(error);
+      });
+  });
+  // -------------------------------------------------
+
+  /*
   ** Route to ask AI a question
   */
   app.post(`${root}/:id/askAi`, verifyToken, checkPermissions, apiLimiter(10), (req, res) => {

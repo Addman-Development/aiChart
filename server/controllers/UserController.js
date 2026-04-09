@@ -448,6 +448,7 @@ class UserController {
         const userUpdate = {
           passwordResetToken: uuid(),
           password: bcryptHash,
+          mustChangePassword: false,
         };
 
         return this.update(user.id, userUpdate);
@@ -470,7 +471,10 @@ class UserController {
     if (!isCorrect) throw new Error(401);
 
     const bcryptHash = await bcrypt.hash(newPassword, 10);
-    await db.User.update({ password: bcryptHash }, { where: { id: userId } });
+    await db.User.update(
+      { password: bcryptHash, mustChangePassword: false },
+      { where: { id: userId } }
+    );
 
     return { completed: true };
   }

@@ -5,7 +5,7 @@ import {
   Chip, Button, Checkbox, Divider, Dropdown, Modal, Spacer, Table, Tooltip, CircularProgress,
   TableHeader, TableColumn, TableBody, TableRow, TableCell, DropdownMenu, DropdownItem,
   DropdownTrigger, ModalHeader, ModalBody, ModalFooter, ModalContent, Code,
-  Input,
+  Input, Tabs, Tab,
 } from "@heroui/react";
 import _ from "lodash";
 import toast from "react-hot-toast";
@@ -17,6 +17,7 @@ import {
   selectTeams,
 } from "../../slices/team";
 import InviteMembersForm from "../../components/InviteMembersForm";
+import CreateUserForm from "../../components/CreateUserForm";
 import canAccess from "../../config/canAccess";
 import { selectProjects } from "../../slices/project";
 import { selectUser } from "../../slices/user";
@@ -196,7 +197,14 @@ function TeamMembers(props) {
     <div style={style}>
       {_canAccess("teamAdmin") && (
         <div className="bg-content1 p-4 rounded-lg border border-divider">
-          <InviteMembersForm />
+          <Tabs aria-label="Invite options" variant="underlined" color="primary">
+            <Tab key="add" title="Add Member">
+              <CreateUserForm />
+            </Tab>
+            <Tab key="invite" title="Invite Link">
+              <InviteMembersForm />
+            </Tab>
+          </Tabs>
         </div>
       )}
 

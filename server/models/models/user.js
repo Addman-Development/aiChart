@@ -72,6 +72,11 @@ module.exports = (sequelize, DataTypes) => {
     passwordResetToken: {
       type: DataTypes.STRING,
     },
+    mustChangePassword: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
+    },
     tutorials: {
       type: DataTypes.TEXT,
       allowNull: false,

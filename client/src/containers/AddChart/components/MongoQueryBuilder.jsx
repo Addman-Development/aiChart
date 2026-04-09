@@ -326,6 +326,12 @@ function MongoQueryBuilder(props) {
               onVariableClick={_onVariableClick}
               name="queryEditor"
               className="mongobuilder-query-tut"
+              aiCompletion={{
+                enabled: !!dataRequest?.id,
+                teamId: team?.id,
+                datasetId: params.datasetId,
+                dataRequestId: dataRequest?.id,
+              }}
             />
           </Row>
           <Spacer y={2} />
