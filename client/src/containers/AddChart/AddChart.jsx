@@ -206,7 +206,17 @@ function AddChart() {
 
         // run the preview refresh only when it's needed
         if (!data.name) {
-          if (data.subType || data.type) {
+          // When scopeDateToQuery is active and date-related settings changed,
+          // do a full data refresh so queries re-resolve {{start_date}}/{{end_date}}
+          const dateSettingsChanged = data.startDate !== undefined
+            || data.endDate !== undefined
+            || data.dateRange !== undefined
+            || data.currentEndDate !== undefined
+            || data.fixedStartDate !== undefined
+            || data.dateVarsFormat !== undefined
+            || data.scopeDateToQuery !== undefined;
+
+          if (data.subType || data.type || (dateSettingsChanged && newChart.scopeDateToQuery)) {
             _onRefreshData();
           } else {
             _onRefreshPreview(shouldSkipParsing);

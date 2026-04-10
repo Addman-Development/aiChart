@@ -185,6 +185,34 @@ module.exports = (app) => {
   // -----------------------------------------
 
   /*
+  ** Route to import connections from another team
+  */
+  app.post("/team/:team_id/connections/import", verifyToken, checkPermissions("createOwn"), async (req, res) => {
+    const { team_id } = req.params;
+    const { source_team_id, connection_ids } = req.body;
+
+    if (!source_team_id || !connection_ids || connection_ids.length === 0) {
+      return res.status(400).json({ message: "source_team_id and connection_ids are required" });
+    }
+
+    try {
+      // Verify user is teamOwner or teamAdmin on the source team
+      const sourceRole = await teamController.getTeamRole(source_team_id, req.user.id);
+      if (!sourceRole || !["teamOwner", "teamAdmin"].includes(sourceRole.role)) {
+        return res.status(403).json({ message: "You must be an owner or admin of the source team" });
+      }
+
+      const imported = await connectionController.importConnections(
+        connection_ids, source_team_id, team_id
+      );
+      return res.status(200).send(imported);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
+    }
+  });
+  // -----------------------------------------
+
+  /*
   ** Route to get a connection by ID
   */
   app.get("/team/:team_id/connections/:connection_id", verifyToken, checkPermissions("readOwn"), (req, res) => {

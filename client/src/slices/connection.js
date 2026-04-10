@@ -227,6 +227,27 @@ export const duplicateConnection = createAsyncThunk(
   }
 );
 
+export const importConnections = createAsyncThunk(
+  "connection/importConnections",
+  async ({ team_id, source_team_id, connection_ids }) => {
+    const token = getAuthToken();
+    const url = `${API_HOST}/team/${team_id}/connections/import`;
+    const headers = new Headers({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    });
+    const body = JSON.stringify({ source_team_id, connection_ids });
+    const response = await fetch(url, { headers, method: "POST", body });
+    if (!response.ok) {
+      throw new Error(response.statusText);
+    }
+
+    const data = await response.json();
+    return data;
+  }
+);
+
 export const updateMongoSchema = createAsyncThunk(
   "connection/updateMongoSchema",
   async ({ team_id, connection_id }) => {
@@ -381,7 +402,20 @@ export const connectionSlice = createSlice({
     builder.addCase(duplicateConnection.rejected, (state) => {
       state.loading = false;
       state.error = true;
-    }); 
+    });
+
+    // importConnections
+    builder.addCase(importConnections.pending, (state) => {
+      state.loading = true;
+    })
+    builder.addCase(importConnections.fulfilled, (state, action) => {
+      state.loading = false;
+      state.data = [...action.payload, ...state.data];
+    })
+    builder.addCase(importConnections.rejected, (state) => {
+      state.loading = false;
+      state.error = true;
+    });
 
     // updateMongoSchema
     builder.addCase(updateMongoSchema.pending, (state) => {

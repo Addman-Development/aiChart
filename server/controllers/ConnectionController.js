@@ -1298,6 +1298,35 @@ class ConnectionController {
     return newConnection;
   }
 
+  async importConnections(connectionIds, sourceTeamId, targetTeamId) {
+    // Verify all requested connections belong to the source team
+    const connections = await db.Connection.findAll({
+      where: {
+        id: connectionIds,
+        team_id: sourceTeamId,
+      },
+    });
+
+    if (connections.length === 0) {
+      return Promise.reject(new Error("No valid connections found in the source team"));
+    }
+
+    const imported = [];
+    for (const connection of connections) {
+      const data = connection.toJSON();
+      delete data.id;
+      delete data.createdAt;
+      delete data.updatedAt;
+      data.team_id = targetTeamId;
+      data.project_ids = [];
+
+      const newConnection = await db.Connection.create(data);
+      imported.push(newConnection);
+    }
+
+    return imported;
+  }
+
   async addMongoSchemaUpdateJob(connectionId) {
     try {
       const connection = await this.findById(connectionId);

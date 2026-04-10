@@ -14,6 +14,7 @@ import {
 } from "../slices/user";
 import { getTeams, saveActiveTeam, selectTeam, selectTeams } from "../slices/team";
 import { selectFeedbackModalOpen, hideFeedbackModal, selectAiModalOpen, hideAiModal, toggleAiModal } from "../slices/ui";
+import { getProjectCharts } from "../slices/chart";
 import { cleanErrors as cleanErrorsAction } from "../actions/error";
 import { useTheme } from "../modules/ThemeContext";
 import { IconContext } from "react-icons";
@@ -328,7 +329,14 @@ function Main(props) {
       </Modal>
 
       {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
-        <AiModal isOpen={aiModalOpen} onClose={() => dispatch(hideAiModal())} />
+        <AiModal isOpen={aiModalOpen} onClose={() => {
+          dispatch(hideAiModal());
+          // Refresh charts if on a dashboard/project page to pick up any AI-created charts
+          const dashboardMatch = pathname.match(/\/dashboard\/(\d+)/);
+          if (dashboardMatch) {
+            dispatch(getProjectCharts({ project_id: dashboardMatch[1] }));
+          }
+        }} />
       )}
 
       <ForcePasswordChange />

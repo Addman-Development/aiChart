@@ -1,18 +1,20 @@
-import { Avatar, Button, Card, CardBody, CardFooter, Checkbox, Chip, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Tooltip } from "@heroui/react"
+import { Avatar, Button, Card, CardBody, CardFooter, Checkbox, Chip, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, Spacer, Tooltip } from "@heroui/react"
 import React, { useState } from "react"
-import { LuCopy, LuEllipsis, LuInfo, LuPencilLine, LuPlug, LuPlus, LuSearch, LuTags, LuTrash } from "react-icons/lu"
+import { LuCopy, LuDownload, LuEllipsis, LuInfo, LuPencilLine, LuPlug, LuPlus, LuSearch, LuTags, LuTrash } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux"
 import { Link, useNavigate } from "react-router"
 import { toast } from "react-hot-toast"
 
-import { selectTeam } from "../../slices/team"
+import { selectTeam, selectTeams } from "../../slices/team"
 import canAccess from "../../config/canAccess"
 import { selectUser } from "../../slices/user"
 import connectionImages from "../../config/connectionImages"
-import { duplicateConnection, removeConnection, saveConnection, selectConnections } from "../../slices/connection"
+import { duplicateConnection, importConnections, removeConnection, saveConnection, selectConnections } from "../../slices/connection"
 import { useTheme } from "../../modules/ThemeContext"
 import { selectProjects } from "../../slices/project"
 import { selectDatasets } from "../../slices/dataset"
+import { getAuthToken } from "../../modules/auth"
+import { API_HOST } from "../../config/settings"
 
 function ConnectionList() {
   const [connectionSearch, setConnectionSearch] = useState("");
@@ -24,9 +26,16 @@ function ConnectionList() {
   const [duplicateName, setDuplicateName] = useState("");
   const [duplicateLoading, setDuplicateLoading] = useState(false);
   const [viewingDuplicateModal, setViewingDuplicateModal] = useState(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importSourceTeam, setImportSourceTeam] = useState(null);
+  const [importSourceConnections, setImportSourceConnections] = useState([]);
+  const [importSelectedIds, setImportSelectedIds] = useState([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importFetchingConnections, setImportFetchingConnections] = useState(false);
 
   const team = useSelector(selectTeam);
   const user = useSelector(selectUser);
+  const teams = useSelector(selectTeams);
   const connections = useSelector(selectConnections);
   const projects = useSelector(selectProjects);
   const datasets = useSelector(selectDatasets);
@@ -96,6 +105,87 @@ function ConnectionList() {
     return datasets.filter((d) => d.DataRequests?.find((dr) => dr.connection_id === connectionId));
   };
 
+  const _getOtherTeams = () => {
+    if (!teams || !team) return [];
+    return teams.filter((t) => {
+      if (t.id === team.id) return false;
+      const role = t.TeamRoles?.find((tr) => tr.user_id === user.id);
+      return role && ["teamOwner", "teamAdmin"].includes(role.role);
+    });
+  };
+
+  const _onSelectImportTeam = async (teamId) => {
+    if (!teamId) {
+      setImportSourceTeam(null);
+      setImportSourceConnections([]);
+      setImportSelectedIds([]);
+      return;
+    }
+
+    setImportSourceTeam(teamId);
+    setImportSelectedIds([]);
+    setImportFetchingConnections(true);
+
+    try {
+      const token = getAuthToken();
+      const response = await fetch(`${API_HOST}/team/${teamId}/connections`, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setImportSourceConnections(data);
+      } else {
+        toast.error("Failed to fetch connections from the selected team");
+        setImportSourceConnections([]);
+      }
+    } catch (e) {
+      toast.error("Failed to fetch connections");
+      setImportSourceConnections([]);
+    }
+
+    setImportFetchingConnections(false);
+  };
+
+  const _onToggleImportConnection = (connectionId) => {
+    setImportSelectedIds((prev) =>
+      prev.includes(connectionId)
+        ? prev.filter((id) => id !== connectionId)
+        : [...prev, connectionId]
+    );
+  };
+
+  const _onImportConnections = async () => {
+    if (importSelectedIds.length === 0) {
+      toast.error("Please select at least one connection to import");
+      return;
+    }
+
+    setImportLoading(true);
+    try {
+      const result = await dispatch(importConnections({
+        team_id: team.id,
+        source_team_id: importSourceTeam,
+        connection_ids: importSelectedIds,
+      }));
+
+      if (result?.error) {
+        toast.error("Failed to import connections");
+      } else {
+        toast.success(`Imported ${importSelectedIds.length} connection${importSelectedIds.length > 1 ? "s" : ""} successfully`);
+        setImportModalOpen(false);
+        setImportSourceTeam(null);
+        setImportSourceConnections([]);
+        setImportSelectedIds([]);
+      }
+    } catch (e) {
+      toast.error("Failed to import connections");
+    }
+    setImportLoading(false);
+  };
+
   const _onDuplicateConnection = (connection) => {
     if (!duplicateName) {
       toast.error("Please enter a name for the new connection");
@@ -140,16 +230,28 @@ function ConnectionList() {
           </div>
         </div>
 
-        {_canAccess("teamAdmin", team.TeamRoles) && (
-          <Button
-            color="primary"
-            endContent={<LuPlus />}
-            onPress={() => navigate("/connections/new")}
-            isDisabled={user.temporary}
-          >
-            Create connection
-          </Button>
-        )}
+        <div className="flex flex-row items-center gap-2">
+          {_canAccess("teamAdmin", team.TeamRoles) && _getOtherTeams().length > 0 && (
+            <Button
+              variant="bordered"
+              endContent={<LuDownload />}
+              onPress={() => setImportModalOpen(true)}
+              isDisabled={user.temporary}
+            >
+              Import connection
+            </Button>
+          )}
+          {_canAccess("teamAdmin", team.TeamRoles) && (
+            <Button
+              color="primary"
+              endContent={<LuPlus />}
+              onPress={() => navigate("/connections/new")}
+              isDisabled={user.temporary}
+            >
+              Create connection
+            </Button>
+          )}
+        </div>
       </div>
       <Spacer y={2} />
       <div className={"flex flex-row items-center gap-4"}>
@@ -434,6 +536,104 @@ function ConnectionList() {
               isLoading={duplicateLoading}
             >
               Duplicate
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        isOpen={importModalOpen}
+        onClose={() => {
+          setImportModalOpen(false);
+          setImportSourceTeam(null);
+          setImportSourceConnections([]);
+          setImportSelectedIds([]);
+        }}
+        size="2xl"
+      >
+        <ModalContent>
+          <ModalHeader>
+            <div className="font-bold">Import connections from another team</div>
+          </ModalHeader>
+          <ModalBody>
+            <Select
+              label="Select a team"
+              placeholder="Choose a team to import from"
+              variant="bordered"
+              selectedKeys={importSourceTeam ? [String(importSourceTeam)] : []}
+              onSelectionChange={(keys) => {
+                const selected = Array.from(keys)[0];
+                _onSelectImportTeam(selected ? Number(selected) : null);
+              }}
+            >
+              {_getOtherTeams().map((t) => (
+                <SelectItem key={String(t.id)}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </Select>
+            {importFetchingConnections && (
+              <div className="text-sm text-foreground-500 py-2">Loading connections...</div>
+            )}
+            {importSourceTeam && !importFetchingConnections && importSourceConnections.length === 0 && (
+              <div className="text-sm text-foreground-500 py-2">No connections found in this team.</div>
+            )}
+            {importSourceConnections.length > 0 && (
+              <div className="flex flex-col gap-2 mt-2">
+                <div className="text-sm text-foreground-500">
+                  Select the connections you want to import:
+                </div>
+                <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+                  {importSourceConnections.map((conn) => (
+                    <div
+                      key={conn.id}
+                      className="flex flex-row items-center gap-2 p-2 rounded-lg hover:bg-content2 cursor-pointer"
+                      onClick={() => _onToggleImportConnection(conn.id)}
+                    >
+                      <Checkbox
+                        isSelected={importSelectedIds.includes(conn.id)}
+                        onValueChange={() => _onToggleImportConnection(conn.id)}
+                        size="sm"
+                      />
+                      <Avatar src={connectionImages(isDark)[conn.subType]} size="sm" />
+                      <span className="text-sm font-medium">{conn.name}</span>
+                      <Chip size="sm" variant="flat" radius="sm" className="ml-auto">
+                        {conn.type}
+                      </Chip>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {importSelectedIds.length > 0 && (
+              <div className="flex gap-1 bg-content2 p-2 rounded-lg text-foreground-500 text-sm">
+                <div>
+                  <LuInfo />
+                </div>
+                {`${importSelectedIds.length} connection${importSelectedIds.length > 1 ? "s" : ""} will be copied into "${team.name}". Credentials are included.`}
+              </div>
+            )}
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="bordered"
+              onPress={() => {
+                setImportModalOpen(false);
+                setImportSourceTeam(null);
+                setImportSourceConnections([]);
+                setImportSelectedIds([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="primary"
+              onPress={_onImportConnections}
+              isLoading={importLoading}
+              isDisabled={importSelectedIds.length === 0}
+              endContent={<LuDownload />}
+            >
+              {`Import${importSelectedIds.length > 0 ? ` (${importSelectedIds.length})` : ""}`}
             </Button>
           </ModalFooter>
         </ModalContent>

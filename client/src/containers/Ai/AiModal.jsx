@@ -1402,14 +1402,17 @@ function AiModal({ isOpen, onClose }) {
   return (
     <Modal
       classNames={{
-        wrapper: conversation ? "sm:mt-4" : "",
-        base: "border-1 border-divider",
+        wrapper: conversation ? "p-4 !overflow-hidden" : "",
+        base: conversation
+          ? "border-1 border-divider !h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !my-0 !overflow-hidden"
+          : "border-1 border-divider",
+        body: conversation ? "!p-0 !overflow-hidden !flex-1 !min-h-0" : "",
       }}
       backdrop="blur"
       isOpen={isOpen}
       onClose={onClose}
       size={conversation ? "6xl" : "xl"}
-      scrollBehavior="outside"
+      scrollBehavior={conversation ? "normal" : "inside"}
     >
       <ModalContent>{(closeModal) => (<>
         {!conversation && (
@@ -1679,8 +1682,8 @@ function AiModal({ isOpen, onClose }) {
         )}
 
         {conversation && (
-          <ModalBody className="p-0">
-            <div className="flex flex-row">
+          <ModalBody>
+            <div className="flex flex-row h-full min-h-0">
               <div className="flex-none w-60">
                 <div className="flex flex-col relative h-full bg-content2 rounded-tl-2xl rounded-bl-2xl">
                   <div className="w-full px-4 pt-4 border-r border-divider rounded-tl-2xl">
@@ -1706,7 +1709,7 @@ function AiModal({ isOpen, onClose }) {
                     <Spacer y={4} />
                     <Divider />
                   </div>
-                  <div className="flex flex-col h-full max-h-[calc(100vh-200px)] gap-2 px-2 overflow-y-auto border-r border-divider py-4">
+                  <div className="flex flex-col flex-1 min-h-0 gap-2 px-2 overflow-y-auto border-r border-divider py-4 pb-16">
                     {conversations.map((c) => (
                       <div
                         key={c.id}
@@ -1790,8 +1793,8 @@ function AiModal({ isOpen, onClose }) {
                   </div>
                 </div>
               </div>
-              <div className="relative flex-1 h-full rounded-lg">
-                <div className="py-4 border-b border-divider">
+              <div className="relative flex-1 flex flex-col min-h-0 rounded-lg">
+                <div className="flex-none py-4 border-b border-divider">
                   <div className="flex flex-row gap-3 pl-4 pr-4 items-start">
                     <Avatar
                       icon={<LuBrainCircuit size={24} className="text-background" />}
@@ -1863,7 +1866,7 @@ function AiModal({ isOpen, onClose }) {
                     </div>
                   </div>
                 </div>
-                <div className="h-[calc(100vh-200px)] overflow-y-auto py-4 pb-24">
+                <div className="flex-1 min-h-0 overflow-y-auto py-4">
                   {conversation?.full_history?.length > 0 ? (
                     <>
                       {(() => {
@@ -1916,7 +1919,7 @@ function AiModal({ isOpen, onClose }) {
                     </div>
                   )}
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-divider bg-background z-10 rounded-b-2xl">
+                <div className="flex-none p-4 border-t border-divider bg-background z-10 rounded-b-2xl">
                   <form onSubmit={_onAskAi} id="ai-conversation-form">
                     {(selectedContext.multiSelect.length > 0 || selectedContext.singleSelect) && (
                       <div className="flex flex-wrap items-center gap-2 mb-2">
