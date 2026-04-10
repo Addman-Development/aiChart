@@ -1,8 +1,40 @@
 const { fn, col, Op } = require("sequelize");
 
 const { orchestrate, availableTools } = require("../modules/ai/orchestrator/orchestrator");
+const { aiClient, aiModel } = require("../modules/ai/aiClient");
 const db = require("../models/models");
 const socketManager = require("../modules/socketManager");
+
+/**
+ * Generate a short conversation title from the user's question and the AI response.
+ * Runs as a lightweight, fire-and-forget AI call so it doesn't block the response.
+ */
+async function generateConversationTitle(question, aiResponse) {
+  if (!aiClient) return null;
+
+  try {
+    const response = await aiClient.chat.completions.create({
+      model: aiModel,
+      max_tokens: 60,
+      messages: [
+        {
+          role: "system",
+          content: "Generate a short, descriptive title (max 8 words) for a data analytics conversation. Output ONLY the title text, nothing else. No quotes, no punctuation at the end.",
+        },
+        {
+          role: "user",
+          content: `User asked: "${question}"\n\nAssistant responded: "${(aiResponse || "").substring(0, 300)}"`,
+        },
+      ],
+    });
+
+    const title = response.choices?.[0]?.message?.content?.trim();
+    return title || null;
+  } catch (err) {
+    console.warn("[generateConversationTitle] Failed:", err.message);
+    return null;
+  }
+}
 
 async function getOrchestration(
   teamId,
@@ -71,19 +103,8 @@ async function getOrchestration(
   try {
     const orchestration = await orchestrate(teamId, question, fullHistory, conversation, context);
 
-    // Extract title from AI response for new conversations
-    let finalMessage = orchestration.message;
-    let extractedTitle = null;
-
-    if (!conversation || conversation.message_count === 0) {
-      // Try to extract title from the first markdown header in the response
-      const titleMatch = orchestration.message?.match(/^#{1,6}\s+(.+)$/m);
-      if (titleMatch) {
-        extractedTitle = titleMatch[1].trim();
-        // Remove the title line from the response (including newline)
-        finalMessage = orchestration.message.replace(/^#{1,6}\s+.+\n?/, "").trim();
-      }
-    }
+    const finalMessage = orchestration.message;
+    const isNewConversation = !conversation || conversation.message_count === 0;
 
     // Get the starting sequence number (0 for new conversations, or continue from existing)
     const existingMessageCount = await db.AiMessage.count({
@@ -91,7 +112,11 @@ async function getOrchestration(
     });
 
     // Save new messages to AiMessage table
-    const newMessages = orchestration.conversationHistory.slice(existingMessageCount);
+    // Use newMessageStartIndex from orchestrator to correctly skip system prompt + loaded history
+    const sliceFrom = orchestration.newMessageStartIndex ?? existingMessageCount;
+    const newMessages = orchestration.conversationHistory
+      .slice(sliceFrom)
+      .filter((msg) => msg.role !== "system"); // Never persist system prompts
     const messagePromises = newMessages.map((msg, index) => {
       const messageData = {
         conversation_id: conversation.id,
@@ -140,12 +165,23 @@ async function getOrchestration(
       error_message: null,
     };
 
-    // Update title if extracted
-    if (extractedTitle) {
-      updateData.title = extractedTitle;
-    }
-
     await conversation.update(updateData);
+
+    // Generate title asynchronously for new conversations (don't block the response)
+    if (isNewConversation) {
+      generateConversationTitle(question, finalMessage)
+        .then(async (title) => {
+          if (title) {
+            await conversation.update({ title });
+            // Notify the client so the sidebar updates in real-time
+            socketManager.emitToUser(userId, "conversation-updated", {
+              conversationId: conversation.id,
+              title,
+            });
+          }
+        })
+        .catch(() => {}); // swallow — title is best-effort
+    }
 
     return {
       ...orchestration,

@@ -13,6 +13,10 @@ async function generateMongoQuery(schema, question, conversationHistory = [], cu
         role: "system",
         content: `
         You are an expert MongoDB query generator. Use the following database schema to generate a Mongo Shell query that matches the user's intent.
+
+        Current Date: ${new Date().toISOString().split("T")[0]}
+        Use this when interpreting relative date references (e.g. "YTD" means January 1 of the current year to today, "last month", "this quarter", etc.).
+
         Database Schema:
         ${formattedSchema}
 
@@ -21,16 +25,26 @@ async function generateMongoQuery(schema, question, conversationHistory = [], cu
         - Never wrap the output in \`\`\`javascript or \`\`\` blocks. Return plain query only.
         - When a current query is provided, treat it as the BASE. Apply ONLY the specific change the user requested. Preserve all existing stages, fields, filters, sorts, and structure. Do NOT rewrite, simplify, or restructure the query beyond what was asked.
         - Output format: collection('collectionName').operation()
-        - Example: collection('movies')
-                  .find()
-                  .limit(10)
-        - Try to format the query in a way that is easy to read and understand.
+        - FORMATTING: Always output queries with line breaks and indentation for readability. Each method call on a new line, each aggregation stage on its own line, nested objects indented. Example:
+          collection('movies')
+            .find({ status: "active" })
+            .sort({ createdAt: -1 })
+            .limit(10)
+        - For aggregation pipelines, put each stage on its own line:
+          collection('orders').aggregate([
+            { $match: { status: "active" } },
+            { $group: { _id: "$category", total: { $sum: "$amount" } } },
+            { $sort: { total: -1 } }
+          ])
         - If the user asks for a query with variables, use the variables in the query.
         - Example: collection('movies').find({status: {{status}}}).limit(10)
         - Don't add variables if not specified by the user.
-        - ADDMAN-SmartChart supports a "Scope dates to query" feature. When the user asks to filter by date range or wants the chart date range applied at the query level, use the reserved variables {{start_date}} and {{end_date}} in query filters. These are automatically converted to new Date() objects at runtime, so use them directly without wrapping in new Date() or quotes.
+        - ADDMAN-SmartChart supports a "Scope dates to query" feature using the reserved variables {{start_date}} and {{end_date}}. These are automatically converted to new Date() objects at runtime, so use them directly without wrapping in new Date() or quotes.
+        - DEFAULT BEHAVIOR: When the schema contains date/timestamp fields that can logically scope the result set (e.g. created_at, updated_at, order_date, timestamp), ALWAYS include {{start_date}} and {{end_date}} in the query filters. This is the preferred pattern for all time-series or date-bound queries.
         - Example: collection('orders').find({created_at: {$gte: {{start_date}}, $lte: {{end_date}}}}).sort({created_at: 1})
-        - Only use {{start_date}} and {{end_date}} when the user explicitly asks for date-scoped queries or mentions filtering by the chart's date range.
+        - The system will automatically enable date scoping on the chart. These variables are populated from the chart's date picker.
+        - Do NOT add {{start_date}}/{{end_date}} only when: (1) there are no date fields in the queried collections, (2) the user explicitly asks for ALL data without date filtering, (3) the query is a simple total count/aggregate not meant to be time-bound, or (4) the date fields are not relevant for scoping.
+        - When in doubt, include them — users can always adjust the date range later.
       `,
       },
       ...conversationHistory,

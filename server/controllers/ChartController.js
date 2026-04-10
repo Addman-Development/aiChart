@@ -23,6 +23,7 @@ const TableView = require("../charts/TableView");
 const getEmbeddedChartData = require("../modules/getEmbeddedChartData");
 
 const settings = require("../settings");
+const { detectBestDateColumn } = require("../modules/ai/dateColumnDetector");
 
 class ChartController {
   constructor() {
@@ -30,6 +31,220 @@ class ChartController {
     this.datasetController = new DatasetController();
     this.dataRequestController = new DataRequestController();
     this.chartCache = new ChartCacheController();
+  }
+
+  /**
+   * When scopeDateToQuery is toggled on, retroactively inject {{start_date}} and
+   * {{end_date}} variables into dataset queries that don't already use them.
+   * Uses deterministic regex injection — no AI dependency.
+   */
+  async _injectDateVarsForScopeToggle(chartId) {
+    try {
+      const configs = await db.ChartDatasetConfig.findAll({
+        where: { chart_id: chartId },
+        include: [{
+          model: db.Dataset,
+          include: [{ model: db.DataRequest }]
+        }]
+      });
+
+      for (const config of configs) {
+        const dataset = config.Dataset;
+        if (!dataset) continue;
+
+        const dataRequest = dataset.DataRequests?.find((dr) => dr.id === dataset.main_dr_id)
+          || dataset.DataRequests?.[0];
+        if (!dataRequest || !dataRequest.query) continue;
+
+        // Skip if already has date variables
+        if (dataRequest.query.includes("{{start_date}}") || dataRequest.query.includes("{{end_date}}")) {
+          continue;
+        }
+
+        const connection = await db.Connection.findByPk(dataRequest.connection_id);
+        if (!connection) continue;
+
+        const detected = detectBestDateColumn({
+          schema: connection.schema,
+          query: dataRequest.query,
+          dialect: connection.type,
+          dateField: dataset.dateField,
+        });
+
+        if (!detected.column) continue;
+
+        const col = detected.column;
+        let injection = null;
+
+        if (connection.type === "mongodb") {
+          injection = this._injectDateVarsMongo(dataRequest.query, col);
+        } else {
+          const sqlQuery = this._injectDateVarsSql(dataRequest.query, col);
+          injection = sqlQuery ? { query: sqlQuery, dateVarsFormat: null } : null;
+        }
+
+        if (injection?.query && injection.query.includes("{{start_date}}")) {
+          await db.DataRequest.update(
+            { query: injection.query },
+            { where: { id: dataRequest.id } }
+          );
+
+          // Set dateVarsFormat on the chart to match the format detected in the query
+          if (injection.dateVarsFormat) {
+            await db.Chart.update(
+              { dateVarsFormat: injection.dateVarsFormat },
+              { where: { id: chartId } }
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error("[ChartController] Failed to inject date variables:", error.message);
+    }
+  }
+
+  /**
+   * Inject {{start_date}}/{{end_date}} into a MongoDB query string.
+   * Handles .find(), .aggregate(), and method-chain patterns.
+   * If the date column already has conditions, replaces them instead of duplicating.
+   */
+  _injectDateVarsMongo(query, dateCol) {
+    // Build a regex that matches existing date conditions on this column
+    // Handles both quoted and unquoted key, and nested operator objects like {$gte: ..., $lte: ...}
+    const escapedCol = dateCol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const existingDateRegex = new RegExp(
+      `"?${escapedCol}"?\\s*:\\s*\\{[^}]*\\}\\s*,?\\s*`,
+    );
+
+    // Detect if existing date values use strings ("2026-01-01") vs new Date() objects
+    // so we match the same format with variables
+    const existingMatch = query.match(existingDateRegex);
+    const usesStringDates = existingMatch && !existingMatch[0].includes("new Date");
+
+    // Use quoted placeholders for string fields, bare placeholders for Date fields
+    // applyMongoVariables will wrap bare {{start_date}} in new Date() but leave quoted ones as strings
+    const startVar = usesStringDates ? '"{{start_date}}"' : "{{start_date}}";
+    const endVar = usesStringDates ? '"{{end_date}}"' : "{{end_date}}";
+    const dateFilter = `"${dateCol}": {$gte: ${startVar}, $lte: ${endVar}}`;
+
+    // Detect the date format from existing values (e.g. "2026-01-01" → YYYY-MM-DD)
+    let detectedFormat = null;
+    if (usesStringDates) {
+      const dateValueMatch = existingMatch[0].match(/"(\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z?)?)"/);
+      if (dateValueMatch) {
+        const sample = dateValueMatch[1];
+        if (/^\d{4}-\d{2}-\d{2}$/.test(sample)) {
+          detectedFormat = "YYYY-MM-DD";
+        } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(sample)) {
+          detectedFormat = "YYYY-MM-DDTHH:mm:ss";
+        }
+        // If full ISO with Z or timezone, leave detectedFormat null (default ISO works)
+      }
+    }
+
+    // Wrap result with detected format metadata
+    const result = (q) => (q ? { query: q, dateVarsFormat: detectedFormat } : null);
+
+    // Helper: replace existing date filter on the column, or return null if not found
+    const replaceExisting = (q) => {
+      if (existingDateRegex.test(q)) {
+        // Replace the old filter with the variable-based one
+        let updated = q.replace(existingDateRegex, `${dateFilter}, `);
+        // Clean up trailing/double commas
+        updated = updated.replace(/,(\s*,)+/g, ",").replace(/,\s*\}/g, " }").replace(/,\s*\]/g, " ]");
+        return updated;
+      }
+      return null;
+    };
+
+    // Aggregation pipeline: inject into existing $match or prepend a new $match stage
+    if (query.includes(".aggregate(")) {
+      if (query.includes("$match")) {
+        // Try replacing existing date filter first
+        const replaced = replaceExisting(query);
+        if (replaced) return result(replaced);
+
+        // No existing date filter on this column — merge into the first $match
+        return result(query.replace(
+          /(\$match\s*:\s*\{)/,
+          `$1 ${dateFilter},`
+        ));
+      }
+      // No $match — prepend one after .aggregate([
+      return result(query.replace(
+        /\.aggregate\s*\(\s*\[/,
+        `.aggregate([\n  {$match: {${dateFilter}}},`
+      ));
+    }
+
+    // .find() pattern: inject into the filter object
+    if (query.includes(".find(")) {
+      if (query.match(/\.find\s*\(\s*\{/)) {
+        // Try replacing existing date filter first
+        const replaced = replaceExisting(query);
+        if (replaced) return result(replaced);
+
+        // No existing date filter — prepend into .find({
+        return result(query.replace(
+          /\.find\s*\(\s*\{/,
+          `.find({${dateFilter}, `
+        ));
+      }
+      // .find() with no args or empty args
+      return result(query.replace(
+        /\.find\s*\(\s*\)/,
+        `.find({${dateFilter}})`
+      ));
+    }
+
+    // Fallback: can't determine pattern, return null
+    return null;
+  }
+
+  /**
+   * Inject {{start_date}}/{{end_date}} into a SQL query string.
+   * Handles WHERE present/absent and common clause ordering.
+   * If the date column already has conditions, replaces them instead of duplicating.
+   */
+  _injectDateVarsSql(query, dateCol) {
+    const dateCondition = `${dateCol} >= {{start_date}} AND ${dateCol} <= {{end_date}}`;
+    const escapedCol = dateCol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    // Check if the query already has conditions on this date column (e.g. hardcoded dates)
+    // Matches patterns like: dateCol >= '2026-01-01' AND dateCol <= '2026-04-10'
+    // or: dateCol BETWEEN '...' AND '...'
+    const existingRangeRegex = new RegExp(
+      `${escapedCol}\\s*>=?\\s*(?:'[^']*'|\\{\\{[^}]+\\}\\})\\s+AND\\s+${escapedCol}\\s*<=?\\s*(?:'[^']*'|\\{\\{[^}]+\\}\\})`,
+      "i"
+    );
+    const existingBetweenRegex = new RegExp(
+      `${escapedCol}\\s+BETWEEN\\s+(?:'[^']*'|\\{\\{[^}]+\\}\\})\\s+AND\\s+(?:'[^']*'|\\{\\{[^}]+\\}\\})`,
+      "i"
+    );
+
+    if (existingRangeRegex.test(query)) {
+      return query.replace(existingRangeRegex, dateCondition);
+    }
+    if (existingBetweenRegex.test(query)) {
+      return query.replace(existingBetweenRegex, dateCondition);
+    }
+
+    // No existing date filter — add one
+    if (/\bWHERE\b/i.test(query)) {
+      return query.replace(
+        /\bWHERE\b/i,
+        `WHERE ${dateCondition}\nAND`
+      );
+    }
+
+    // No WHERE — insert before GROUP BY, ORDER BY, LIMIT, or at the end
+    const insertPoint = query.search(/\b(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING|UNION)\b/i);
+    if (insertPoint > 0) {
+      return `${query.slice(0, insertPoint)}\nWHERE ${dateCondition}\n${query.slice(insertPoint)}`;
+    }
+
+    // No recognizable clause — append at the end
+    return `${query.trimEnd()}\nWHERE ${dateCondition}`;
   }
 
   create(data, user) {
@@ -133,10 +348,16 @@ class ChartController {
     return db.Chart.update(data, {
       where: { id },
     })
-      .then(() => {
+      .then(async () => {
         // clear chart cache
         if (user) {
           this.chartCache.remove(user.id, id);
+        }
+
+        // When scopeDateToQuery is toggled on, retroactively inject date variables
+        // into dataset queries that don't already use them
+        if (data.scopeDateToQuery === true) {
+          await this._injectDateVarsForScopeToggle(id);
         }
 
         const updatePromises = [];
@@ -285,14 +506,50 @@ class ChartController {
       });
   }
 
-  remove(id) {
-    return db.Chart.destroy({ where: { id } })
-      .then((response) => {
-        return response;
-      })
-      .catch((error) => {
-        return new Promise((resolve, reject) => reject(error));
-      });
+  async remove(id) {
+    const chart = await db.Chart.findByPk(id);
+    if (!chart) throw new Error("Chart not found");
+
+    const project = await db.Project.findByPk(chart.project_id);
+
+    // If chart is already in a ghost project, hard delete it
+    if (project?.ghost) {
+      return db.Chart.destroy({ where: { id } });
+    }
+
+    // Find the team's ghost project so we can shelve the chart instead of destroying it
+    const ghostProject = await db.Project.findOne({
+      where: { team_id: project.team_id, ghost: true },
+    });
+
+    if (!ghostProject) {
+      // No ghost project exists — fall back to hard delete
+      return db.Chart.destroy({ where: { id } });
+    }
+
+    const previousProjectId = chart.project_id;
+
+    // Move chart to ghost project (shelve it)
+    await db.Chart.update(
+      { project_id: ghostProject.id },
+      { where: { id } }
+    );
+
+    // Remove the dashboard project from each linked dataset's project_ids
+    const configs = await db.ChartDatasetConfig.findAll({
+      where: { chart_id: id },
+      include: [{ model: db.Dataset }],
+    });
+
+    for (const cdc of configs) {
+      if (cdc.Dataset) {
+        const currentIds = cdc.Dataset.project_ids || [];
+        const updatedIds = currentIds.filter((pid) => pid !== previousProjectId);
+        await cdc.Dataset.update({ project_ids: updatedIds });
+      }
+    }
+
+    return { removed: true, shelved: true, ghost_project_id: ghostProject.id };
   }
 
   updateChartData(id, user, {
@@ -332,6 +589,8 @@ class ChartController {
         if (gChart.scopeDateToQuery && gChart.startDate && gChart.endDate) {
           resolvedDates = resolveChartDates(gChart, filters, project?.timezone);
         }
+        console.log(`[updateChartData] chart=${id} scopeDateToQuery=${gChart.scopeDateToQuery} startDate=${gChart.startDate} endDate=${gChart.endDate} resolvedDates=${resolvedDates ? `${resolvedDates.formattedStartDate} → ${resolvedDates.formattedEndDate}` : "null"}`);
+
 
         const requestPromises = [];
         gChart.ChartDatasetConfigs.forEach((cdc) => {
@@ -362,6 +621,7 @@ class ChartController {
             cdcVariables.end_date = format
               ? fallbackEnd.format(format) : fallbackEnd.toISOString();
           }
+          console.log(`[updateChartData] dataset=${cdc.Dataset?.id} start_date=${cdcVariables.start_date} end_date=${cdcVariables.end_date}`);
 
           if (noSource && gCache && gCache.data) {
             requestPromises.push(

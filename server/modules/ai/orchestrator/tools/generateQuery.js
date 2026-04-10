@@ -1,12 +1,13 @@
 const { generateSqlQuery } = require("../../generateSqlQuery");
 const { generateMongoQuery } = require("../../generateMongoQuery");
+const { detectBestDateColumn } = require("../../dateColumnDetector");
 
 async function generateQuery(payload) {
   const {
     question, schema, preferred_dialect, current_query
   } = payload;
 
-  if (!global.openaiClient) {
+  if (!global.aiClient) {
     return {
       status: "unsupported",
       message: "Query generation requires OpenAI to be configured",
@@ -18,8 +19,22 @@ async function generateQuery(payload) {
       throw new Error("Schema must be a valid object if provided");
     }
 
+    // Detect the best date column from the schema to guide the AI
+    const detected = detectBestDateColumn({
+      schema,
+      query: current_query || "",
+      dialect: preferred_dialect,
+    });
+
+    // Append a date-column hint so the AI picks the right column for date scoping
+    let enrichedQuestion = question;
+    if (detected.column && detected.score >= 50) {
+      const candidates = detected.candidates?.slice(0, 3).map((c) => c.column).join(", ") || detected.column;
+      enrichedQuestion += `\n\n[System hint: The best date column for {{start_date}}/{{end_date}} scoping is "${detected.column}". Other candidates: ${candidates}. Use this column when adding date filters.]`;
+    }
+
     if (preferred_dialect === "mongodb") {
-      const result = await generateMongoQuery(schema, question, [], current_query || "");
+      const result = await generateMongoQuery(schema, enrichedQuestion, [], current_query || "");
 
       if (!result || !result.query || result.query.trim() === "") {
         throw new Error("Query generation failed - no query returned");
@@ -40,6 +55,7 @@ async function generateQuery(payload) {
         status: "ok",
         dialect: preferred_dialect,
         query: result.query,
+        dateColumn: detected.column,
         rationale: {
           message: "MongoDB query generated successfully",
         },
@@ -59,7 +75,7 @@ async function generateQuery(payload) {
       }
     };
 
-    const result = await generateSqlQuery(effectiveSchema, question, [], current_query || "");
+    const result = await generateSqlQuery(effectiveSchema, enrichedQuestion, [], current_query || "");
 
     if (!result || !result.query || result.query.trim() === "") {
       throw new Error("Query generation failed - no query returned");
@@ -84,6 +100,7 @@ async function generateQuery(payload) {
       status: "ok",
       dialect: preferred_dialect,
       query: result.query,
+      dateColumn: detected.column,
       rationale: {
         message: "Query generated successfully",
       },

@@ -96,7 +96,8 @@ async function availableTools() {
       }
       // returns: {
       //  status: "ok"|"needs_disambiguation"|"unsupported",
-      //  dialect, query, rationale:{table, cols, filters}
+      //  dialect, query, dateColumn (best date column detected from schema),
+      //  rationale:{table, cols, filters}
       //  disambiguation?: { entityType:"table|column", options:[{label,value}] }
       // }
     },
@@ -463,11 +464,7 @@ function buildSystemPrompt(semanticLayer, conversation = null, context = null) {
 
   const conversationContext = isNewConversation
     ? `\n## New Conversation
-This is the start of a new conversation. Introduce yourself and be helpful.
-
-IMPORTANT: For your FIRST response in this new conversation, start with a markdown header (like # Title) that describes the conversation. This will be used as the conversation title.
-
-The title should be actionable and descriptive based on the user's question.`
+This is the start of a new conversation. Introduce yourself and be helpful.`
     : `\n## Current Conversation
 This is a continuing conversation. Be aware of previous interactions and maintain context.`;
 
@@ -483,7 +480,13 @@ This is a continuing conversation. Be aware of previous interactions and maintai
     ? "\nNote: The user has scoped this conversation to the connections listed above. Only use these connections."
     : "";
 
-  return `You are an AI assistant for ADDMAN-SmartChart, a data visualization platform. Your role is to help users query their data and create charts.${conversationContext}
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  return `You are an AI assistant for ADDMAN-SmartChart, a data visualization platform. Your role is to help users query their data and create charts.
+
+## Current Date
+Today is ${today}. Use this when interpreting relative date references (e.g. "YTD", "last month", "this quarter").
+${conversationContext}
 
 ## Available Connections
 ${availableConnections.map((c) => `- ${c.name} (${c.type}${c.subType ? `/${c.subType}` : ""}) [ID: ${c.id}]`).join("\n")}
@@ -597,13 +600,9 @@ ${ENTITY_CREATION_RULES}
    - When answering data questions, give the direct answer first, then show the chart
    - **REMEMBER: Temporary charts give users control over what gets saved to their dashboards. Users can always edit charts and datasets afterwards**
 
-3. Date-scoped queries (Scope dates to query):
-   ADDMAN-SmartChart has a "Scope dates to query" feature that injects the chart's date range directly into the query using {{start_date}} and {{end_date}} reserved variables. When the user asks for a date-filtered query or wants the chart date picker to control the query's time range:
-   - Include {{start_date}} and {{end_date}} in the SQL/Mongo WHERE clause (e.g. WHERE created_at >= {{start_date}} AND created_at <= {{end_date}})
-   - The user must enable "Scope dates to query" in Chart Settings and set a date range via the date picker
-   - The date format is controlled by the chart's "Date format" setting (dateVarsFormat). If unset, ISO 8601 is used.
-   - When this toggle is enabled, date filtering happens at the database level (more efficient for large datasets) instead of filtering in memory after fetching all rows.
-   - Only use {{start_date}}/{{end_date}} when the user explicitly requests date-scoped queries. Don't add them by default.
+3. Date-scoped queries — DEFAULT BEHAVIOR:
+   By default, use {{start_date}} and {{end_date}} variables in WHERE clauses when the queried tables have date/timestamp columns. The generate_query tool returns a "dateColumn" hint — use it. Set the dataset's dateField to that column (root[].columnName syntax). The system auto-enables "Scope dates to query" on the chart.
+   Skip date scoping only when: no date columns exist, user asks for ALL data, or it's a simple total count.
 
 4. Best practices:
    - **CRITICAL: Default to temporary charts.** Only place in dashboards when explicitly requested.
@@ -805,9 +804,13 @@ function sanitizeConversationHistory(history) {
       }
 
       // Filter tool responses to only include those with valid tool_call_ids
+      // and deduplicate (keep first response per tool_call_id)
+      const seenCallIds = new Set();
       const validToolResponses = toolResponses.filter((tr) => {
         const callId = tr.tool_call_id;
-        return callId && toolCallIds.has(callId);
+        if (!callId || !toolCallIds.has(callId) || seenCallIds.has(callId)) return false;
+        seenCallIds.add(callId);
+        return true;
       });
 
       // Check for orphaned tool responses (responses without matching tool_call_ids)
@@ -987,9 +990,11 @@ async function orchestrate(
     }
 
     // Return with 0 token usage
+    // newMessageStartIndex: skip system + history, new messages are user question + response
     return {
       message: capabilityResponse,
       conversationHistory: messages,
+      newMessageStartIndex: 1 + sanitizedHistory.length,
       usage: {
         prompt_tokens: 0,
         completion_tokens: 0,
@@ -1052,8 +1057,6 @@ async function orchestrate(
     messages,
     tools,
     tool_choice: "auto",
-    reasoning_effort: "low",
-    verbosity: "low",
   });
   const elapsedMs1 = Date.now() - startTime1;
 
@@ -1069,6 +1072,8 @@ async function orchestrate(
   }
 
   const updatedMessages = [...messages];
+  // Track where new messages start (everything before this is system prompt + loaded history)
+  const newMessageStartIndex = updatedMessages.length;
   let assistantMessage = response.choices[0].message;
   const maxIterations = 10; // Prevent infinite loops
   let iterations = 0;
@@ -1204,6 +1209,7 @@ async function orchestrate(
         prompt: disambiguationRequest.prompt,
         options: disambiguationRequest.options,
         conversationHistory: updatedMessages,
+        newMessageStartIndex,
       };
     }
 
@@ -1215,8 +1221,6 @@ async function orchestrate(
       messages: updatedMessages,
       tools,
       tool_choice: "auto",
-      reasoning_effort: "low",
-      verbosity: "low",
     });
     const elapsedMs = Date.now() - startTime;
 
@@ -1263,6 +1267,7 @@ async function orchestrate(
   return {
     message: assistantMessage.content,
     conversationHistory: updatedMessages,
+    newMessageStartIndex, // Index where new messages begin (after system prompt + history)
     usage: response.usage, // Last API call usage (backward compatibility)
     usageRecords, // All usage records for saving to AiUsage table
     iterations,

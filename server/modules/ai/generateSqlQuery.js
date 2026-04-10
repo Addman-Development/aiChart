@@ -43,18 +43,25 @@ async function generateSqlQuery(schema, question, conversationHistory = [], curr
         role: "system",
         content: `You are an expert SQL query generator. Use the following database schema to generate an SQL query that matches the user's intent.
 
+Current Date: ${new Date().toISOString().split("T")[0]}
+Use this when interpreting relative date references (e.g. "YTD" means January 1 of the current year to today, "last month", "this quarter", etc.).
+
 Database Schema:
 ${formattedSchema}
 
 IMPORTANT RULES:
 - Output ONLY the raw SQL query. No explanations, no markdown, no code fences, no comments outside the query, no descriptions of what changed.
+- FORMATTING: Always output SQL with line breaks for readability. Each major clause (SELECT, FROM, WHERE, JOIN, GROUP BY, ORDER BY, LIMIT) should start on its own line. Indent continued lines.
 - When a current query is provided, treat it as the BASE. Apply ONLY the specific change the user requested. Preserve all existing columns, joins, WHERE clauses, GROUP BY, ORDER BY, and structure. Do NOT rewrite, simplify, or restructure the query beyond what was asked.
 - If the user's request is ambiguous, make a reasonable assumption and generate the query. Do NOT ask clarifying questions.
 - If the user asks for a query with variables, use the variables in the query. Example: SELECT * FROM movies WHERE status = {{status}} LIMIT 10;
 - Don't add variables if not specified by the user.
 - Never wrap the output in \`\`\`sql or \`\`\` blocks. Return plain SQL only.
-- ADDMAN-SmartChart supports a "Scope dates to query" feature. When the user asks to filter by date range or wants the chart date range applied at the query level, use the reserved variables {{start_date}} and {{end_date}} in WHERE clauses. Example: SELECT * FROM orders WHERE created_at >= {{start_date}} AND created_at <= {{end_date}} ORDER BY created_at;
-- Only use {{start_date}} and {{end_date}} when the user explicitly asks for date-scoped queries or mentions filtering by the chart's date range. These variables are automatically populated from the chart's date picker when the "Scope dates to query" toggle is enabled.`,
+- ADDMAN-SmartChart supports a "Scope dates to query" feature using the reserved variables {{start_date}} and {{end_date}}.
+- DEFAULT BEHAVIOR: When the schema contains date/timestamp/datetime columns that can logically scope the result set (e.g. created_at, updated_at, order_date, timestamp), ALWAYS include {{start_date}} and {{end_date}} in the WHERE clause. This is the preferred pattern for all time-series or date-bound queries. Example: SELECT * FROM orders WHERE created_at >= {{start_date}} AND created_at <= {{end_date}} ORDER BY created_at;
+- These variables are automatically populated from the chart's date picker. The system will enable date scoping on the chart automatically.
+- Do NOT add {{start_date}}/{{end_date}} only when: (1) there are no date columns in the queried tables, (2) the user explicitly asks for ALL data without date filtering, (3) the query is a simple total count/aggregate not meant to be time-bound, or (4) the date columns are not relevant for scoping (e.g. birth_date in a demographics query).
+- When in doubt, include them — users can always adjust the date range later.`,
       },
       ...conversationHistory,
     ];

@@ -144,6 +144,9 @@ module.exports = (app) => {
   app.get("/project/:project_id/chart/:id", verifyToken, checkPermissions("readAny"), (req, res) => {
     return chartController.findById(req.params.id)
       .then((chart) => {
+        if (!chart) {
+          return res.status(404).json({ message: "Chart not found" });
+        }
         return res.status(200).send(chart);
       })
       .catch((error) => {

@@ -187,7 +187,7 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
 
   // Replace variables with their values using priority: runtime > default > error/removal
   foundVariables.forEach((variable) => {
-    const binding = originalDataRequest.VariableBindings.find((vb) => vb.name === variable.name);
+    const binding = originalDataRequest.VariableBindings?.find((vb) => vb.name === variable.name);
 
     // Check for runtime variable value first
     const runtimeValue = variables[variable.name];
@@ -203,13 +203,23 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
       || variable.name === "start_date"
       || variable.name === "end_date";
 
+    if (isDateVariable) {
+      console.log(`[applyMongoVariables] ${variable.name}: runtime=${runtimeValue}, hasRuntime=${hasRuntimeValue}, isDate=${isDateVariable}`);
+    }
+
     if (hasRuntimeValue) {
       // Priority 1: Use runtime value
       let replacementValue = runtimeValue;
 
       if (isDateVariable) {
-        // MongoDB dates must be Date objects, not strings
-        replacementValue = `new Date("${String(runtimeValue)}")`;
+        if (variable.isAlreadyQuoted) {
+          // Placeholder is inside quotes (e.g. "{{start_date}}") — field stores dates as strings
+          // Just substitute the raw value; the surrounding quotes handle formatting
+          replacementValue = String(runtimeValue);
+        } else {
+          // Bare placeholder — field stores native Date objects; wrap in new Date()
+          replacementValue = `new Date("${String(runtimeValue)}")`;
+        }
       } else if (binding?.type) {
         // Handle different data types based on binding type
         switch (binding.type) {
@@ -243,8 +253,11 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
       let replacementValue = binding.default_value;
 
       if (isDateVariable) {
-        // MongoDB dates must be Date objects
-        replacementValue = `new Date("${String(binding.default_value)}")`;
+        if (variable.isAlreadyQuoted) {
+          replacementValue = String(binding.default_value);
+        } else {
+          replacementValue = `new Date("${String(binding.default_value)}")`;
+        }
       } else {
         switch (binding.type) {
           case "string":

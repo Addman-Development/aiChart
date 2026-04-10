@@ -139,34 +139,33 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
-  // Function to fetch chart data when a chart is created
+  // Fetch chart data for the AI chat.  Uses the ghost project as the
+  // project_id in the API call because ghost projects bypass the per-project
+  // access check, while findById only uses the chart ID.
   const fetchChartData = async (chartId, projectId) => {
-    try {
-      const result = await dispatch(getChart({
-        project_id: projectId,
-        chart_id: chartId
-      }));
+    const ghostProject = projects.find((p) => p.ghost);
+    const fetchProjectId = ghostProject?.id ?? projectId;
 
-      if (result?.payload) {
-        setCreatedCharts(prevCharts => {
-          // Check if chart already exists
-          const existingIndex = prevCharts.findIndex(c => c.id === result.payload.id);
-          if (existingIndex >= 0) {
-            // Update existing chart
-            const updatedCharts = [...prevCharts];
-            updatedCharts[existingIndex] = result.payload;
-            return updatedCharts;
-          } else {
-            // Add new chart
-            return [...prevCharts, result.payload];
-          }
-        });
-        return result.payload;
-      }
-    } catch (error) {
-      console.error("Failed to fetch chart data:", error);
-      toast.error("Failed to load chart data");
+    const result = await dispatch(getChart({
+      project_id: fetchProjectId,
+      chart_id: chartId
+    }));
+
+    if (result?.payload) {
+      setCreatedCharts(prevCharts => {
+        const existingIndex = prevCharts.findIndex(c => c.id === result.payload.id);
+        if (existingIndex >= 0) {
+          const updatedCharts = [...prevCharts];
+          updatedCharts[existingIndex] = result.payload;
+          return updatedCharts;
+        }
+        return [...prevCharts, result.payload];
+      });
+      return result.payload;
     }
+
+    // Fetch failed — don't mark as deleted. The chart card will render
+    // without a preview, which is better than incorrectly claiming "removed".
     return null;
   };
 
@@ -250,12 +249,26 @@ function AiModal({ isOpen, onClose }) {
       }
     };
 
+    // Set up conversation-updated listener (e.g. title generated async)
+    const handleConversationUpdated = (data) => {
+      if (data?.conversationId && data?.title) {
+        setConversations(prev => prev.map(c =>
+          c.id === data.conversationId ? { ...c, title: data.title } : c
+        ));
+        setConversation(prev =>
+          prev?.id === data.conversationId ? { ...prev, title: data.title } : prev
+        );
+      }
+    };
+
     initSocket();
     socketClient.on("conversation-created", handleConversationCreated);
+    socketClient.on("conversation-updated", handleConversationUpdated);
 
     return () => {
       isMounted = false;
       socketClient.off("conversation-created", handleConversationCreated);
+      socketClient.off("conversation-updated", handleConversationUpdated);
       // Note: We don't disconnect the socket here - it's a singleton that stays connected
       // This allows seamless reconnection when modal reopens
     };
@@ -521,9 +534,15 @@ function AiModal({ isOpen, onClose }) {
       await deleteAiConversation(conversationId, team.id);
       toast.success("Conversation deleted");
 
-      // If we deleted the current conversation, go back to welcome screen
+      // If we deleted the current conversation, reset to a fresh chat (stay in chat view)
       if (conversation?.id === conversationId) {
-        setConversation(null);
+        setConversation({
+          title: "New Conversation",
+          full_history: [],
+          createdAt: new Date().toISOString(),
+          message_count: 0,
+          isTemporary: true,
+        });
         setLocalMessages([]);
         setProgressEvents([]);
         setCreatedCharts([]);
@@ -918,31 +937,39 @@ function AiModal({ isOpen, onClose }) {
       );
     }
 
-    // Chart created/updated messages - render the actual chart
+    // Chart created/updated messages — these were explicitly placed on a dashboard,
+    // so always show dashboard links.  Uses the chart's live project_id when
+    // available so links stay correct if the chart was moved.
     if ((parsed.type === "chart_created" || parsed.type === "chart_updated") && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
+      const isUpdated = parsed.type === "chart_updated";
+      // Use the live project_id if chart data loaded, otherwise fall back to the
+      // project_id from the original tool message so links work while loading.
+      const displayProjectId = chartData
+        ? chartData.project_id
+        : parsed.projectId;
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">
           <div className="w-full max-w-[90%]">
             <div className={`px-6 py-4 rounded-lg border ${
-              parsed.type === "chart_created" ? "border-success-200" : "border-warning-200"
+              isUpdated ? "border-warning-200" : "border-success-200"
             }`}>
               <div className="flex items-start gap-3">
                 <Avatar
                   icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
-                  color={parsed.type === "chart_created" ? "success" : "warning"}
+                  color={isUpdated ? "warning" : "success"}
                 />
                 <div className="w-full">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium">
-                      {parsed.type === "chart_created" ? "Chart Created" : "Chart Updated"}
+                      {isUpdated ? "Chart Updated" : "Chart Created"}
                     </span>
                     <Chip
                       size="sm"
                       variant="flat"
-                      color={parsed.type === "chart_created" ? "success" : "warning"}
+                      color={isUpdated ? "warning" : "success"}
                     >
                       {parsed.chartName}
                     </Chip>
@@ -956,15 +983,13 @@ function AiModal({ isOpen, onClose }) {
                       />
                     </div>
                   ) : (
-                    <div className={`border ${
-                      parsed.type === "chart_created" ? "border-success-200" : "border-warning-200"
-                    } rounded-lg p-8`}>
+                    <div className={`border ${isUpdated ? "border-warning-200" : "border-success-200"} rounded-lg p-8`}>
                       <CircularProgress aria-label="Loading chart" />
                       <div className="text-sm mt-2">Loading chart...</div>
                     </div>
                   )}
                   <div className="flex gap-2 mt-3">
-                    <a href={`/dashboard/${parsed.projectId}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`/dashboard/${displayProjectId}`} target="_blank" rel="noopener noreferrer">
                       <Button
                         size="sm"
                         variant="flat"
@@ -974,7 +999,7 @@ function AiModal({ isOpen, onClose }) {
                         View on Dashboard
                       </Button>
                     </a>
-                    <a href={`/dashboard/${parsed.projectId}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
+                    <a href={`/dashboard/${displayProjectId}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
                       <Button
                         size="sm"
                         variant="flat"
@@ -992,13 +1017,15 @@ function AiModal({ isOpen, onClose }) {
       );
     }
 
-    // Temporary chart messages - render the chart with temporary styling
+    // Temporary chart messages — check the chart's *live* project to determine
+    // whether it's still in the ghost project or has been placed on a dashboard.
+    // Charts removed from dashboards are shelved back to ghost, so they
+    // reappear here with the "Add to Dashboard" button.
     if (parsed.type === "chart_temporary" && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
       const nonGhostProjects = projects.filter((p) => !p.ghost);
-      const chartAlreadyMoved = chartData && nonGhostProjects.some(
-        (p) => p.id === chartData.project_id
-      );
+      const chartAlreadyMoved = chartData
+        && nonGhostProjects.some((p) => p.id === chartData.project_id);
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">

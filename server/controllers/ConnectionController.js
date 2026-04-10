@@ -480,20 +480,26 @@ class ConnectionController {
       return acc;
     }, {});
 
-    // Format schema for postgres to be more terse
+    // Format schema: include column names with their types for better AI date-column detection
+    // Format: { tableName: { colName: "TYPE", ... } }
     let formattedSchema = {};
     if (schema) {
       try {
-        const schemaObj = schema;
-        if (schemaObj) {
-          formattedSchema = {};
-          Object.keys(schemaObj).forEach((tableName) => {
-            formattedSchema[tableName] = Object.keys(schemaObj[tableName]);
-          });
-        }
+        Object.keys(schema).forEach((tableName) => {
+          const columns = schema[tableName];
+          if (columns && typeof columns === "object") {
+            formattedSchema[tableName] = {};
+            Object.keys(columns).forEach((colName) => {
+              formattedSchema[tableName][colName] = columns[colName]?.type || "UNKNOWN";
+            });
+          }
+        });
       } catch (e) {
-        // Fallback to original schema if parsing fails
-        formattedSchema = schema;
+        // Fallback to column-names-only if type extraction fails
+        formattedSchema = {};
+        Object.keys(schema).forEach((tableName) => {
+          formattedSchema[tableName] = Object.keys(schema[tableName] || {});
+        });
       }
     }
 
@@ -508,8 +514,9 @@ class ConnectionController {
 
     try {
       // Try filtering out empty tables using sys.dm_db_partition_stats
+      // Include DATA_TYPE for date-column detection
       results = await dbConnection.query(
-        `SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME
+        `SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE
          FROM INFORMATION_SCHEMA.COLUMNS c
          INNER JOIN (
            SELECT s.name AS TABLE_SCHEMA, t.name AS TABLE_NAME
@@ -528,7 +535,7 @@ class ConnectionController {
       console.warn("[_getMssqlSchema] Filtered query failed, falling back to INFORMATION_SCHEMA only:", err.message);
       // Fallback: just use INFORMATION_SCHEMA (no empty-table filtering)
       results = await dbConnection.query(
-        `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME
+        `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_NAME NOT LIKE 'sys%'
          ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
@@ -545,9 +552,9 @@ class ConnectionController {
       if (!seen.has(fullName)) {
         seen.add(fullName);
         tables.push(fullName);
-        formattedSchema[fullName] = [];
+        formattedSchema[fullName] = {};
       }
-      formattedSchema[fullName].push(row.COLUMN_NAME);
+      formattedSchema[fullName][row.COLUMN_NAME] = row.DATA_TYPE || "UNKNOWN";
     }
 
     return {

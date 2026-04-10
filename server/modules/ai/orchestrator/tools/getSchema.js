@@ -15,12 +15,24 @@ async function getSchema(payload) {
     throw new Error(`Connection type '${connection.type}'${connection.subType ? `/${connection.subType}` : ""} is not supported. Currently only MySQL, PostgreSQL, and MongoDB connections are supported. API connections and other sources will be available in future updates.`);
   }
 
-  // For supported database connections, return schema
+  // Return schema to the AI in a terse format (column names only) to stay
+  // within token limits.  The full typed schema is kept on connection.schema
+  // for internal use (e.g. date-column detection).
+  let terseSchema = connection.schema || [];
+  if (terseSchema?.description && typeof terseSchema.description === "object") {
+    const terse = {};
+    for (const [table, cols] of Object.entries(terseSchema.description)) {
+      // cols may be { colName: "TYPE" } (rich) or ["colName"] (legacy)
+      terse[table] = Array.isArray(cols) ? cols : Object.keys(cols);
+    }
+    terseSchema = { ...terseSchema, description: terse };
+  }
+
   return {
     dialect: connection.type,
     connection_id: connection.id,
     name: connection.name,
-    entities: connection.schema || [],
+    entities: terseSchema,
     samples: include_samples ? {} : undefined,
   };
 }

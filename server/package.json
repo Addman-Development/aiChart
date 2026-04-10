@@ -19,6 +19,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.87.0",
     "@azure/msal-node": "^2.16.3",
     "@bull-board/api": "^6.20.6",
     "@bull-board/express": "^6.20.6",

@@ -1,9 +1,18 @@
+const moment = require("moment");
 const db = require("../../../../models/models");
 const ChartController = require("../../../../controllers/ChartController");
 
 const chartController = new ChartController();
 
 const clientUrl = process.env.VITE_APP_CLIENT_HOST;
+
+/**
+ * Detects whether a query uses {{start_date}} and/or {{end_date}} variables.
+ */
+function queryUsesDateVars(query) {
+  if (!query) return false;
+  return query.includes("{{start_date}}") || query.includes("{{end_date}}");
+}
 
 async function createChart(payload) {
   const {
@@ -116,6 +125,19 @@ async function createChart(payload) {
         configuration: chartSpec.configuration || {}
       }]
     }, null); // No user for AI-created charts
+
+    // Auto-enable scopeDateToQuery when the dataset's query uses date variables
+    const dataRequest = await db.DataRequest.findByPk(dataset.main_dr_id);
+    if (dataRequest && queryUsesDateVars(dataRequest.query)) {
+      const defaultStart = moment().subtract(30, "days").startOf("day").toDate();
+      const defaultEnd = moment().endOf("day").toDate();
+      await db.Chart.update({
+        scopeDateToQuery: true,
+        startDate: defaultStart,
+        endDate: defaultEnd,
+        currentEndDate: true,
+      }, { where: { id: chart.id } });
+    }
 
     // Take a snapshot of the chart for visualization
     let snapshot = null;

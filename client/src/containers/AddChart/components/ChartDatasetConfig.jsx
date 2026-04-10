@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -8,6 +8,7 @@ import {
 } from "@heroui/react";
 import { TbMathFunctionY, TbProgressCheck } from "react-icons/tb";
 import { TwitterPicker, SketchPicker } from "react-color";
+import moment from "moment";
 import { useNavigate, useParams } from "react-router";
 import { Link as LinkNext } from "react-router";
 import {
@@ -60,6 +61,40 @@ function ChartDatasetConfig(props) {
   const { isDark } = useTheme();
   // removed initVars; variables are initialized per CDC change
 
+  // Compute resolved date variable values so users can see what the query will actually use
+  const resolvedDateVars = useMemo(() => {
+    if (!chart?.scopeDateToQuery) return {};
+
+    const format = chart.dateVarsFormat || undefined;
+    let startDate;
+    let endDate;
+
+    if (chart.startDate && chart.endDate) {
+      startDate = moment.utc(chart.startDate);
+      endDate = moment.utc(chart.endDate);
+
+      if (chart.currentEndDate) {
+        const timeDiff = endDate.diff(startDate, chart.timeInterval || "day");
+        endDate = moment().endOf(chart.timeInterval || "day");
+        if (!chart.fixedStartDate) {
+          startDate = endDate.clone()
+            .subtract(timeDiff, chart.timeInterval || "day")
+            .startOf(chart.timeInterval || "day");
+        }
+      }
+    } else {
+      // Fallback: last 7 days
+      startDate = moment().subtract(7, "days").startOf("day");
+      endDate = moment().endOf("day");
+    }
+
+    return {
+      start_date: format ? startDate.format(format) : startDate.toISOString(),
+      end_date: format ? endDate.format(format) : endDate.toISOString(),
+    };
+  }, [chart?.scopeDateToQuery, chart?.startDate, chart?.endDate, chart?.currentEndDate,
+    chart?.fixedStartDate, chart?.timeInterval, chart?.dateVarsFormat]);
+
   useEffect(() => {
     if (cdc?.formula) {
       setFormula(cdc.formula);
@@ -88,6 +123,16 @@ function ChartDatasetConfig(props) {
               variableByName[vb.name] = vb;
             }
           });
+        }
+
+        // Detect reserved date variables in the query even without VariableBinding records
+        if (dr?.query && chart?.scopeDateToQuery) {
+          if (dr.query.includes("{{start_date}}") && !variableByName.start_date) {
+            variableByName.start_date = { id: "reserved_start_date", name: "start_date", type: "date", default_value: "", isReserved: true };
+          }
+          if (dr.query.includes("{{end_date}}") && !variableByName.end_date) {
+            variableByName.end_date = { id: "reserved_end_date", name: "end_date", type: "date", default_value: "", isReserved: true };
+          }
         }
       });
       tempVariables = Object.values(variableByName);
@@ -806,63 +851,93 @@ function ChartDatasetConfig(props) {
 
           <div className="flex flex-col gap-2">
             <div className="font-bold">{"Variables"}</div>
-            {variables.map((variable) => (
-              <div key={variable.id} className="flex flex-col gap-1">
-                <Input
-                  startContent={
-                    <div className="flex flex-row gap-1 items-center">
-                      <LuVariable size={18} />
-                      <div className="text-sm text-gray-400">{variable.name}</div>
+            {variables.map((variable) => {
+              const isDateVar = variable.name === "start_date" || variable.name === "end_date";
+              const resolvedValue = isDateVar ? resolvedDateVars[variable.name] : null;
+
+              // Reserved date variables are read-only — their value comes from the chart date range
+              if (variable.isReserved) {
+                return (
+                  <div key={variable.id} className="flex flex-col gap-1">
+                    <Input
+                      isReadOnly
+                      startContent={
+                        <div className="flex flex-row gap-1 items-center">
+                          <LuVariable size={18} />
+                          <div className="text-sm text-gray-400">{variable.name}</div>
+                        </div>
+                      }
+                      value={resolvedValue || "Not set"}
+                      variant="bordered"
+                      description={`Set by chart date range${chart?.dateVarsFormat ? ` (${chart.dateVarsFormat})` : ""}`}
+                    />
+                  </div>
+                );
+              }
+
+              return (
+                <div key={variable.id} className="flex flex-col gap-1">
+                  <Input
+                    startContent={
+                      <div className="flex flex-row gap-1 items-center">
+                        <LuVariable size={18} />
+                        <div className="text-sm text-gray-400">{variable.name}</div>
+                      </div>
+                    }
+                    placeholder={`Default: ${variable.default_value || "No default"}`}
+                    value={_getVariableCurrentValue(variable)}
+                    onChange={(e) => {
+                      setVariableValues(prev => ({
+                        ...prev,
+                        [variable.name]: e.target.value
+                      }));
+                    }}
+                    variant="bordered"
+                    endContent={
+                      _hasVariableChanged(variable) ? (
+                        <div className="flex flex-row gap-1">
+                          <Tooltip content="Save variable value">
+                            <Link
+                              onClick={() => _onSaveVariableValue(variable.name, variableValues[variable.name] || "")}
+                              className="text-success"
+                            >
+                              <LuCircleCheck className="text-success" />
+                            </Link>
+                          </Tooltip>
+                          <Tooltip content="Reset to saved value">
+                            <Link
+                              onClick={() => {
+                                const originalValue = _getVariableOriginalValue(variable);
+                                setVariableValues(prev => ({
+                                  ...prev,
+                                  [variable.name]: originalValue
+                                }));
+                              }}
+                              className="text-warning"
+                            >
+                              <LuCircleX className="text-warning" />
+                            </Link>
+                          </Tooltip>
+                        </div>
+                      ) : cdc.configuration?.variables?.find(v => v.name === variable.name) && (
+                        <div className="flex flex-row gap-1">
+                          <Tooltip content="Remove override and use default value">
+                            <Link onClick={() => _onClearVariableOverride(variable.name)}>
+                              <LuCircleX className="text-warning" />
+                            </Link>
+                          </Tooltip>
+                        </div>
+                      )
+                    }
+                  />
+                  {resolvedValue && (
+                    <div className="text-xs text-gray-400 ml-1">
+                      {`Resolved: ${resolvedValue}${chart?.dateVarsFormat ? ` (${chart.dateVarsFormat})` : ""}`}
                     </div>
-                  }
-                  placeholder={`Default: ${variable.default_value || "No default"}`}
-                  value={_getVariableCurrentValue(variable)}
-                  onChange={(e) => {
-                    setVariableValues(prev => ({
-                      ...prev,
-                      [variable.name]: e.target.value
-                    }));
-                  }}
-                  variant="bordered"
-                  endContent={
-                    _hasVariableChanged(variable) ? (
-                      <div className="flex flex-row gap-1">
-                        <Tooltip content="Save variable value">
-                          <Link 
-                            onClick={() => _onSaveVariableValue(variable.name, variableValues[variable.name] || "")}
-                            className="text-success"
-                          >
-                            <LuCircleCheck className="text-success" />
-                          </Link>
-                        </Tooltip>
-                        <Tooltip content="Reset to saved value">
-                          <Link 
-                            onClick={() => {
-                              const originalValue = _getVariableOriginalValue(variable);
-                              setVariableValues(prev => ({
-                                ...prev,
-                                [variable.name]: originalValue
-                              }));
-                            }}
-                            className="text-warning"
-                          >
-                            <LuCircleX className="text-warning" />
-                          </Link>
-                        </Tooltip>
-                      </div>
-                    ) : cdc.configuration?.variables?.find(v => v.name === variable.name) && (
-                      <div className="flex flex-row gap-1">
-                        <Tooltip content="Remove override and use default value">
-                          <Link onClick={() => _onClearVariableOverride(variable.name)}>
-                            <LuCircleX className="text-warning" />
-                          </Link>
-                        </Tooltip>
-                      </div>
-                    )
-                  }
-                />
-              </div>
-            ))}
+                  )}
+                </div>
+              );
+            })}
             {variables.length === 0 && (
               <div className="text-sm text-gray-400 italic">
                 {"No variables found in the connected datasets."}
