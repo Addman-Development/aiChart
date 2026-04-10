@@ -282,8 +282,10 @@ async function getConversation(conversationId, teamId) {
   // Rebuild full_history for backward compatibility with client
   const fullHistory = messages.map((msg) => {
     const messageObj = {
+      id: msg.id,
       role: msg.role,
       content: msg.content,
+      feedback: msg.feedback || null,
     };
 
     // Add tool-specific fields
@@ -433,6 +435,32 @@ async function renameConversation(conversationId, teamId, title) {
   return { success: true, title };
 }
 
+async function submitMessageFeedback(conversationId, messageId, teamId, feedback) {
+  const conversation = await db.AiConversation.findOne({
+    where: { id: conversationId, team_id: teamId },
+  });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  const message = await db.AiMessage.findOne({
+    where: { id: messageId, conversation_id: conversationId },
+  });
+
+  if (!message) {
+    throw new Error("Message not found");
+  }
+
+  if (feedback !== "positive" && feedback !== "negative" && feedback !== null) {
+    throw new Error("Invalid feedback value");
+  }
+
+  await message.update({ feedback });
+
+  return { success: true, feedback };
+}
+
 module.exports = {
   getOrchestration,
   getAvailableTools,
@@ -441,4 +469,5 @@ module.exports = {
   deleteConversation,
   renameConversation,
   getAiUsage,
+  submitMessageFeedback,
 };

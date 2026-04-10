@@ -1,17 +1,17 @@
 import React, { useEffect, useState, useRef } from "react"
 import PropTypes from "prop-types"
 import { Modal, ModalContent, ModalBody, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
-import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX } from "react-icons/lu"
+import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX, LuThumbsUp, LuThumbsDown, LuRefreshCw, LuPlay } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useParams } from "react-router";
 
-import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage } from "../../api/ai";
+import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage, submitAiMessageFeedback } from "../../api/ai";
 import { selectTeam } from "../../slices/team";
 import { selectUser } from "../../slices/user";
-import { getChart, moveChartToDashboard } from "../../slices/chart";
+import { getChart, moveChartToDashboard, runQuery } from "../../slices/chart";
 import Chart from "../Chart/Chart";
 import { selectProjects } from "../../slices/project";
 import { selectConnections } from "../../slices/connection";
@@ -67,6 +67,7 @@ function AiModal({ isOpen, onClose }) {
   const [isSecondContextPopoverOpen, setIsSecondContextPopoverOpen] = useState(false);
   const [renamingConversationId, setRenamingConversationId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
+  const [messageFeedback, setMessageFeedback] = useState({});
 
   const params = useParams();
   const team = useSelector(selectTeam);
@@ -142,31 +143,66 @@ function AiModal({ isOpen, onClose }) {
   // Fetch chart data for the AI chat.  Uses the ghost project as the
   // project_id in the API call because ghost projects bypass the per-project
   // access check, while findById only uses the chart ID.
-  const fetchChartData = async (chartId, projectId) => {
+  // When isUpdate is true, runs a fresh query (no cache) so the chart
+  // preview reflects the latest config changes.
+  const fetchChartData = async (chartId, projectId, { isUpdate = false } = {}) => {
     const ghostProject = projects.find((p) => p.ghost);
     const fetchProjectId = ghostProject?.id ?? projectId;
 
-    const result = await dispatch(getChart({
-      project_id: fetchProjectId,
-      chart_id: chartId
-    }));
+    let chartPayload;
 
-    if (result?.payload) {
+    if (isUpdate) {
+      // Run the query with getCache explicitly false to bypass both
+      // server-side chart cache and data-request cache.
+      const queryResult = await dispatch(runQuery({
+        project_id: fetchProjectId,
+        chart_id: chartId,
+        getCache: false,
+      }));
+      chartPayload = queryResult?.payload;
+    }
+
+    if (!chartPayload) {
+      // Fallback to a simple read (for creates, or if runQuery failed)
+      const result = await dispatch(getChart({
+        project_id: fetchProjectId,
+        chart_id: chartId
+      }));
+      chartPayload = result?.payload;
+    }
+
+    if (chartPayload) {
       setCreatedCharts(prevCharts => {
-        const existingIndex = prevCharts.findIndex(c => c.id === result.payload.id);
+        const existingIndex = prevCharts.findIndex(c => c.id === chartPayload.id);
         if (existingIndex >= 0) {
           const updatedCharts = [...prevCharts];
-          updatedCharts[existingIndex] = result.payload;
+          updatedCharts[existingIndex] = chartPayload;
           return updatedCharts;
         }
-        return [...prevCharts, result.payload];
+        return [...prevCharts, chartPayload];
       });
-      return result.payload;
+      return chartPayload;
     }
 
     // Fetch failed — don't mark as deleted. The chart card will render
     // without a preview, which is better than incorrectly claiming "removed".
     return null;
+  };
+
+  // Extract updated chart IDs from an orchestration response's conversation
+  // history so we can trigger an immediate refresh after the response arrives.
+  const _getUpdatedChartIds = (conversationHistory) => {
+    if (!conversationHistory) return [];
+    return conversationHistory
+      .filter(msg => msg.role === "tool" && msg.name === "update_chart")
+      .map(msg => {
+        try {
+          const content = typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+          if (content.chart_id) return { chartId: content.chart_id, projectId: content.project_id };
+        } catch { /* ignore */ }
+        return null;
+      })
+      .filter(Boolean);
   };
 
   // Auto-scroll to bottom when messages change
@@ -202,18 +238,14 @@ function AiModal({ isOpen, onClose }) {
         })
         .filter(Boolean);
 
-      // Fetch charts that haven't been loaded yet (for both create and update, including temporary)
-      for (const { chartId, projectId } of chartMessages) {
+      // Fetch charts that haven't been loaded yet (for both create and update, including temporary).
+      // Updated charts are also refreshed directly in the response handlers
+      // (_onAskAi) for immediate feedback; this loop handles the initial load
+      // when opening a conversation that already contains chart messages.
+      for (const { chartId, projectId, isUpdate } of chartMessages) {
         if (!fetchedChartsRef.current.has(chartId)) {
           fetchedChartsRef.current.add(chartId);
-          await fetchChartData(chartId, projectId);
-        }
-      }
-
-      // Refresh charts that were updated
-      for (const { chartId, projectId, isUpdate } of chartMessages) {
-        if (isUpdate && fetchedChartsRef.current.has(chartId)) {
-          await fetchChartData(chartId, projectId);
+          await fetchChartData(chartId, projectId, { isUpdate });
         }
       }
     };
@@ -445,6 +477,13 @@ function AiModal({ isOpen, onClose }) {
               // Clear localMessages and progress events since they're now in full_history
               setLocalMessages([]);
               setProgressEvents([]);
+
+              // Immediately refresh any charts that were updated in this round
+              const updatedCharts = _getUpdatedChartIds(fullConversation.conversation.full_history);
+              for (const { chartId, projectId } of updatedCharts) {
+                fetchedChartsRef.current.add(chartId);
+                await fetchChartData(chartId, projectId, { isUpdate: true });
+              }
             }
           }
         }
@@ -470,8 +509,15 @@ function AiModal({ isOpen, onClose }) {
         const updatedConversation = await getAiConversation(conversation.id, team.id);
         if (updatedConversation?.conversation) {
           setConversation(updatedConversation.conversation);
+
+          // Immediately refresh any charts that were updated in this round
+          const updatedCharts = _getUpdatedChartIds(updatedConversation.conversation.full_history);
+          for (const { chartId, projectId } of updatedCharts) {
+            fetchedChartsRef.current.add(chartId);
+            await fetchChartData(chartId, projectId, { isUpdate: true });
+          }
         }
-        
+
         // Refresh conversations list
         await loadConversations();
       }
@@ -706,6 +752,127 @@ function AiModal({ isOpen, onClose }) {
     setIsLoading(false);
   };
 
+  const _onSubmitFeedback = async (messageId, feedback) => {
+    if (!conversation?.id || !messageId) return;
+
+    const currentFeedback = messageFeedback[messageId];
+    // Toggle off if clicking the same feedback again
+    const newFeedback = currentFeedback === feedback ? null : feedback;
+
+    setMessageFeedback(prev => ({ ...prev, [messageId]: newFeedback }));
+
+    try {
+      await submitAiMessageFeedback(conversation.id, messageId, team.id, newFeedback);
+    } catch (e) {
+      // Revert on failure
+      setMessageFeedback(prev => ({ ...prev, [messageId]: currentFeedback }));
+      toast.error("Failed to submit feedback");
+    }
+  };
+
+  const _onRegenerateResponse = () => {
+    if (!conversation?.full_history || isLoading) return;
+
+    // Find the last user message
+    const lastUserMessage = [...conversation.full_history]
+      .reverse()
+      .find(msg => msg.role === "user");
+
+    if (lastUserMessage) {
+      setQuestion(lastUserMessage.content);
+      // Submit automatically via a short timeout so the input state updates
+      setTimeout(() => {
+        document.getElementById("ai-conversation-form")?.requestSubmit();
+      }, 50);
+    }
+  };
+
+  const _onContinueResponse = () => {
+    if (isLoading) return;
+    setQuestion("Continue");
+    setTimeout(() => {
+      document.getElementById("ai-conversation-form")?.requestSubmit();
+    }, 50);
+  };
+
+  // Initialize feedback state from conversation history
+  useEffect(() => {
+    if (conversation?.full_history) {
+      const feedbackMap = {};
+      conversation.full_history.forEach((msg) => {
+        if (msg.id && msg.feedback) {
+          feedbackMap[msg.id] = msg.feedback;
+        }
+      });
+      setMessageFeedback(prev => ({ ...prev, ...feedbackMap }));
+    }
+  }, [conversation?.full_history]);
+
+  const _renderMessageActions = (message, isLastAssistantMessage) => {
+    if (!message.id && !isLastAssistantMessage) return null;
+
+    const feedback = message.id ? messageFeedback[message.id] : null;
+
+    return (
+      <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {message.id && (
+          <>
+            <Tooltip content={feedback === "positive" ? "Remove rating" : "Good response"}>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => _onSubmitFeedback(message.id, "positive")}
+                className={feedback === "positive" ? "text-success" : "text-foreground-400"}
+              >
+                <LuThumbsUp size={14} />
+              </Button>
+            </Tooltip>
+            <Tooltip content={feedback === "negative" ? "Remove rating" : "Bad response"}>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => _onSubmitFeedback(message.id, "negative")}
+                className={feedback === "negative" ? "text-danger" : "text-foreground-400"}
+              >
+                <LuThumbsDown size={14} />
+              </Button>
+            </Tooltip>
+          </>
+        )}
+        {isLastAssistantMessage && (
+          <>
+            <Tooltip content="Regenerate response">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={_onRegenerateResponse}
+                isDisabled={isLoading}
+                className="text-foreground-400"
+              >
+                <LuRefreshCw size={14} />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Continue">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={_onContinueResponse}
+                isDisabled={isLoading}
+                className="text-foreground-400"
+              >
+                <LuPlay size={14} />
+              </Button>
+            </Tooltip>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const _parseMessage = (message) => {
     // Check if message is a tool call
     if (message.tool_calls && message.tool_calls.length > 0) {
@@ -847,7 +1014,7 @@ function AiModal({ isOpen, onClose }) {
     return groups;
   };
 
-  const _renderMessage = (message, index) => {
+  const _renderMessage = (message, index, { isLastAssistantMessage = false } = {}) => {
     const parsed = _parseMessage(message);
 
     // User messages - right aligned
@@ -1153,7 +1320,7 @@ function AiModal({ isOpen, onClose }) {
     if (message.role === "assistant" && parsed.type === "message_with_suggestions") {
       const isError = message.isError;
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
+        <div key={index} className="flex justify-center mb-4 px-4 group">
           <div className="w-full max-w-[90%]">
             <div className={`px-6 py-4 rounded-lg ${
               isError
@@ -1193,6 +1360,7 @@ function AiModal({ isOpen, onClose }) {
                       ))}
                     </div>
                   )}
+                  {_renderMessageActions(message, isLastAssistantMessage)}
                 </div>
               </div>
             </div>
@@ -1205,7 +1373,7 @@ function AiModal({ isOpen, onClose }) {
     if (message.role === "assistant" && parsed.type === "message") {
       const isError = message.isError;
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
+        <div key={index} className="flex justify-center mb-4 px-4 group">
           <div className="w-full max-w-[90%]">
             <div className={`px-6 py-4 rounded-lg ${
               isError
@@ -1229,6 +1397,7 @@ function AiModal({ isOpen, onClose }) {
                       {parsed.content}
                     </ReactMarkdown>
                   </div>
+                  {_renderMessageActions(message, isLastAssistantMessage)}
                 </div>
               </div>
             </div>
@@ -1240,7 +1409,7 @@ function AiModal({ isOpen, onClose }) {
     return null;
   };
 
-  const _renderGroupedMessages = (group, groupIndex) => {
+  const _renderGroupedMessages = (group, groupIndex, { isLastAssistantGroup = false } = {}) => {
     if (group.type === "user") {
       // Render user message
       return _renderMessage(group.messages[0], `group-${groupIndex}-user`);
@@ -1287,9 +1456,12 @@ function AiModal({ isOpen, onClose }) {
       }
     });
 
+    // Find the assistant message in the group that has an ID (for feedback)
+    const assistantMsg = group.messages.find(m => m.role === "assistant" && m.id) || finalMessage || {};
+
     // Render grouped assistant messages
     return (
-      <div key={`group-${groupIndex}`} className="flex justify-center mb-4 px-4">
+      <div key={`group-${groupIndex}`} className="flex justify-center mb-4 px-4 group">
         <div className="w-full max-w-[90%]">
           <div className="px-6 py-4">
             <div className="flex items-start gap-3">
@@ -1353,6 +1525,7 @@ function AiModal({ isOpen, onClose }) {
                     ))}
                   </div>
                 )}
+                {_renderMessageActions(assistantMsg, isLastAssistantGroup)}
               </div>
             </div>
           </div>
@@ -1872,7 +2045,16 @@ function AiModal({ isOpen, onClose }) {
                       {(() => {
                         // Show grouped view for all conversations
                         const groups = _groupMessages(conversation.full_history);
-                        return groups.map((group, index) => _renderGroupedMessages(group, index));
+                        // Find the last group that contains an assistant message
+                        const lastAssistantGroupIndex = groups.reduce((lastIdx, group, idx) => {
+                          if (group.type === "assistant" || group.messages?.some(m => m.role === "assistant")) {
+                            return idx;
+                          }
+                          return lastIdx;
+                        }, -1);
+                        return groups.map((group, index) => _renderGroupedMessages(group, index, {
+                          isLastAssistantGroup: index === lastAssistantGroupIndex,
+                        }));
                       })()}
                       {_renderProgressEvents()}
                       {isLoading && progressEvents.length === 0 && (

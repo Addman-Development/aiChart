@@ -58,6 +58,12 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false,
       comment: "Order of message in conversation (0-indexed)"
     },
+    feedback: {
+      type: DataTypes.ENUM("positive", "negative"),
+      allowNull: true,
+      defaultValue: null,
+      comment: "User feedback on this message (thumbs up/down)"
+    },
   }, {
     freezeTableName: true,
     indexes: [

@@ -231,12 +231,14 @@ async function updateChart(payload) {
       }
     }
 
-    // Run the chart update in the background
+    // Re-run data queries so chartData reflects the updated config
     try {
       const chartController = new ChartController();
       await chartController.updateChartData(chart_id, null, { getCache: false });
-    } catch {
-      // Ignore background update errors
+    } catch (dataUpdateError) {
+      // Log but don't fail — config changes were already saved above.
+      // The client will run its own query to get fresh data.
+      console.warn(`[updateChart] chartData refresh failed for chart ${chart_id}:`, dataUpdateError.message);
     }
 
     // Refresh the chart to get updated values

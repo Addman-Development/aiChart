@@ -106,6 +106,28 @@ export async function deleteAiConversation(conversationId, teamId) {
   return response.json();
 }
 
+export async function submitAiMessageFeedback(conversationId, messageId, teamId, feedback) {
+  const token = getAuthToken();
+  const url = `${API_HOST}/ai/conversations/${conversationId}/messages/${messageId}/feedback`;
+  const headers = new Headers({
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  });
+
+  const response = await fetch(url, {
+    headers,
+    method: "PATCH",
+    body: JSON.stringify({ teamId, feedback })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to submit feedback");
+  }
+
+  return response.json();
+}
+
 export async function getAiUsage(teamId, startDate, endDate) {
   const token = getAuthToken();
   let url = new URL(`${API_HOST}/ai/usage/${teamId}`);

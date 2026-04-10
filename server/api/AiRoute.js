@@ -7,7 +7,8 @@ const {
   getConversation,
   deleteConversation,
   renameConversation,
-  getAiUsage
+  getAiUsage,
+  submitMessageFeedback
 } = require("../controllers/AiController");
 const verifyToken = require("../modules/verifyToken");
 const TeamController = require("../controllers/TeamController");
@@ -148,6 +149,23 @@ module.exports = (app) => {
 
     try {
       const result = await renameConversation(conversationId, teamId, title.trim());
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Submit feedback on a message (thumbs up/down)
+  app.patch("/ai/conversations/:conversationId/messages/:messageId/feedback", apiLimiter(20), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId, messageId } = req.params;
+    const { teamId, feedback } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    try {
+      const result = await submitMessageFeedback(conversationId, messageId, teamId, feedback);
       return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: error.message });
