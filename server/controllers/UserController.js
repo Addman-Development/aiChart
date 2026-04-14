@@ -479,6 +479,19 @@ class UserController {
     return { completed: true };
   }
 
+  async adminResetPassword(userId, newPassword) {
+    const user = await db.User.findByPk(userId);
+    if (!user) throw new Error("404");
+
+    const bcryptHash = await bcrypt.hash(newPassword, 10);
+    await db.User.update(
+      { password: bcryptHash, mustChangePassword: true },
+      { where: { id: userId } }
+    );
+
+    return { completed: true };
+  }
+
   areThereAnyUsers() {
     return db.User.findAll({ limit: 1 })
       .then((users) => {

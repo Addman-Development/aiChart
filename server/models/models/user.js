@@ -115,6 +115,11 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   User.beforeValidate((user) => {
+    // Normalize email to lowercase — emails are case-insensitive per RFC 5321
+    if (user.email && user.changed("email")) {
+      user.email = user.email.toLowerCase().trim();
+    }
+
     // Only validate Azure-specific constraints when explicitly creating Azure users
     const azureEnabled = settings.azure && settings.azure.clientId;
 

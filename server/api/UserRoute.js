@@ -185,7 +185,8 @@ module.exports = (app) => {
   app.post("/user/login", apiLimiter(10), (req, res) => {
     if (!req.body.email || !req.body.password) return res.status(400).send("fields are missing");
     let user = {};
-    return userController.login(req.body.email, req.body.password)
+    const normalizedEmail = req.body.email.toLowerCase().trim();
+    return userController.login(normalizedEmail, req.body.password)
       .then((data) => {
         if (data?.method_id) {
           return data;
@@ -323,7 +324,16 @@ module.exports = (app) => {
   ** Route to request a password reset email
   */
   app.post("/user/password/reset", apiLimiter(10), (req, res) => {
-    userController.requestPasswordReset(req.body.email);
+    // Always return 200 to avoid leaking whether the email exists.
+    // Log errors server-side so admins can diagnose delivery failures.
+    userController.requestPasswordReset(req.body.email?.toLowerCase().trim())
+      .catch((err) => {
+        const code = err.message || err;
+        // 404 = email not found — this is expected and not an error
+        if (String(code) !== "404") {
+          console.error("[password-reset] Failed to send reset email:", err.message || err); // eslint-disable-line
+        }
+      });
     return res.status(200).send({ "success": true });
   });
   // --------------------------------------
@@ -337,7 +347,10 @@ module.exports = (app) => {
         return res.status(200).send(result);
       })
       .catch((error) => {
-        return res.status(400).send(error);
+        if (error.message === "401") {
+          return res.status(401).send({ message: "Invalid or expired reset link" });
+        }
+        return res.status(400).send({ message: error.message || "Password change failed" });
       });
   });
   // --------------------------------------

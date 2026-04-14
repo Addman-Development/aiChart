@@ -72,12 +72,17 @@ function UserDashboard(props) {
   useEffect(() => {
     if (teamsLength > 0 && !teamsRef.current) {
       teamsRef.current = true;
-      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id));
-
+      // Pick the user's team: prefer localStorage, then the team they belong to.
+      // getTeams() only returns teams the user has a role on, so every
+      // entry is already scoped to their membership.
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
+      let selectedTeam;
       if (storageActiveTeam) {
-        const storageTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
-        if (storageTeam) selectedTeam = storageTeam;
+        selectedTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
+      }
+      if (!selectedTeam) {
+        selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id))
+          || teams[0];
       }
 
       if (selectedTeam) {

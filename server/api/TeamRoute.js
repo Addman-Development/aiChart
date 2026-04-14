@@ -266,6 +266,32 @@ module.exports = (app) => {
   });
   // --------------------------------------
 
+  // route for admin/owner to reset a team member's password
+  app.put("/team/:id/member/:userId/password-reset", verifyToken, checkPermissions("updateAny", "teamRole"), apiLimiter(10), async (req, res) => {
+    const { newPassword } = req.body;
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    try {
+      // Prevent resetting the team owner's password
+      const targetRole = await teamController.getTeamRole(req.params.id, req.params.userId);
+      if (!targetRole) {
+        return res.status(404).json({ error: "User is not a member of this team" });
+      }
+      if (targetRole.role === "teamOwner") {
+        return res.status(403).json({ error: "Cannot reset the team owner's password" });
+      }
+
+      const result = await userController.adminResetPassword(req.params.userId, newPassword);
+      return res.status(200).json(result);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+  // --------------------------------------
+
   // route to get users available to add to the team (not already members)
   app.get("/team/:id/availableUsers", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
     try {

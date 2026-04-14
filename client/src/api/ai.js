@@ -128,6 +128,34 @@ export async function submitAiMessageFeedback(conversationId, messageId, teamId,
   return response.json();
 }
 
+export async function forkAiConversation(conversationId, teamId, targetUserId = null) {
+  const token = getAuthToken();
+  const url = `${API_HOST}/ai/conversations/${conversationId}/fork`;
+  const headers = new Headers({
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  });
+
+  const body = { teamId };
+  if (targetUserId) {
+    body.targetUserId = targetUserId;
+  }
+
+  const response = await fetch(url, {
+    headers,
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to fork conversation");
+  }
+
+  return response.json();
+}
+
 export async function getAiUsage(teamId, startDate, endDate) {
   const token = getAuthToken();
   let url = new URL(`${API_HOST}/ai/usage/${teamId}`);

@@ -461,6 +461,57 @@ async function submitMessageFeedback(conversationId, messageId, teamId, feedback
   return { success: true, feedback };
 }
 
+async function forkConversation(conversationId, teamId, userId, targetUserId) {
+  const source = await db.AiConversation.findOne({
+    where: { id: conversationId, team_id: teamId },
+  });
+
+  if (!source) {
+    throw new Error("Conversation not found");
+  }
+
+  const ownerUserId = targetUserId || userId;
+  const isShare = !!targetUserId && targetUserId !== userId;
+
+  // Create the forked conversation
+  const forked = await db.AiConversation.create({
+    team_id: teamId,
+    user_id: ownerUserId,
+    title: isShare ? `${source.title} (shared)` : `${source.title} (fork)`,
+    source: "app",
+    status: "active",
+    message_count: source.message_count,
+  });
+
+  // Copy all messages
+  const messages = await db.AiMessage.findAll({
+    where: { conversation_id: conversationId },
+    order: [["sequence", "ASC"]],
+  });
+
+  if (messages.length > 0) {
+    const messageCopies = messages.map((msg) => ({
+      conversation_id: forked.id,
+      role: msg.role,
+      content: msg.content,
+      tool_calls: msg.getDataValue("tool_calls"),
+      tool_name: msg.tool_name,
+      tool_call_id: msg.tool_call_id,
+      tool_result_preview: msg.tool_result_preview,
+      sequence: msg.sequence,
+      // feedback is intentionally not copied — it belongs to the original user
+    }));
+
+    await db.AiMessage.bulkCreate(messageCopies);
+  }
+
+  return {
+    id: forked.id,
+    title: forked.title,
+    shared_to: isShare ? ownerUserId : null,
+  };
+}
+
 module.exports = {
   getOrchestration,
   getAvailableTools,
@@ -470,4 +521,5 @@ module.exports = {
   renameConversation,
   getAiUsage,
   submitMessageFeedback,
+  forkConversation,
 };

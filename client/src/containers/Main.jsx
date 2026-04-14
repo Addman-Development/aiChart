@@ -180,10 +180,17 @@ function Main(props) {
       teamsRef.current = true;
 
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
-      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id));
+      // Pick the user's team: prefer localStorage, then the team they belong to.
+      // getTeams() only returns teams the user has a role on, so every
+      // entry is already scoped to their membership.
+      let selectedTeam;
       if (storageActiveTeam) {
-        const storageTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
-        if (storageTeam) selectedTeam = storageTeam;
+        selectedTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
+      }
+      if (!selectedTeam) {
+        // Prefer a team the user owns, then fall back to the first team they belong to
+        selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id))
+          || teams[0];
       }
 
       if (selectedTeam) {

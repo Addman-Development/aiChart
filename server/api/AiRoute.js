@@ -8,7 +8,8 @@ const {
   deleteConversation,
   renameConversation,
   getAiUsage,
-  submitMessageFeedback
+  submitMessageFeedback,
+  forkConversation
 } = require("../controllers/AiController");
 const verifyToken = require("../modules/verifyToken");
 const TeamController = require("../controllers/TeamController");
@@ -149,6 +150,32 @@ module.exports = (app) => {
 
     try {
       const result = await renameConversation(conversationId, teamId, title.trim());
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Fork a conversation (optionally share to a teammate)
+  app.post("/ai/conversations/:conversationId/fork", apiLimiter(10), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId } = req.params;
+    const { teamId, targetUserId } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    // If sharing to another user, verify they belong to the team
+    if (targetUserId) {
+      const teamController = new TeamController();
+      const targetRole = await teamController.getTeamRole(teamId, targetUserId);
+      if (!targetRole) {
+        return res.status(400).json({ error: "Target user is not a member of this team" });
+      }
+    }
+
+    try {
+      const result = await forkConversation(conversationId, teamId, req.user.id, targetUserId);
       return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: error.message });

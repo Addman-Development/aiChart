@@ -1,15 +1,15 @@
 import React, { useEffect, useState, useRef } from "react"
 import PropTypes from "prop-types"
-import { Modal, ModalContent, ModalBody, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
-import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX, LuThumbsUp, LuThumbsDown, LuRefreshCw, LuPlay } from "react-icons/lu"
+import { Modal, ModalContent, ModalBody, ModalHeader, ModalFooter, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
+import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX, LuThumbsUp, LuThumbsDown, LuRefreshCw, LuPlay, LuGitFork, LuShare2, LuUsers } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useParams } from "react-router";
 
-import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage, submitAiMessageFeedback } from "../../api/ai";
-import { selectTeam } from "../../slices/team";
+import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage, submitAiMessageFeedback, forkAiConversation } from "../../api/ai";
+import { selectTeam, selectTeamMembers, getTeamMembers } from "../../slices/team";
 import { selectUser } from "../../slices/user";
 import { getChart, moveChartToDashboard, runQuery } from "../../slices/chart";
 import Chart from "../Chart/Chart";
@@ -68,10 +68,14 @@ function AiModal({ isOpen, onClose }) {
   const [renamingConversationId, setRenamingConversationId] = useState(null);
   const [renameValue, setRenameValue] = useState("");
   const [messageFeedback, setMessageFeedback] = useState({});
+  const [shareModalConversationId, setShareModalConversationId] = useState(null);
+  const [shareTargetUserId, setShareTargetUserId] = useState(null);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const params = useParams();
   const team = useSelector(selectTeam);
   const user = useSelector(selectUser);
+  const teamMembers = useSelector(selectTeamMembers);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const dispatch = useDispatch();
@@ -807,6 +811,40 @@ function AiModal({ isOpen, onClose }) {
       setMessageFeedback(prev => ({ ...prev, ...feedbackMap }));
     }
   }, [conversation?.full_history]);
+
+  // Fetch team members when modal opens (for sharing)
+  useEffect(() => {
+    if (isOpen && team?.id && (!teamMembers || teamMembers.length === 0)) {
+      dispatch(getTeamMembers({ team_id: team.id }));
+    }
+  }, [isOpen, team?.id]);
+
+  const _onForkConversation = async (conversationId) => {
+    try {
+      const result = await forkAiConversation(conversationId, team.id);
+      toast.success("Conversation forked");
+      await loadConversations();
+      _onSelectConversation(result.id);
+    } catch (e) {
+      toast.error(e.message || "Failed to fork conversation");
+    }
+  };
+
+  const _onShareConversation = async () => {
+    if (!shareModalConversationId || !shareTargetUserId) return;
+
+    setShareLoading(true);
+    try {
+      await forkAiConversation(shareModalConversationId, team.id, shareTargetUserId);
+      const targetMember = teamMembers.find(m => m.id === shareTargetUserId);
+      toast.success(`Chat shared with ${targetMember?.name || "teammate"}`);
+      setShareModalConversationId(null);
+      setShareTargetUserId(null);
+    } catch (e) {
+      toast.error(e.message || "Failed to share conversation");
+    }
+    setShareLoading(false);
+  };
 
   const _renderMessageActions = (message, isLastAssistantMessage) => {
     if (!message.id && !isLastAssistantMessage) return null;
@@ -1573,6 +1611,7 @@ function AiModal({ isOpen, onClose }) {
   };
 
   return (
+    <>
     <Modal
       classNames={{
         wrapper: conversation ? "p-4 !overflow-hidden" : "",
@@ -1835,6 +1874,12 @@ function AiModal({ isOpen, onClose }) {
                             <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conv)} startContent={<LuPencil size={16} />}>
                               Rename conversation
                             </DropdownItem>
+                            <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(conv.id)} startContent={<LuGitFork size={16} />}>
+                              Fork conversation
+                            </DropdownItem>
+                            <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(conv.id)} startContent={<LuShare2 size={16} />}>
+                              Share with teammate
+                            </DropdownItem>
                             <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conv.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                               Delete conversation
                             </DropdownItem>
@@ -1940,6 +1985,12 @@ function AiModal({ isOpen, onClose }) {
                               <DropdownItem key="rename_conversation" onPress={() => _onStartRename(c)} startContent={<LuPencil size={16} />}>
                                 Rename conversation
                               </DropdownItem>
+                              <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(c.id)} startContent={<LuGitFork size={16} />}>
+                                Fork conversation
+                              </DropdownItem>
+                              <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(c.id)} startContent={<LuShare2 size={16} />}>
+                                Share with teammate
+                              </DropdownItem>
                               <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(c.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                                 Delete conversation
                               </DropdownItem>
@@ -2007,6 +2058,12 @@ function AiModal({ isOpen, onClose }) {
                               <DropdownMenu>
                                 <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conversation)} startContent={<LuPencil size={16} />}>
                                   Rename conversation
+                                </DropdownItem>
+                                <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(conversation.id)} startContent={<LuGitFork size={16} />}>
+                                  Fork conversation
+                                </DropdownItem>
+                                <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(conversation.id)} startContent={<LuShare2 size={16} />}>
+                                  Share with teammate
                                 </DropdownItem>
                                 <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conversation.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                                   Delete conversation
@@ -2251,6 +2308,81 @@ function AiModal({ isOpen, onClose }) {
         )}
       </>)}</ModalContent>
     </Modal>
+
+    <Modal
+      isOpen={!!shareModalConversationId}
+      onClose={() => {
+        setShareModalConversationId(null);
+        setShareTargetUserId(null);
+      }}
+      size="md"
+    >
+      <ModalContent>
+        <ModalHeader>
+          <div className="font-bold">Share conversation with a teammate</div>
+        </ModalHeader>
+        <ModalBody>
+          <div className="text-sm text-foreground-500 mb-2">
+            This will create an independent copy of the conversation for your teammate. They can continue the chat on their own without affecting your original.
+          </div>
+          <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+            {teamMembers
+              .filter(m => m.id !== user.id)
+              .map((member) => (
+                <div
+                  key={member.id}
+                  className={`flex flex-row items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                    shareTargetUserId === member.id
+                      ? "bg-primary-50 border border-primary-200"
+                      : "hover:bg-content2"
+                  }`}
+                  onClick={() => setShareTargetUserId(member.id)}
+                >
+                  <Avatar
+                    name={member.name}
+                    size="sm"
+                    showFallback
+                    fallback={<LuUsers size={14} />}
+                  />
+                  <div className="flex flex-col flex-1">
+                    <span className="text-sm font-medium">{member.name}</span>
+                    <span className="text-xs text-foreground-500">{member.email}</span>
+                  </div>
+                  {shareTargetUserId === member.id && (
+                    <LuCheck size={16} className="text-primary" />
+                  )}
+                </div>
+              ))}
+            {teamMembers.filter(m => m.id !== user.id).length === 0 && (
+              <div className="text-sm text-foreground-500 py-4 text-center">
+                No other team members found.
+              </div>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="bordered"
+            onPress={() => {
+              setShareModalConversationId(null);
+              setShareTargetUserId(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="primary"
+            onPress={_onShareConversation}
+            isLoading={shareLoading}
+            isDisabled={!shareTargetUserId}
+            endContent={<LuShare2 size={14} />}
+          >
+            Share
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+    </>
   )
 }
 
