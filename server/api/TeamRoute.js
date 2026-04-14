@@ -113,8 +113,8 @@ module.exports = (app) => {
   // route to delete a team
   app.delete("/team/:id", verifyToken, checkPermissions("deleteOwn", "team"), (req, res) => {
     return teamController.deleteTeam(req.params.id, req.user.id)
-      .then(() => {
-        return res.status(200).send({ deleted: true });
+      .then((result) => {
+        return res.status(200).send(result);
       })
       .catch((error) => {
         if (error?.message === "401") return res.status(401).send({ error: "Not authorized" });

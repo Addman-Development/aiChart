@@ -73,10 +73,10 @@ class UserController {
 
         // create a default first project
         const newProject = {
-          name: "My first dashboard",
+          name: "Your First Dash",
           team_id: data.id,
-          brewName: `my-first-dashboard-${nanoid(8)}`,
-          dashboardTitle: "My first dashboard",
+          brewName: `your-first-dash-${nanoid(8)}`,
+          dashboardTitle: "Your First Dash",
         };
 
         // create a ghost project

@@ -63,9 +63,9 @@ class TeamController {
     // create a default dashboard for the team
     await db.Project.create({
       team_id: team.id,
-      name: "First Dashboard",
-      brewName: `first-dashboard-${nanoid(8)}`,
-      description: `First dashboard for ${team.name}`,
+      name: "Your First Dash",
+      brewName: `your-first-dash-${nanoid(8)}`,
+      dashboardTitle: "Your First Dash",
       public: false,
     });
 
@@ -79,13 +79,17 @@ class TeamController {
   }
 
   async deleteTeam(teamId, userId) {
-    // first check if the user owns other teams
-    const otherTeams = await db.TeamRole
-      .findAll({ where: { user_id: userId, role: "teamOwner", team_id: { [Op.ne]: teamId } } });
-
-    if (otherTeams.length < 1) {
-      return new Promise((resolve, reject) => reject(new Error("You cannot delete a team that you own if you have no other teams")));
+    // Check if team has other members besides the requesting user
+    const allTeamRoles = await db.TeamRole.findAll({ where: { team_id: teamId } });
+    const otherMembers = allTeamRoles.filter((r) => r.user_id !== parseInt(userId, 10));
+    if (otherMembers.length > 0) {
+      throw new Error("You must remove or transfer all team members before deleting this team.");
     }
+
+    // Check if the user belongs to any other teams
+    const userOtherTeams = await db.TeamRole
+      .findAll({ where: { user_id: userId, team_id: { [Op.ne]: teamId } } });
+    const willDeleteAccount = userOtherTeams.length === 0;
 
     // Use a transaction to ensure data consistency
     const transaction = await db.sequelize.transaction();
@@ -102,18 +106,19 @@ class TeamController {
       await db.Dataset.destroy({ where: { team_id: teamId }, transaction });
       await db.Project.destroy({ where: { team_id: teamId }, transaction });
       await db.TeamRole.destroy({ where: { team_id: teamId }, transaction });
-
-      // Finally delete the team (this will cascade delete TeamRole and TeamInvitation)
       await db.Team.destroy({ where: { id: teamId }, transaction });
 
-      // Commit the transaction
+      // If user has no other teams, delete their account too
+      if (willDeleteAccount) {
+        await db.User.destroy({ where: { id: userId }, transaction });
+      }
+
       await transaction.commit();
 
-      return true;
+      return { deleted: true, accountDeleted: willDeleteAccount };
     } catch (error) {
-      // Rollback the transaction on error
       await transaction.rollback();
-      return new Promise((resolve, reject) => reject(error));
+      throw error;
     }
   }
 
