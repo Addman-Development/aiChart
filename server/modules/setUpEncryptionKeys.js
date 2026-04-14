@@ -9,8 +9,14 @@ function generateAESKey() {
   return crypto.randomBytes(32).toString("hex");
 }
 
-// Read the .env file, update the CB_ENCRYPTION_KEY variable, or add it if it doesn't exist
+// Ensure CB_ENCRYPTION_KEY is available. Checks process.env first (e.g. from
+// docker-compose env_file), then falls back to reading / updating the .env file.
 async function updateKeys(envVar) {
+  // If already set in the environment (e.g. via docker-compose env_file), nothing to do
+  if (process.env[envVar]) {
+    return;
+  }
+
   try {
     const data = await fs.readFile(envPath, "utf8");
 
@@ -37,7 +43,7 @@ async function updateKeys(envVar) {
     // Write the updates back to the .env file
     await fs.writeFile(envPath, updatedData, "utf8");
   } catch (e) {
-    console.error("The encryption key could not be set up. Please ensure you have CB_ENCRYPTION_KEY in your .env file."); // eslint-disable-line
+    console.error("The encryption key could not be set up. Please ensure you have CB_ENCRYPTION_KEY in your .env file or as an environment variable."); // eslint-disable-line
   }
 }
 

@@ -1,6 +1,19 @@
 import { io } from "socket.io-client";
 import { API_HOST } from "../config/settings";
 
+// Derive the socket.io origin and path from API_HOST so it works behind a sub-path proxy.
+// io() treats URL pathname as a namespace, so we must split origin from path.
+let _socketOrigin = API_HOST;
+let _socketPath = "/socket.io";
+try {
+  const url = new URL(API_HOST);
+  _socketOrigin = url.origin;
+  if (url.pathname && url.pathname !== "/") {
+    const base = url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+    _socketPath = `${base}/socket.io`;
+  }
+} catch { /* keep defaults */ }
+
 /**
  * Singleton Socket.IO client for ADDMAN-SmartChart AI
  * Handles connection, authentication, and room management
@@ -40,7 +53,7 @@ class SocketClient {
         reject(new Error("Socket connection timeout"));
       }, 10000);
 
-      this.socket = io(API_HOST, {
+      this.socket = io(_socketOrigin, {
         withCredentials: true,
         transports: ["websocket", "polling"], // Allow fallback for production
         reconnection: true,
@@ -49,7 +62,7 @@ class SocketClient {
         reconnectionDelayMax: 5000,
         timeout: 20000,
         autoConnect: true,
-        path: "/socket.io",
+        path: _socketPath,
         upgrade: true,
         rememberUpgrade: true,
         forceNew: true,

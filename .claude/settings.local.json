@@ -22,7 +22,8 @@
       "Bash(find /c/Users/ali.bahar/Documents/gitHub/aiChart/client/src -name \"*.jsx\" -exec grep -l \"\\\\.find\\\\|\\\\.filter\\\\|\\\\.map\" {} \\\\;)",
       "Bash(npx -y acorn-jsx --ecma2022 client/src/containers/Ai/AiModal.jsx)",
       "Bash(powershell:*)",
-      "Bash(PGPASSWORD='uyFgN+Ox0K8GevuV' psql -h localhost -p 30432 -U smart_user -d smart_chart -c \"SELECT 1;\")"
+      "Bash(PGPASSWORD='uyFgN+Ox0K8GevuV' psql -h localhost -p 30432 -U smart_user -d smart_chart -c \"SELECT 1;\")",
+      "Bash(npx serve:*)"
     ]
   }
 }

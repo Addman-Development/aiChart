@@ -54,31 +54,47 @@ import Auth from "./Integrations/Auth/Auth";
 import SlackCallback from "./Integrations/Auth/SlackCallback";
 import Integration from "./Integrations/Integration/Integration";
 import NoAccessPage from "../components/NoAccessPage";
+import { SITE_HOST } from "../config/settings";
+
+// Derive the base path so pathname checks work under a sub-path deployment
+let _basePath = "/";
+try {
+  const { pathname } = new URL(SITE_HOST);
+  if (pathname && pathname !== "/") {
+    _basePath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  }
+} catch { /* keep default */ }
 
 function authenticatePage() {
-  if (window.location.pathname === "/login") {
+  // Strip the base path prefix so comparisons work regardless of sub-path
+  let path = window.location.pathname;
+  if (_basePath !== "/" && path.startsWith(_basePath)) {
+    path = path.slice(_basePath.length) || "/";
+  }
+
+  if (path === "/login") {
     return false;
-  } else if (window.location.pathname === "/signup") {
+  } else if (path === "/signup") {
     return false;
-  } else if (window.location.pathname.indexOf("/b/") > -1) {
+  } else if (path.indexOf("/b/") > -1) {
     return false;
-  } else if (window.location.pathname.indexOf("/report/") > -1) {
+  } else if (path.indexOf("/report/") > -1) {
     return false;
-  } else if (window.location.pathname === "/passwordReset") {
+  } else if (path === "/passwordReset") {
     return false;
-  } else if (window.location.pathname === "/invite") {
+  } else if (path === "/invite") {
     return false;
-  } else if (window.location.pathname === "/feedback") {
+  } else if (path === "/feedback") {
     return false;
-  } else if (window.location.pathname === "/azure-callback") {
+  } else if (path === "/azure-callback") {
     return false;
-  } else if (window.location.pathname.indexOf("embedded") > -1) {
+  } else if (path.indexOf("embedded") > -1) {
     return false;
-  } else if (window.location.pathname.indexOf("/share") > -1) {
+  } else if (path.indexOf("/share") > -1) {
     return false;
   }
 
-  window.location.pathname = "/login";
+  window.location.pathname = `${_basePath}/login`;
   return true;
 }
 

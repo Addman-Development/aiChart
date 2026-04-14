@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "echo n | cp -vipr ../.env .env | true && bun run prepare-settings && vite",
+    "dev": "bun run prepare-settings && vite",
     "build": "bun run prepare-settings && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",

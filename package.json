@@ -9,6 +9,6 @@
     "dev:server": "cd server && bun run dev",
     "build": "cd client && bun run build",
     "setup": "bun install && bun run prepare-settings",
-    "prepare-settings": "echo n | cp -vipr .env-template .env | true && cd client && echo n | cp -vipr src/config/settings.template.js src/config/settings.js | true"
+    "prepare-settings": "cd client && echo n | cp -vipr src/config/settings.template.js src/config/settings.js | true"
   }
 }
