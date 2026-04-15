@@ -23,7 +23,14 @@
       "Bash(npx -y acorn-jsx --ecma2022 client/src/containers/Ai/AiModal.jsx)",
       "Bash(powershell:*)",
       "Bash(PGPASSWORD='uyFgN+Ox0K8GevuV' psql -h localhost -p 30432 -U smart_user -d smart_chart -c \"SELECT 1;\")",
-      "Bash(npx serve:*)"
+      "Bash(npx serve:*)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist //FI \"PID eq 28596\")",
+      "Bash(tasklist //FI \"PID eq 21592\")",
+      "Bash(taskkill //PID 28596 //F)",
+      "Bash(taskkill //PID 21592 //F)",
+      "Bash(taskkill //PID 32892 //F)",
+      "Bash(taskkill //PID 1712 //F)"
     ]
   }
 }

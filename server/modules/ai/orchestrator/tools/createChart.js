@@ -1,10 +1,9 @@
 const moment = require("moment");
 const db = require("../../../../models/models");
 const ChartController = require("../../../../controllers/ChartController");
+const ensureGhostProject = require("./ensureGhostProject");
 
 const chartController = new ChartController();
-
-const clientUrl = process.env.VITE_APP_CLIENT_HOST;
 
 /**
  * Detects whether a query uses {{start_date}} and/or {{end_date}} variables.
@@ -14,16 +13,24 @@ function queryUsesDateVars(query) {
   return query.includes("{{start_date}}") || query.includes("{{end_date}}");
 }
 
+/**
+ * Create a chart from an existing dataset.
+ *
+ * The primary chart record always lives in the team's ghost project so that
+ * AI chat history keeps a stable reference.  If the caller specifies a real
+ * (non-ghost) project_id, a clone is automatically placed on that dashboard
+ * via moveChartToDashboard.
+ */
 async function createChart(payload) {
   const {
-    project_id, dataset_id, spec,
+    dataset_id, team_id, spec,
     name, legend, type, subType, displayLegend, pointRadius,
     dataLabels, includeZeros, timeInterval, stacked, horizontal,
     xLabelTicks, showGrowth, invertGrowth, mode, maxValue, minValue, ranges,
   } = payload;
 
-  if (!project_id) {
-    throw new Error("project_id is required to create a chart");
+  if (!team_id) {
+    throw new Error("team_id is required to create a chart");
   }
 
   if (!name) {
@@ -58,26 +65,14 @@ async function createChart(payload) {
       throw new Error("Dataset not found");
     }
 
-    // Check if project is a ghost project
-    const project = await db.Project.findByPk(project_id);
-    if (!project) {
-      throw new Error("Project not found");
-    }
-
-    // Update dataset's project_ids to include this project (if not ghost and not already included)
-    if (!project.ghost) {
-      const currentProjectIds = dataset.project_ids || [];
-      if (!currentProjectIds.includes(project_id)) {
-        await dataset.update({
-          project_ids: [...currentProjectIds, project_id]
-        });
-      }
-    }
+    // Always create the primary chart in the ghost project so the AI chat
+    // history has a stable reference that survives dashboard removals.
+    const ghostProject = await ensureGhostProject(team_id);
 
     // Use the quick-create function to create chart with chart dataset config in one go
     // Layout will be auto-calculated by the controller
     const chart = await chartController.createWithChartDatasetConfigs({
-      project_id,
+      project_id: ghostProject.id,
       name: name || chartSpec.title || "AI Generated Chart",
       type: type || chartSpec.type,
       subType: subType || chartSpec.subType,
@@ -106,7 +101,6 @@ async function createChart(payload) {
       maxValue: maxValue || chartSpec.maxValue,
       minValue: minValue || chartSpec.minValue,
       ranges: ranges || chartSpec.ranges,
-      layout: chartSpec.layout, // Will be auto-calculated if not provided
       chartDatasetConfigs: [{
         dataset_id,
         formula: chartSpec.formula,
@@ -151,9 +145,9 @@ async function createChart(payload) {
       chart_id: chart.id,
       name: chart.name,
       type: chart.type,
-      project_id: chart.project_id,
-      dashboard_url: `${clientUrl}/dashboard/${project_id}`,
-      chart_url: `${clientUrl}/dashboard/${project_id}/chart/${chart.id}/edit`,
+      project_id: ghostProject.id,
+      ghost_project_id: ghostProject.id,
+      is_temporary: true,
       snapshot,
     };
   } catch (error) {

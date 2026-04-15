@@ -198,12 +198,11 @@ async function availableTools() {
     },
     {
       name: "create_chart",
-      description: "Create a chart and place it on a visible project/dashboard. CRITICAL: ONLY use this when the user EXPLICITLY requests placing a chart in a specific dashboard (e.g., 'add to Sales Dashboard', 'place in Marketing dashboard'). DEFAULT to create_temporary_chart instead. Use the EXACT project_id specified by the user.",
+      description: "Create a temporary preview chart from an existing dataset. The chart is NOT placed on any dashboard — use move_chart_to_dashboard afterwards if the user explicitly asks to add it to a dashboard. DEFAULT to create_temporary_chart instead (which creates dataset + chart in one step). Only use create_chart when you already have a dataset_id from a previous create_dataset call.",
       parameters: {
         type: "object",
         properties: {
-          project_id: { type: "string", description: "The EXACT project/dashboard ID specified by the user where the chart will be placed. Use this exact ID - never create charts in other projects for testing or validation." },
-          dataset_id: { type: "string" },
+          dataset_id: { type: "string", description: "ID of an existing dataset (from a previous create_dataset call)" },
           name: { type: "string", description: "Chart name/title" },
           legend: { type: "string", description: "Short legend text for data points (max 20-30 chars, appears on hover)" },
           type: { type: "string", enum: ["line", "bar", "pie", "doughnut", "radar", "polar", "table", "kpi", "avg", "gauge", "matrix"] },
@@ -236,9 +235,9 @@ async function availableTools() {
           },
           spec: { type: "object", description: "Alternative: Chart specification object (backward compatibility)" }
         },
-        required: ["project_id", "dataset_id", "name"]
+        required: ["dataset_id", "name"]
       }
-      // returns: { chart_id, name, type, project_id, dashboard_url, chart_url }
+      // returns: { chart_id, name, type, project_id, ghost_project_id, is_temporary }
     },
     {
       name: "update_dataset",

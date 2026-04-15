@@ -2,6 +2,7 @@ const moment = require("moment");
 const db = require("../../../../models/models");
 const DatasetController = require("../../../../controllers/DatasetController");
 const ChartController = require("../../../../controllers/ChartController");
+const ensureGhostProject = require("./ensureGhostProject");
 
 const datasetController = new DatasetController();
 const chartController = new ChartController();
@@ -37,17 +38,8 @@ async function createTemporaryChart(payload) {
   }
 
   try {
-    // Find the temporary preview project for this team
-    const ghostProject = await db.Project.findOne({
-      where: {
-        team_id,
-        ghost: true
-      }
-    });
-
-    if (!ghostProject) {
-      throw new Error("Temporary preview project not found for this team");
-    }
+    // Find or create the ghost project for this team
+    const ghostProject = await ensureGhostProject(team_id);
 
     // Create the dataset first
     // Note: project_ids is empty for temporary charts - ghost projects should not be included

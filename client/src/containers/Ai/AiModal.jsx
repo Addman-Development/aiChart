@@ -18,6 +18,7 @@ import { selectConnections } from "../../slices/connection";
 import { selectDatasetsNoDrafts } from "../../slices/dataset";
 import isMac from "../../modules/isMac";
 import socketClient from "../../modules/socketClient";
+import { SITE_HOST } from "../../config/settings";
 
 function formatDate(date) {
   return new Date(date).toLocaleDateString("en-US", {
@@ -118,6 +119,8 @@ function AiModal({ isOpen, onClose }) {
   };
 
   const [movingChartId, setMovingChartId] = useState(null);
+  // Track which temp charts have been added to dashboards (chartId -> targetProjectId)
+  const [addedToDashboard, setAddedToDashboard] = useState({});
 
   const _onMoveChartToDashboard = async (chartId, sourceProjectId, targetProjectId) => {
     setMovingChartId(chartId);
@@ -131,18 +134,61 @@ function AiModal({ isOpen, onClose }) {
 
       toast.success("Chart added to dashboard");
 
-      // Update the local chart data to reflect the move
-      setCreatedCharts(prev => prev.map(c =>
-        c.id === parseInt(chartId, 10)
-          ? { ...c, project_id: parseInt(targetProjectId, 10) }
-          : c
-      ));
+      // Track that this chart was added to a dashboard (original stays in ghost).
+      // Store the cloned chart ID so we can verify the clone still exists later.
+      setAddedToDashboard(prev => ({
+        ...prev,
+        [chartId]: {
+          projectId: parseInt(targetProjectId, 10),
+          clonedChartId: result.chart_id,
+        }
+      }));
     } catch (error) {
-      toast.error(error.message || "Failed to move chart");
+      toast.error(error.message || "Failed to add chart to dashboard");
     } finally {
       setMovingChartId(null);
     }
   };
+
+  // When the modal opens, verify that cloned charts still exist on their
+  // target dashboards. If a clone was deleted (shelved back to ghost),
+  // its project_id will no longer match — reset to "Add to Dashboard".
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const entries = Object.entries(addedToDashboard);
+    if (entries.length === 0) return;
+
+    const verify = async () => {
+      const stale = [];
+
+      for (const [ghostChartId, info] of entries) {
+        try {
+          const result = await dispatch(getChart({
+            project_id: info.projectId,
+            chart_id: info.clonedChartId,
+          }));
+          // If the clone was removed from the dashboard it gets shelved to
+          // ghost, so its project_id no longer matches the target dashboard.
+          if (!result?.payload || result.payload.project_id !== info.projectId) {
+            stale.push(ghostChartId);
+          }
+        } catch {
+          stale.push(ghostChartId);
+        }
+      }
+
+      if (stale.length > 0) {
+        setAddedToDashboard(prev => {
+          const next = { ...prev };
+          stale.forEach(id => delete next[id]);
+          return next;
+        });
+      }
+    };
+
+    verify();
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Fetch chart data for the AI chat.  Uses the ghost project as the
   // project_id in the API call because ghost projects bypass the per-project
@@ -230,9 +276,9 @@ function AiModal({ isOpen, onClose }) {
             if ((msg.name === "create_chart" || msg.name === "update_chart" || msg.name === "create_temporary_chart") && content.chart_id) {
               return {
                 chartId: content.chart_id,
-                projectId: content.project_id,
+                projectId: content.project_id || content.ghost_project_id,
                 isUpdate: msg.name === "update_chart",
-                isTemporary: msg.name === "create_temporary_chart"
+                isTemporary: msg.name === "create_temporary_chart" || msg.name === "create_chart"
               };
             }
           } catch (e) {
@@ -251,6 +297,41 @@ function AiModal({ isOpen, onClose }) {
           fetchedChartsRef.current.add(chartId);
           await fetchChartData(chartId, projectId, { isUpdate });
         }
+      }
+
+      // Auto-populate addedToDashboard for create_chart results that were
+      // auto-cloned to a dashboard (e.g. when the AI was told "add to Sales Dashboard").
+      // This ensures the "Added to [Dashboard]" chip shows on conversation reload.
+      const autoCloned = allMessages
+        .filter(msg => msg.role === "tool" && (msg.name === "create_chart" || msg.name === "create_temporary_chart"))
+        .map(msg => {
+          try {
+            const content = JSON.parse(msg.content);
+            if (content.chart_id && content.dashboard_project_id && content.cloned_chart_id) {
+              return {
+                ghostChartId: content.chart_id,
+                dashboardProjectId: content.dashboard_project_id,
+                clonedChartId: content.cloned_chart_id,
+              };
+            }
+          } catch { /* ignore */ }
+          return null;
+        })
+        .filter(Boolean);
+
+      if (autoCloned.length > 0) {
+        setAddedToDashboard(prev => {
+          const next = { ...prev };
+          for (const { ghostChartId, dashboardProjectId, clonedChartId } of autoCloned) {
+            if (!next[ghostChartId]) {
+              next[ghostChartId] = {
+                projectId: dashboardProjectId,
+                clonedChartId,
+              };
+            }
+          }
+          return next;
+        });
       }
     };
 
@@ -557,6 +638,7 @@ function AiModal({ isOpen, onClose }) {
     setLocalMessages([]);
     setProgressEvents([]);
     setCreatedCharts([]);
+    setAddedToDashboard({});
     fetchedChartsRef.current.clear();
     setSelectedContext({
       multiSelect: [],
@@ -929,9 +1011,10 @@ function AiModal({ isOpen, onClose }) {
 
       // Check if this is a chart creation or update result
       if ((message.name === "create_chart" || message.name === "update_chart" || message.name === "create_temporary_chart") && content.chart_id) {
-        const isTemporary = message.name === "create_temporary_chart";
+        // All AI-created charts are temporary (ghost project) — users add to dashboards interactively
+        const isTemporary = message.name !== "update_chart";
         return {
-          type: message.name === "create_chart" ? "chart_created" : message.name === "update_chart" ? "chart_updated" : "chart_temporary",
+          type: message.name === "update_chart" ? "chart_updated" : "chart_temporary",
           chartId: content.chart_id,
           chartName: content.name,
           chartType: content.type,
@@ -1029,10 +1112,10 @@ function AiModal({ isOpen, onClose }) {
     messages.forEach((message) => {
       const parsed = _parseMessage(message);
 
-      if (message.role === "user" || parsed.type === "chart_created" || parsed.type === "chart_updated" || parsed.type === "chart_temporary") {
+      if (message.role === "user" || parsed.type === "chart_updated" || parsed.type === "chart_temporary") {
         // User messages and chart creation/update messages are always separate
         groups.push({
-          type: parsed.type === "chart_created" ? "chart_created" : parsed.type === "chart_updated" ? "chart_updated" : parsed.type === "chart_temporary" ? "chart_temporary" : "user",
+          type: parsed.type || "user",
           messages: [message]
         });
         currentGroup = null;
@@ -1142,40 +1225,24 @@ function AiModal({ isOpen, onClose }) {
       );
     }
 
-    // Chart created/updated messages — these were explicitly placed on a dashboard,
-    // so always show dashboard links.  Uses the chart's live project_id when
-    // available so links stay correct if the chart was moved.
-    if ((parsed.type === "chart_created" || parsed.type === "chart_updated") && createdCharts?.length > 0) {
+    // Chart updated messages — show the updated chart with a refresh indicator
+    if (parsed.type === "chart_updated" && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
-      const isUpdated = parsed.type === "chart_updated";
-      // Use the live project_id if chart data loaded, otherwise fall back to the
-      // project_id from the original tool message so links work while loading.
-      const displayProjectId = chartData
-        ? chartData.project_id
-        : parsed.projectId;
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">
           <div className="w-full max-w-[90%]">
-            <div className={`px-6 py-4 rounded-lg border ${
-              isUpdated ? "border-warning-200" : "border-success-200"
-            }`}>
+            <div className="px-6 py-4 rounded-lg border border-warning-200">
               <div className="flex items-start gap-3">
                 <Avatar
                   icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
-                  color={isUpdated ? "warning" : "success"}
+                  color="warning"
                 />
                 <div className="w-full">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">
-                      {isUpdated ? "Chart Updated" : "Chart Created"}
-                    </span>
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      color={isUpdated ? "warning" : "success"}
-                    >
+                    <span className="text-sm font-medium">Chart Updated</span>
+                    <Chip size="sm" variant="flat" color="warning">
                       {parsed.chartName}
                     </Chip>
                   </div>
@@ -1188,32 +1255,11 @@ function AiModal({ isOpen, onClose }) {
                       />
                     </div>
                   ) : (
-                    <div className={`border ${isUpdated ? "border-warning-200" : "border-success-200"} rounded-lg p-8`}>
+                    <div className="border border-warning-200 rounded-lg p-8">
                       <CircularProgress aria-label="Loading chart" />
                       <div className="text-sm mt-2">Loading chart...</div>
                     </div>
                   )}
-                  <div className="flex gap-2 mt-3">
-                    <a href={`/dashboard/${displayProjectId}`} target="_blank" rel="noopener noreferrer">
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        color="primary"
-                        className="pointer-events-none"
-                      >
-                        View on Dashboard
-                      </Button>
-                    </a>
-                    <a href={`/dashboard/${displayProjectId}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        className="pointer-events-none"
-                      >
-                        Edit Chart
-                      </Button>
-                    </a>
-                  </div>
                 </div>
               </div>
             </div>
@@ -1229,8 +1275,9 @@ function AiModal({ isOpen, onClose }) {
     if (parsed.type === "chart_temporary" && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
       const nonGhostProjects = projects.filter((p) => !p.ghost);
-      const chartAlreadyMoved = chartData
-        && nonGhostProjects.some((p) => p.id === chartData.project_id);
+      const addedInfo = addedToDashboard[parsed.chartId];
+      const addedProjectId = addedInfo?.projectId;
+      const chartAlreadyMoved = !!addedProjectId;
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">
@@ -1263,7 +1310,7 @@ function AiModal({ isOpen, onClose }) {
                         color="success"
                         className="ml-auto"
                       >
-                        Added to {nonGhostProjects.find((p) => p.id === chartData.project_id)?.name}
+                        Added to {nonGhostProjects.find((p) => p.id === addedProjectId)?.name}
                       </Chip>
                     ) : (
                       <Chip
@@ -1324,7 +1371,7 @@ function AiModal({ isOpen, onClose }) {
                       </Dropdown>
                     ) : (
                       <>
-                        <a href={`/dashboard/${chartData.project_id}`} target="_blank" rel="noopener noreferrer">
+                        <a href={`${SITE_HOST}/dashboard/${addedProjectId}`} target="_blank" rel="noopener noreferrer">
                           <Button
                             size="sm"
                             variant="flat"
@@ -1334,15 +1381,19 @@ function AiModal({ isOpen, onClose }) {
                             View on Dashboard
                           </Button>
                         </a>
-                        <a href={`/dashboard/${chartData.project_id}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
-                          <Button
-                            size="sm"
-                            variant="flat"
-                            className="pointer-events-none"
-                          >
-                            Edit Chart
-                          </Button>
-                        </a>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          onPress={() => {
+                            setAddedToDashboard(prev => {
+                              const next = { ...prev };
+                              delete next[parsed.chartId];
+                              return next;
+                            });
+                          }}
+                        >
+                          Add to Another Dashboard
+                        </Button>
                       </>
                     )}
                   </div>
@@ -1453,7 +1504,7 @@ function AiModal({ isOpen, onClose }) {
       return _renderMessage(group.messages[0], `group-${groupIndex}-user`);
     }
 
-    if (group.type === "chart_created" || group.type === "chart_updated" || group.type === "chart_temporary") {
+    if (group.type === "chart_updated" || group.type === "chart_temporary") {
       // Render chart creation/update/temporary message
       return _renderMessage(group.messages[0], `group-${groupIndex}-chart`);
     }

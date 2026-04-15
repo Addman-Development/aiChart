@@ -512,19 +512,26 @@ class ChartController {
 
     const project = await db.Project.findByPk(chart.project_id);
 
-    // If chart is already in a ghost project, hard delete it
+    // If chart is already in a ghost project, leave it alone — ghost charts
+    // are referenced by AI chat history and must not be hard-deleted.
     if (project?.ghost) {
-      return db.Chart.destroy({ where: { id } });
+      return { removed: true, shelved: true, ghost_project_id: project.id };
     }
 
-    // Find the team's ghost project so we can shelve the chart instead of destroying it
-    const ghostProject = await db.Project.findOne({
+    // Find or create the team's ghost project so we can shelve the chart
+    let ghostProject = await db.Project.findOne({
       where: { team_id: project.team_id, ghost: true },
     });
 
     if (!ghostProject) {
-      // No ghost project exists — fall back to hard delete
-      return db.Chart.destroy({ where: { id } });
+      ghostProject = await db.Project.create({
+        team_id: project.team_id,
+        name: "Ghost Project",
+        brewName: `ghost-project-${nanoid(8)}`,
+        dashboardTitle: "Ghost Project",
+        ghost: true,
+        public: false,
+      });
     }
 
     const previousProjectId = chart.project_id;
