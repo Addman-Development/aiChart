@@ -1239,7 +1239,7 @@ function AiModal({ isOpen, onClose }) {
                   size="sm"
                   color="warning"
                 />
-                <div className="w-full">
+                <div className="w-full min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Chart Updated</span>
                     <Chip size="sm" variant="flat" color="warning">
@@ -1247,7 +1247,7 @@ function AiModal({ isOpen, onClose }) {
                     </Chip>
                   </div>
                   {chartData ? (
-                    <div className="overflow-hidden h-[300px]">
+                    <div className="overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
                       <Chart
                         chart={chartData}
                         isPublic={false}
@@ -1291,7 +1291,7 @@ function AiModal({ isOpen, onClose }) {
                   size="sm"
                   color={chartAlreadyMoved ? "success" : "primary"}
                 />
-                <div className="w-full">
+                <div className="w-full min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium">
                       {chartAlreadyMoved ? "Chart Added" : "Temporary Chart Preview"}
@@ -1324,7 +1324,7 @@ function AiModal({ isOpen, onClose }) {
                     )}
                   </div>
                   {chartData ? (
-                    <div className="overflow-hidden h-[300px]">
+                    <div className="overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
                       <Chart
                         chart={chartData}
                         isPublic={false}
@@ -2147,7 +2147,7 @@ function AiModal({ isOpen, onClose }) {
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto py-4">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-4">
                   {conversation?.full_history?.length > 0 ? (
                     <>
                       {(() => {
