@@ -72,7 +72,7 @@ function Signup() {
     dispatch(createInvitedUser(values))
       .then((data) => {
         const userData = data.payload;
-        dispatch(addTeamMember({ userId: userData.id, inviteToken }))
+        return dispatch(addTeamMember({ userId: userData.id, inviteToken }))
           .then(() => {
             setLoading(false);
             setAddedToTeam(true);
@@ -81,8 +81,9 @@ function Signup() {
             }, 3000);
           });
       })
-      .catch(() => {
+      .catch((err) => {
         setLoading(false);
+        setSignupError(err.message || "There was an error creating your account. Please try again.");
       });
   };
 

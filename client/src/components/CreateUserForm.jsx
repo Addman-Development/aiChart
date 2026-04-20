@@ -381,16 +381,29 @@ function CreateUserForm(props) {
         <>
           <Spacer y={4} />
           {result.created ? (
-            <Alert
-              color="success"
-              variant="flat"
-              title="User created and added to team"
-              description={
-                result.emailSent
-                  ? "An email with login credentials has been sent to the user."
-                  : "Share the temporary password below with the user."
-              }
-            />
+            <>
+              <Alert
+                color="success"
+                variant="flat"
+                title="User created and added to team"
+                description={
+                  result.emailSent
+                    ? "An email with login credentials has been sent to the user."
+                    : "Share the temporary password below with the user."
+                }
+              />
+              {result.emailError && (
+                <>
+                  <Spacer y={2} />
+                  <Alert
+                    color="warning"
+                    variant="flat"
+                    title="Email could not be sent"
+                    description={result.emailError}
+                  />
+                </>
+              )}
+            </>
           ) : (
             <Alert
               color="success"

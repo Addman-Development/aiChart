@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import cookie from "react-cookies";
 import moment from "moment";
 
-import { API_HOST } from "../config/settings";
+import { API_HOST, SITE_HOST } from "../config/settings";
 import { getAuthToken, tokenKey } from "../modules/auth";
 
 const expires = moment().add(1, "month").toDate();
@@ -75,6 +75,25 @@ export const deleteUser = createAsyncThunk(
 
     const userData = await response.json();
     return userData;
+  }
+);
+
+export const verifyWelcomeToken = createAsyncThunk(
+  "user/verifyWelcomeToken",
+  async (token) => {
+    const url = `${API_HOST}/user/welcome/verify`;
+    const body = JSON.stringify({ token });
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    });
+
+    const response = await fetch(url, { body, headers, method: "POST" });
+    if (!response.ok) {
+      throw new Error("Invalid or expired welcome token");
+    }
+
+    return response.json();
   }
 );
 
@@ -501,7 +520,7 @@ export const userSlice = createSlice({
     logout: (state) => {
       cookie.remove(tokenKey, { path: "/" });
       state.data = {};
-      window.location.href = "/";
+      window.location.href = SITE_HOST;
     },
     clearUser: (state) => {
       state.data = {};

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import {
   Button, Input, Spacer, Link, Modal, ModalHeader, ModalBody, ModalFooter, ModalContent, Divider,
@@ -7,7 +7,7 @@ import { LuChevronRight, LuLock, LuMail } from "react-icons/lu";
 import { useNavigate } from "react-router";
 
 import {
-  login, requestPasswordReset, validate2faLogin,
+  login, requestPasswordReset, validate2faLogin, verifyWelcomeToken,
 } from "../slices/user";
 import { addTeamMember } from "../slices/team";
 import { required, email as validateEmail } from "../config/validations";
@@ -32,8 +32,28 @@ function LoginForm() {
   const [otpToken, setOtpToken] = useState("");
   const [twoFaData, setTwoFaData] = useState(null);
 
+  const [welcomeMessage, setWelcomeMessage] = useState("");
+
   const navigate = useNavigate();
   const dispatch = useDispatch();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const welcomeToken = params.get("welcomeToken");
+    if (welcomeToken) {
+      dispatch(verifyWelcomeToken(welcomeToken))
+        .then((result) => {
+          if (result.payload?.email) {
+            setEmail(result.payload.email);
+            setPassword(result.payload.temporaryPassword);
+            setWelcomeMessage("Your credentials have been filled in. Click Login to continue.");
+          }
+        })
+        .catch(() => {
+          // Token expired or invalid - user can still log in manually
+        });
+    }
+  }, []);
 
   const _onSendResetRequest = () => {
     if (validateEmail(resetEmail)) {
@@ -147,6 +167,11 @@ function LoginForm() {
 
   return (
     <div className="w-full py-2 px-4">
+      {welcomeMessage && (
+        <div className="w-full mb-4 p-3 rounded-lg bg-primary-50 text-primary-700 border border-primary-200 text-sm">
+          {welcomeMessage}
+        </div>
+      )}
       {!view2FaApp && (
         <form onSubmit={loginUser} className="sm:min-w-[400px]">
           <div className="w-full">

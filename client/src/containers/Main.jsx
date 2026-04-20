@@ -151,6 +151,8 @@ function Main(props) {
         .then((anyUsers) => {
           const hasUsers = anyUsers?.payload?.areThereAnyUsers;
           const restricted = anyUsers?.payload?.signupRestricted;
+          const params = new URLSearchParams(window.location.search);
+          const hasInviteToken = params.has("inviteToken") || params.has("token");
 
           if (!hasUsers) {
             // No users yet — allow first signup
@@ -158,8 +160,8 @@ function Main(props) {
             if (pathname === "/login" || pathname === "/") {
               navigate("/signup");
             }
-          } else if (!restricted) {
-            // Users exist but signups are open
+          } else if (!restricted || hasInviteToken) {
+            // Users exist but signups are open, or user has an invite token
             setSignupAllowed(true);
           } else {
             // Users exist and signups are restricted

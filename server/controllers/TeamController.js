@@ -547,18 +547,37 @@ class TeamController {
     await this.addTeamRole(teamId, newUser.id, role || "projectViewer", projects, canExport);
 
     // Send invite email if requested
+    let emailSent = false;
+    let emailError = null;
     if (sendEmail) {
-      const team = await db.Team.findByPk(teamId);
       try {
+        const team = await db.Team.findByPk(teamId);
+        const teamName = team ? team.name : "ADDMAN-SmartChart";
+
+        // Create a signed token with the credentials for a prepopulated login link
+        let loginUrl = `${settings.client}/login`;
+        try {
+          const welcomeToken = jwt.sign(
+            { email, temporaryPassword },
+            settings.encryptionKey,
+            { expiresIn: 172800 } // 48 hours
+          );
+          loginUrl = `${settings.client}/login?welcomeToken=${welcomeToken}`;
+        } catch (tokenErr) {
+          console.error("Failed to generate welcome token, using plain login URL:", tokenErr); // eslint-disable-line no-console
+        }
+
         await mail.sendUserCreatedInvite({
           email,
           name,
-          teamName: team ? team.name : "ADDMAN-SmartChart",
-          loginUrl: `${settings.client}/login`,
+          teamName,
+          loginUrl,
           temporaryPassword,
         });
+        emailSent = true;
       } catch (emailErr) {
         console.error("Failed to send invite email:", emailErr); // eslint-disable-line no-console
+        emailError = emailErr.message || "Failed to send invite email";
         // Don't fail the user creation if email fails
       }
     }
@@ -571,10 +590,11 @@ class TeamController {
         icon: newUser.icon,
         active: newUser.active,
       },
-      temporaryPassword: sendEmail ? undefined : temporaryPassword,
+      temporaryPassword: (!sendEmail || !emailSent) ? temporaryPassword : undefined,
       created: true,
       addedToTeam: true,
-      emailSent: !!sendEmail,
+      emailSent,
+      emailError,
     };
   }
 

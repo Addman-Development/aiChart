@@ -30,7 +30,8 @@
       "Bash(taskkill //PID 28596 //F)",
       "Bash(taskkill //PID 21592 //F)",
       "Bash(taskkill //PID 32892 //F)",
-      "Bash(taskkill //PID 1712 //F)"
+      "Bash(taskkill //PID 1712 //F)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }

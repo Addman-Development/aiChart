@@ -52,9 +52,11 @@ module.exports.sendUserCreatedInvite = (data) => {
 
       An account has been created for you on ${data.teamName}.
 
-      You can log in using the following details:
+      Click the link below to log in - your credentials will be filled in automatically:
 
-      Login URL: ${data.loginUrl}
+      ${data.loginUrl}
+
+      If the link doesn't work, you can log in manually with:
       Email: ${data.email}
       Temporary Password: ${data.temporaryPassword}
 
@@ -63,30 +65,41 @@ module.exports.sendUserCreatedInvite = (data) => {
       - ADDMAN-SmartChart
     `,
     html: `
-      <h3>Hi ${data.name},</h3>
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h3>Hi ${data.name},</h3>
 
-      <p>An account has been created for you on <strong>${data.teamName}</strong>.</p>
+        <p>An account has been created for you on <strong>${data.teamName}</strong>.</p>
 
-      <p>You can log in using the following details:</p>
+        <p>Click the button below to log in - your credentials will be filled in automatically:</p>
 
-      <table style="border-collapse: collapse; margin: 16px 0;">
-        <tr>
-          <td style="padding: 8px 16px; font-weight: bold;">Login URL</td>
-          <td style="padding: 8px 16px;"><a href="${data.loginUrl}">${data.loginUrl}</a></td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 16px; font-weight: bold;">Email</td>
-          <td style="padding: 8px 16px;">${data.email}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 16px; font-weight: bold;">Temporary Password</td>
-          <td style="padding: 8px 16px;"><code>${data.temporaryPassword}</code></td>
-        </tr>
-      </table>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${data.loginUrl}"
+             style="background-color: #006FEE; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+            Log in to ADDMAN-SmartChart
+          </a>
+        </div>
 
-      <p><strong>You will be asked to change your password on your first login.</strong></p>
+        <p style="color: #666; font-size: 13px;">If the button doesn't work, copy and paste this link into your browser:</p>
+        <p style="color: #666; font-size: 13px; word-break: break-all;">${data.loginUrl}</p>
 
-      <p>- ADDMAN-SmartChart</p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+
+        <p style="color: #666; font-size: 13px;">Or log in manually with:</p>
+        <table style="border-collapse: collapse; margin: 8px 0; font-size: 13px; color: #666;">
+          <tr>
+            <td style="padding: 4px 12px 4px 0; font-weight: bold;">Email</td>
+            <td style="padding: 4px 0;">${data.email}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 12px 4px 0; font-weight: bold;">Temporary Password</td>
+            <td style="padding: 4px 0;"><code>${data.temporaryPassword}</code></td>
+          </tr>
+        </table>
+
+        <p><strong>You will be asked to change your password on your first login.</strong></p>
+
+        <p>- ADDMAN-SmartChart</p>
+      </div>
     `,
   };
 

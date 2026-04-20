@@ -79,23 +79,21 @@ class SocketManager {
         console.error("Socket.IO Redis Sub Client Error:", err.message); // eslint-disable-line
       });
 
-      // Set up reconnection handlers
-      this.pubClient.on("reconnecting", () => {
-        console.log("Socket.IO Redis Pub Client reconnecting..."); // eslint-disable-line
-      });
-
-      this.subClient.on("reconnecting", () => {
-        console.log("Socket.IO Redis Sub Client reconnecting..."); // eslint-disable-line
-      });
-
-      // Set up ready handlers
-      this.pubClient.on("ready", () => {
-        console.log("Socket.IO Redis Pub Client ready"); // eslint-disable-line
-      });
-
-      this.subClient.on("ready", () => {
-        console.log("Socket.IO Redis Sub Client ready"); // eslint-disable-line
-      });
+      // Only log reconnection/ready events at debug level to avoid log spam
+      if (process.env.DEBUG_REDIS) {
+        this.pubClient.on("reconnecting", () => {
+          console.log("Socket.IO Redis Pub Client reconnecting..."); // eslint-disable-line
+        });
+        this.subClient.on("reconnecting", () => {
+          console.log("Socket.IO Redis Sub Client reconnecting..."); // eslint-disable-line
+        });
+        this.pubClient.on("ready", () => {
+          console.log("Socket.IO Redis Pub Client ready"); // eslint-disable-line
+        });
+        this.subClient.on("ready", () => {
+          console.log("Socket.IO Redis Sub Client ready"); // eslint-disable-line
+        });
+      }
 
       // Connect both clients and wait for them to be ready
       await Promise.all([

@@ -137,6 +137,23 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
+  ** Route to verify a welcome token from the invite email
+  */
+  app.post("/user/welcome/verify", apiLimiter(20), (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).send("Missing token");
+
+    return jwt.verify(token, app.settings.encryptionKey, (err, decoded) => {
+      if (err) return res.status(401).send("Invalid or expired token");
+      return res.status(200).send({
+        email: decoded.email,
+        temporaryPassword: decoded.temporaryPassword,
+      });
+    });
+  });
+  // --------------------------------------
+
+  /*
   ** Route to process invitations
   */
   app.post("/user/invited", (req, res) => {
