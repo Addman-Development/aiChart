@@ -2,6 +2,7 @@ const nodemailer = require("nodemailer");
 const ejs = require("ejs");
 
 const settings = require("../settings");
+const logger = require("./logger").child({ module: "nodemail" });
 
 // setup nodemailer
 // In tests we don't want to connect to a real SMTP server.
@@ -165,7 +166,7 @@ module.exports.sendChartAlert = (data) => {
     snapshotUrl: data.snapshotUrl,
   }, (err, str) => {
     if (err) {
-      console.log(err); // eslint-disable-line no-console
+      logger.error({ err, template: "alert" }, "Failed to render email template");
     }
     message.html = str;
 
@@ -202,7 +203,7 @@ module.exports.sendDashboardSnapshot = (data) => {
     snapshotUrl: data.snapshotUrl,
   }, (err, str) => {
     if (err) {
-      console.log(err); // eslint-disable-line no-console
+      logger.error({ err, template: "snapshot" }, "Failed to render email template");
     }
     message.html = str;
 

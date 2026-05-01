@@ -1,7 +1,41 @@
+const moment = require("moment");
+
 const db = require("../../../../models/models");
 const ConnectionController = require("../../../../controllers/ConnectionController");
+const { applyMongoVariables, applyPostgresVariables } = require("../../../applyVariables");
+const logger = require("../../../logger").child({ module: "tool:runQuery" });
 
 const connectionController = new ConnectionController();
+
+const DEFAULT_PROBE_WINDOW_DAYS = 30;
+const DATE_PLACEHOLDER_RE = /\{\{(?:start_date|end_date)\}\}/;
+
+// Templated queries (e.g. with `{{start_date}}` / `{{end_date}}`) are stored
+// on charts and substituted at render time from the user's date picker. When
+// the AI calls run_query during a chat, we need real dates so the query is
+// executable — substitute with a default window and log what we used. The
+// stored chart query keeps its placeholders intact (we only mutate the local
+// copy used for this execution).
+function substituteDatePlaceholders(query, dialect, contextLogger) {
+  if (!DATE_PLACEHOLDER_RE.test(query)) return query;
+
+  const variables = {
+    start_date: moment().subtract(DEFAULT_PROBE_WINDOW_DAYS, "days").startOf("day").toISOString(),
+    end_date: moment().endOf("day").toISOString(),
+  };
+
+  const apply = dialect === "mongodb" ? applyMongoVariables : applyPostgresVariables;
+  const { processedQuery } = apply({ query, VariableBindings: [] }, variables);
+
+  contextLogger.debug({
+    dialect,
+    defaultStartDate: variables.start_date,
+    defaultEndDate: variables.end_date,
+    windowDays: DEFAULT_PROBE_WINDOW_DAYS,
+  }, "run_query: substituted date placeholders with defaults");
+
+  return processedQuery;
+}
 
 async function runQuery(payload) {
   const {
@@ -16,6 +50,7 @@ async function runQuery(payload) {
     const startTime = Date.now();
 
     let limitedQuery = query.trim();
+    limitedQuery = substituteDatePlaceholders(limitedQuery, dialect, logger);
 
     if (dialect === "mongodb") {
       // For MongoDB, validate no destructive operations

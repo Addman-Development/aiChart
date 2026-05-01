@@ -8,6 +8,7 @@ const { Op } = require("sequelize");
 const db = require("../models/models");
 const UserController = require("./UserController");
 const mail = require("../modules/mail");
+const logger = require("../modules/logger").child({ module: "TeamController" });
 
 const settings = require("../settings");
 
@@ -564,7 +565,10 @@ class TeamController {
           );
           loginUrl = `${settings.client}/login?welcomeToken=${welcomeToken}`;
         } catch (tokenErr) {
-          console.error("Failed to generate welcome token, using plain login URL:", tokenErr); // eslint-disable-line no-console
+          logger.error(
+            { err: tokenErr, email },
+            "Failed to generate welcome token, using plain login URL"
+          );
         }
 
         await mail.sendUserCreatedInvite({
@@ -576,7 +580,7 @@ class TeamController {
         });
         emailSent = true;
       } catch (emailErr) {
-        console.error("Failed to send invite email:", emailErr); // eslint-disable-line no-console
+        logger.error({ err: emailErr, email }, "Failed to send invite email");
         emailError = emailErr.message || "Failed to send invite email";
         // Don't fail the user creation if email fails
       }

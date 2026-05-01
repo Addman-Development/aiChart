@@ -1,6 +1,8 @@
+const logger = require("./modules/logger").child({ module: "redisConnection" });
+
 const getRedisOptions = () => {
   if (!process.env.CB_REDIS_HOST) {
-    console.error("CB_REDIS_HOST is not set. The charts are not going to update automatically."); // eslint-disable-line no-console
+    logger.error("CB_REDIS_HOST is not set. The charts are not going to update automatically.");
   }
   return {
     host: process.env.CB_REDIS_HOST,

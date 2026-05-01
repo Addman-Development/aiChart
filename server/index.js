@@ -1,8 +1,3 @@
-// Prevent unhandled promise rejections from crashing the server
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("[unhandledRejection]", reason);
-});
-
 // set up the encryption keys first, then load .env file
 const setUpEncryptionKeys = require("./modules/setUpEncryptionKeys"); // eslint-disable-line
 
@@ -11,13 +6,24 @@ setUpEncryptionKeys();
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
+const logger = require("./modules/logger");
+
+// Prevent unhandled promise rejections from crashing the server
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "unhandledRejection");
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "uncaughtException");
+});
+
 const express = require("express");
 const methodOverride = require("method-override");
 const { urlencoded, json } = require("body-parser");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const _ = require("lodash");
-const morgan = require("morgan");
+const pinoHttp = require("pino-http");
 const helmet = require("helmet");
 const fs = require("fs");
 const busboy = require("connect-busboy");
@@ -48,9 +54,43 @@ app.settings = settings;
 
 app.set("trust proxy", 1);
 
-if (process.env.NODE_ENV !== "production") {
-  app.use(morgan("dev"));
+// Strip an optional public-facing API prefix (e.g. "/smart-chart-api") so
+// internal routes mounted at "/" still match. No-op when the prefix is unset
+// or already stripped upstream by the gateway. req.originalUrl is preserved
+// for log correlation.
+const apiBasePath = (process.env.CB_API_BASE_PATH || "").replace(/\/$/, "");
+if (apiBasePath) {
+  app.use((req, res, next) => {
+    if (req.url === apiBasePath) {
+      req.url = "/";
+    } else if (req.url.startsWith(`${apiBasePath}/`)) {
+      req.url = req.url.slice(apiBasePath.length);
+    }
+    next();
+  });
 }
+
+app.use(pinoHttp({
+  logger,
+  customLogLevel: (req, res, err) => {
+    if (err || res.statusCode >= 500) return "error";
+    if (res.statusCode >= 400) return "warn";
+    return "info";
+  },
+  customSuccessMessage: (req, res) => `${req.method} ${req.originalUrl || req.url} ${res.statusCode}`,
+  customErrorMessage: (req, res, err) => `${req.method} ${req.originalUrl || req.url} ${res.statusCode} ${err.message}`,
+  serializers: {
+    req: (req) => ({
+      id: req.id,
+      method: req.method,
+      url: req.originalUrl || req.url,
+      remoteAddress: req.remoteAddress,
+    }),
+    res: (res) => ({
+      statusCode: res.statusCode,
+    }),
+  },
+}));
 app.use(cors());
 app.use(cookieParser());
 app.use(urlencoded({
@@ -105,7 +145,7 @@ const port = process.env.PORT || app.settings.port || 4019;
 db.migrate()
   .then(async (data) => {
     if (data && data.length > 0) {
-      console.info("Updated database schema to the latest version!"); // eslint-disable-line
+      logger.info("Updated database schema to the latest version");
     }
 
     // create an instance ID and record the current version
@@ -136,10 +176,9 @@ db.migrate()
         }, 5000);
       }
 
-      console.log(`Running server on port ${port}`); // eslint-disable-line
+      logger.info({ port }, `Running server on port ${port}`);
     });
   })
   .catch((err) => {
-    console.error(err); // eslint-disable-line
-    console.error("Migrations failed, could not run the server app."); // eslint-disable-line
+    logger.error({ err }, "Migrations failed, could not run the server app");
   });

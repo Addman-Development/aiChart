@@ -10,6 +10,7 @@ const spreadsheetExport = require("../modules/spreadsheetExport");
 const alertController = require("../controllers/AlertController");
 const getEmbeddedChartData = require("../modules/getEmbeddedChartData");
 const db = require("../models/models");
+const logger = require("../modules/logger").child({ module: "api:ChartRoute" });
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -335,7 +336,7 @@ module.exports = (app) => {
         return res.status(200).send(chart);
       })
       .catch((error) => {
-        console.error((error && error.message) || error); // eslint-disable-line
+        logger.error({ err: error }, "ChartRoute embedded chart data failed");
         if (`${error}` === "401" || error.message === "401") {
           return res.status(401).send({ error: "Not authorized" });
         }

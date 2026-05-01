@@ -2,6 +2,7 @@ const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const Redis = require("ioredis");
 const { getRedisOptions } = require("../redisConnection");
+const logger = require("./logger").child({ module: "socketManager" });
 
 /**
  * Socket.IO Manager for ADDMAN-SmartChart
@@ -52,7 +53,7 @@ class SocketManager {
 
       // Check if Redis is configured (host is set)
       if (!redisConfig.host) {
-        console.log("Redis not configured, using in-memory adapter"); // eslint-disable-line
+        logger.info("Redis not configured, using in-memory adapter for Socket.IO");
         return;
       }
 
@@ -72,26 +73,26 @@ class SocketManager {
 
       // Set up error handlers before connecting
       this.pubClient.on("error", (err) => {
-        console.error("Socket.IO Redis Pub Client Error:", err.message); // eslint-disable-line
+        logger.error({ err, client: "pub" }, "Socket.IO Redis client error");
       });
 
       this.subClient.on("error", (err) => {
-        console.error("Socket.IO Redis Sub Client Error:", err.message); // eslint-disable-line
+        logger.error({ err, client: "sub" }, "Socket.IO Redis client error");
       });
 
       // Only log reconnection/ready events at debug level to avoid log spam
       if (process.env.DEBUG_REDIS) {
         this.pubClient.on("reconnecting", () => {
-          console.log("Socket.IO Redis Pub Client reconnecting..."); // eslint-disable-line
+          logger.debug({ client: "pub" }, "Socket.IO Redis client reconnecting");
         });
         this.subClient.on("reconnecting", () => {
-          console.log("Socket.IO Redis Sub Client reconnecting..."); // eslint-disable-line
+          logger.debug({ client: "sub" }, "Socket.IO Redis client reconnecting");
         });
         this.pubClient.on("ready", () => {
-          console.log("Socket.IO Redis Pub Client ready"); // eslint-disable-line
+          logger.debug({ client: "pub" }, "Socket.IO Redis client ready");
         });
         this.subClient.on("ready", () => {
-          console.log("Socket.IO Redis Sub Client ready"); // eslint-disable-line
+          logger.debug({ client: "sub" }, "Socket.IO Redis client ready");
         });
       }
 
@@ -107,9 +108,9 @@ class SocketManager {
         publishOnSpecificResponseChannel: true, // More efficient for multi-server setups
       }));
 
-      console.log("✓ Socket.IO Redis adapter enabled for cross-process communication"); // eslint-disable-line
+      logger.info("Socket.IO Redis adapter enabled for cross-process communication");
     } catch (error) {
-      console.warn("Failed to set up Redis adapter, using in-memory adapter:", error.message); // eslint-disable-line
+      logger.warn({ err: error }, "Failed to set up Socket.IO Redis adapter, falling back to in-memory adapter");
 
       // Clean up clients if setup failed
       if (this.pubClient) {

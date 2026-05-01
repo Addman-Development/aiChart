@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const logger = require("./logger").child({ module: "cbCrypto" });
 
 const SECRET_KEY = process.env.CB_ENCRYPTION_KEY;
 const ALGORITHM = "aes-256-cbc";
@@ -38,7 +39,7 @@ function checkEncryptionKeys() {
   const encryptionKey = process.env.CB_ENCRYPTION_KEY;
 
   if (!isValidAES256Key(encryptionKey)) {
-    console.error("Invalid AES-256 encryption key in CB_ENCRYPTION_KEY. It must be a 64-character hexadecimal string."); // eslint-disable-line
+    logger.fatal("Invalid AES-256 encryption key in CB_ENCRYPTION_KEY. It must be a 64-character hexadecimal string.");
     process.exit(1); // Exit with an error code
   }
 }

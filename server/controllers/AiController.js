@@ -4,6 +4,7 @@ const { orchestrate, availableTools } = require("../modules/ai/orchestrator/orch
 const { aiClient, aiModel } = require("../modules/ai/aiClient");
 const db = require("../models/models");
 const socketManager = require("../modules/socketManager");
+const logger = require("../modules/logger").child({ module: "AiController" });
 
 /**
  * Generate a short conversation title from the user's question and the AI response.
@@ -31,7 +32,7 @@ async function generateConversationTitle(question, aiResponse) {
     const title = response.choices?.[0]?.message?.content?.trim();
     return title || null;
   } catch (err) {
-    console.warn("[generateConversationTitle] Failed:", err.message);
+    logger.warn({ err }, "Failed to generate conversation title");
     return null;
   }
 }

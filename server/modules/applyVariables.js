@@ -1,3 +1,5 @@
+const logger = require("./logger").child({ module: "applyVariables" });
+
 const applyPostgresVariables = (dataRequest, variables = {}) => {
   // Don't modify the original dataRequest at all
   const originalDataRequest = dataRequest;
@@ -204,7 +206,12 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
       || variable.name === "end_date";
 
     if (isDateVariable) {
-      console.log(`[applyMongoVariables] ${variable.name}: runtime=${runtimeValue}, hasRuntime=${hasRuntimeValue}, isDate=${isDateVariable}`);
+      logger.debug({
+        variable: variable.name,
+        runtimeValue,
+        hasRuntimeValue,
+        isDateVariable,
+      }, "applyMongoVariables: date variable resolved");
     }
 
     if (hasRuntimeValue) {

@@ -13,6 +13,7 @@ const SharePolicyController = require("../controllers/SharePolicyController");
 const verifyToken = require("../modules/verifyToken");
 const accessControl = require("../modules/accessControl");
 const getUserFromToken = require("../modules/getUserFromToken");
+const logger = require("../modules/logger").child({ module: "api:ProjectRoute" });
 const db = require("../models/models");
 
 module.exports = (app) => {
@@ -243,8 +244,7 @@ module.exports = (app) => {
                 return res.status(200).send(updatedProject);
               } catch (error) {
                 // If variable application fails, return the project without variables
-                // eslint-disable-next-line no-console
-                console.error("Failed to apply variables to dashboard:", error);
+                logger.error({ err: error }, "Failed to apply variables to dashboard");
               }
             }
 
@@ -318,8 +318,7 @@ module.exports = (app) => {
                 return res.status(200).send(updatedProject);
               } catch (error) {
                 // If variable application fails, return the project without variables
-                // eslint-disable-next-line no-console
-                console.error("Failed to apply variables to dashboard:", error);
+                logger.error({ err: error }, "Failed to apply variables to dashboard");
                 return res.status(200).send(processedProject);
               }
             }
@@ -349,8 +348,7 @@ module.exports = (app) => {
             return res.status(200).send(updatedProject);
           } catch (error) {
             // If variable application fails, return the project without variables
-            // eslint-disable-next-line no-console
-            console.error("Failed to apply variables to dashboard:", error);
+            logger.error({ err: error }, "Failed to apply variables to dashboard");
           }
         }
       }

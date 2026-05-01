@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 const externalDbConnection = require("../modules/externalDbConnection");
 const { calculateChartLayout, ensureCompleteLayout, DEFAULT_CHART_LAYOUT } = require("../modules/chartLayoutEngine");
 const resolveChartDates = require("../modules/resolveChartDates");
+const logger = require("../modules/logger").child({ module: "ChartController" });
 
 const db = require("../models/models");
 const DatasetController = require("./DatasetController");
@@ -99,7 +100,7 @@ class ChartController {
         }
       }
     } catch (error) {
-      console.error("[ChartController] Failed to inject date variables:", error.message);
+      logger.error({ err: error }, "Failed to inject date variables");
     }
   }
 
@@ -596,7 +597,14 @@ class ChartController {
         if (gChart.scopeDateToQuery && gChart.startDate && gChart.endDate) {
           resolvedDates = resolveChartDates(gChart, filters, project?.timezone);
         }
-        console.log(`[updateChartData] chart=${id} scopeDateToQuery=${gChart.scopeDateToQuery} startDate=${gChart.startDate} endDate=${gChart.endDate} resolvedDates=${resolvedDates ? `${resolvedDates.formattedStartDate} → ${resolvedDates.formattedEndDate}` : "null"}`);
+        logger.debug({
+          chartId: id,
+          scopeDateToQuery: gChart.scopeDateToQuery,
+          startDate: gChart.startDate,
+          endDate: gChart.endDate,
+          resolvedStart: resolvedDates?.formattedStartDate || null,
+          resolvedEnd: resolvedDates?.formattedEndDate || null,
+        }, "updateChartData: resolved chart dates");
 
 
         const requestPromises = [];
@@ -628,7 +636,11 @@ class ChartController {
             cdcVariables.end_date = format
               ? fallbackEnd.format(format) : fallbackEnd.toISOString();
           }
-          console.log(`[updateChartData] dataset=${cdc.Dataset?.id} start_date=${cdcVariables.start_date} end_date=${cdcVariables.end_date}`);
+          logger.debug({
+            datasetId: cdc.Dataset?.id,
+            startDate: cdcVariables.start_date,
+            endDate: cdcVariables.end_date,
+          }, "updateChartData: dataset variables resolved");
 
           if (noSource && gCache && gCache.data) {
             requestPromises.push(
@@ -1117,8 +1129,10 @@ class ChartController {
         return embeddedChartData;
       } catch (error) {
         // If variable filtering fails, return the chart without filtering
-        // eslint-disable-next-line no-console
-        console.error("Failed to apply variables to embedded chart:", error);
+        logger.error(
+          { err: error, chartId: chart?.id },
+          "Failed to apply variables to embedded chart"
+        );
         const embeddedChartData = getEmbeddedChartData(chart, team);
         return embeddedChartData;
       }
@@ -1180,8 +1194,10 @@ class ChartController {
         return embeddedChartData;
       } catch (error) {
         // If variable filtering fails, return the chart without filtering
-        // eslint-disable-next-line no-console
-        console.error("Failed to apply variables to embedded chart:", error);
+        logger.error(
+          { err: error, chartId: chart?.id },
+          "Failed to apply variables to embedded chart"
+        );
         const embeddedChartData = getEmbeddedChartData(chart, team);
         return embeddedChartData;
       }

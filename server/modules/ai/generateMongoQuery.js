@@ -1,4 +1,5 @@
 const { aiClient, aiModel } = require("./aiClient");
+const logger = require("../logger").child({ module: "generateMongoQuery" });
 
 async function generateMongoQuery(schema, question, conversationHistory = [], currentQuery = "") {
   if (!aiClient) {
@@ -62,12 +63,24 @@ async function generateMongoQuery(schema, question, conversationHistory = [], cu
       content: question,
     });
 
+    const startedAt = Date.now();
     const response = await aiClient.chat.completions.create({
       model: aiModel,
       messages,
     });
+    const latencyMs = Date.now() - startedAt;
 
     const mongoQuery = response.choices[0].message.content;
+
+    logger.info({
+      model: response.model || aiModel,
+      latencyMs,
+      promptTokens: response.usage?.prompt_tokens,
+      completionTokens: response.usage?.completion_tokens,
+      totalTokens: response.usage?.total_tokens,
+      hasCurrentQuery: Boolean(currentQuery),
+      schemaChars: formattedSchema.length,
+    }, "Mongo query generated");
 
     conversationHistory.push({
       role: "user",
@@ -123,7 +136,12 @@ async function generateMongoQuery(schema, question, conversationHistory = [], cu
 
     return { query: cleanedQuery, conversationHistory };
   } catch (error) {
-    console.error("[generateMongoQuery] AI error:", error.message, error.status || "", error.code || "");
+    logger.error({
+      err: error,
+      status: error.status,
+      code: error.code,
+      model: aiModel,
+    }, "Mongo query generation failed");
     return { query: "", conversationHistory };
   }
 }

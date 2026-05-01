@@ -1,6 +1,8 @@
 const { WebClient } = require("@slack/web-api");
 const crypto = require("crypto");
 
+const logger = require("../../../modules/logger").child({ module: "slack:slackClient" });
+
 const slackClientId = process.env.VITE_APP_SLACK_CLIENT_ID;
 const slackClientSecret = process.env.CB_SLACK_CLIENT_SECRET;
 const slackSigningSecret = process.env.CB_SLACK_SIGNING_SECRET;
@@ -13,8 +15,7 @@ const slackSigningSecret = process.env.CB_SLACK_SIGNING_SECRET;
  */
 function verifySignature(req) {
   if (!slackSigningSecret) {
-    // eslint-disable-next-line no-console
-    console.warn("SLACK_SIGNING_SECRET not configured, skipping signature verification");
+    logger.warn("SLACK_SIGNING_SECRET not configured, skipping signature verification");
     return true;
   }
 
@@ -22,8 +23,7 @@ function verifySignature(req) {
   const signature = req.headers["x-slack-signature"];
 
   if (!timestamp || !signature) {
-    // eslint-disable-next-line no-console
-    console.warn("Missing Slack signature headers");
+    logger.warn("Missing Slack signature headers");
     // Allow request to proceed for now (can be strict later)
     return true;
   }
@@ -31,8 +31,7 @@ function verifySignature(req) {
   // Check if request is too old (replay attack protection)
   const currentTime = Math.floor(Date.now() / 1000);
   if (Math.abs(currentTime - parseInt(timestamp, 10)) > 300) {
-    // eslint-disable-next-line no-console
-    console.warn("Slack request timestamp too old");
+    logger.warn({ timestamp, currentTime }, "Slack request timestamp too old");
     return false;
   }
 
@@ -73,32 +72,27 @@ function verifySignature(req) {
       Buffer.from(signature)
     );
     if (!isValid) {
-      // eslint-disable-next-line no-console
-      console.warn("Invalid Slack signature - this may be due to body parsing");
-      // eslint-disable-next-line no-console
-      console.warn("Expected:", signature);
-      // eslint-disable-next-line no-console
-      console.warn("Computed:", mySignature);
+      logger.warn(
+        { expected: signature, computed: mySignature },
+        "Invalid Slack signature (may be due to body parsing)"
+      );
 
       // In development, allow interactive payloads and events to proceed for testing
       // These are harder to verify without raw body
       if (process.env.NODE_ENV !== "production") {
         if (req.body && req.body.payload) {
-          // eslint-disable-next-line no-console
-          console.warn("Allowing interactive payload in development mode");
+          logger.warn("Allowing interactive payload in development mode");
           return true;
         }
         if (req.body && (req.body.type === "event_callback" || req.body.event)) {
-          // eslint-disable-next-line no-console
-          console.warn("Allowing event payload in development mode");
+          logger.warn("Allowing event payload in development mode");
           return true;
         }
       }
     }
     return isValid;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn("Signature verification error:", e.message);
+    logger.warn({ err: e }, "Signature verification error");
     // Allow request to proceed for debugging
     return true;
   }
@@ -179,14 +173,12 @@ async function sendDM(botToken, userId, message) {
  */
 async function postMessage(botToken, channel, message, options = {}) {
   if (!botToken) {
-    // eslint-disable-next-line no-console
-    console.error("postMessage called without botToken");
+    logger.error("postMessage called without botToken");
     return null;
   }
 
   if (!channel) {
-    // eslint-disable-next-line no-console
-    console.error("postMessage called without channel");
+    logger.error("postMessage called without channel");
     return null;
   }
 
@@ -211,10 +203,10 @@ async function postMessage(botToken, channel, message, options = {}) {
     const result = await client.chat.postMessage(messagePayload);
     return result;
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("Failed to post message to Slack:", error.message);
-    // eslint-disable-next-line no-console
-    console.error("Error details:", error.data || error);
+    logger.error(
+      { err: error, slackChannelId: channel, slackErrorData: error.data || null },
+      "Failed to post message to Slack"
+    );
     throw new Error(`Failed to post message: ${error.message}`);
   }
 }
@@ -226,8 +218,7 @@ async function postMessage(botToken, channel, message, options = {}) {
  */
 async function postResponseUrl(responseUrl, message) {
   if (!responseUrl) {
-    // eslint-disable-next-line no-console
-    console.error("postResponseUrl called without responseUrl");
+    logger.error("postResponseUrl called without responseUrl");
     return null;
   }
 
@@ -256,8 +247,10 @@ async function postResponseUrl(responseUrl, message) {
 
     if (!response.ok) {
       const errorText = await response.text();
-      // eslint-disable-next-line no-console
-      console.error("Response URL error:", response.status, errorText);
+      logger.error(
+        { status: response.status, errorText },
+        "Slack response_url returned non-OK status"
+      );
       return null;
     }
 
@@ -272,13 +265,11 @@ async function postResponseUrl(responseUrl, message) {
       if (responseText.trim() === "ok") {
         return { ok: true };
       }
-      // eslint-disable-next-line no-console
-      console.warn("Unexpected response format from Slack:", responseText);
+      logger.warn({ responseText }, "Unexpected response format from Slack");
       return { ok: true }; // Assume success if we got 200 OK
     }
   } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error("Failed to post to response_url:", error.message);
+    logger.error({ err: error }, "Failed to post to Slack response_url");
     return null;
   }
 }

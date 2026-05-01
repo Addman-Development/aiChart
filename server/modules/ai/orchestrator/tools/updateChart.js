@@ -1,5 +1,6 @@
 const db = require("../../../../models/models");
 const ChartController = require("../../../../controllers/ChartController");
+const logger = require("../../../logger").child({ module: "tool:updateChart" });
 
 async function updateChart(payload) {
   const {
@@ -238,7 +239,10 @@ async function updateChart(payload) {
     } catch (dataUpdateError) {
       // Log but don't fail — config changes were already saved above.
       // The client will run its own query to get fresh data.
-      console.warn(`[updateChart] chartData refresh failed for chart ${chart_id}:`, dataUpdateError.message);
+      logger.warn(
+        { err: dataUpdateError, chartId: chart_id },
+        "chartData refresh failed after update"
+      );
     }
 
     // Refresh the chart to get updated values
@@ -256,8 +260,10 @@ async function updateChart(payload) {
       snapshot = await chartController.takeSnapshot(updatedChart.id);
     } catch (snapshotError) {
       // Ignore snapshot errors - chart update was successful
-      // eslint-disable-next-line no-console
-      console.warn(`Failed to take snapshot for chart ${updatedChart.id}:`, snapshotError.message);
+      logger.warn(
+        { err: snapshotError, chartId: updatedChart.id },
+        "Failed to take snapshot for updated chart"
+      );
     }
 
     return {

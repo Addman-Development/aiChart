@@ -18,6 +18,7 @@ const { emitProgressEvent, parseProgressEvents } = require("./responseParser");
 const { ENTITY_CREATION_RULES } = require("./entityCreationRules");
 const { isCapabilityQuestion, generateCapabilityResponse } = require("./capabilityHandler");
 const { aiClient, aiModel } = require("../aiClient");
+const baseLogger = require("../../logger").child({ module: "orchestrator" });
 
 // Set globals for tool modules (summarize, suggestChart) that use global.aiClient
 global.aiClient = aiClient;
@@ -819,9 +820,11 @@ function sanitizeConversationHistory(history) {
       });
 
       if (orphanedResponses.length > 0) {
-        const orphanedIds = orphanedResponses.map((tr) => tr.tool_call_id).join(", ");
-        // eslint-disable-next-line no-console
-        console.warn(`Removing orphaned tool responses with tool_call_ids: ${orphanedIds}`);
+        const orphanedIds = orphanedResponses.map((tr) => tr.tool_call_id);
+        baseLogger.warn(
+          { orphanedToolCallIds: orphanedIds },
+          "Removing orphaned tool responses from conversation history"
+        );
       }
 
       // Check if all tool_call_ids have valid responses
@@ -837,18 +840,20 @@ function sanitizeConversationHistory(history) {
       } else {
         // Incomplete or invalid tool calls - remove the assistant message and tool responses
         // This prevents OpenAI API errors
-        const missingIds = Array.from(toolCallIds)
-          .filter((id) => !respondedIds.has(id))
-          .join(", ");
-        // eslint-disable-next-line no-console
-        console.warn(`Removing incomplete assistant message with tool_calls. Missing responses for tool_call_ids: ${missingIds}`);
+        const missingIds = Array.from(toolCallIds).filter((id) => !respondedIds.has(id));
+        baseLogger.warn(
+          { missingToolCallIds: missingIds },
+          "Removing incomplete assistant message with tool_calls"
+        );
         i = j; // Skip past the incomplete sequence
       }
     } else if (message.role === "tool") {
       // Orphaned tool response (no preceding assistant message with tool_calls)
       // Remove it to prevent OpenAI API errors
-      // eslint-disable-next-line no-console
-      console.warn(`Removing orphaned tool response with tool_call_id: ${message.tool_call_id || "unknown"}`);
+      baseLogger.warn(
+        { toolCallId: message.tool_call_id || null },
+        "Removing orphaned tool response from conversation history"
+      );
       i++;
     } else {
       // Regular message - include it
@@ -958,6 +963,12 @@ async function orchestrate(
   if (!aiClient) {
     throw new Error("OpenAI client is not initialized. Please check your environment variables.");
   }
+
+  const log = baseLogger.child({
+    conversationId: conversation?.id || null,
+    teamId,
+  });
+  const orchestrateStartedAt = Date.now();
 
   // Sanitize conversation history to ensure OpenAI API compliance
   // This removes any assistant messages with tool_calls that don't have complete tool responses
@@ -1070,6 +1081,17 @@ async function orchestrate(
     });
   }
 
+  log.info({
+    turn: 0,
+    model: response.model || aiModel,
+    latencyMs: elapsedMs1,
+    promptTokens: response.usage?.prompt_tokens,
+    completionTokens: response.usage?.completion_tokens,
+    totalTokens: response.usage?.total_tokens,
+    finishReason: response.choices?.[0]?.finish_reason,
+    toolCallCount: response.choices?.[0]?.message?.tool_calls?.length || 0,
+  }, "Orchestrator AI turn complete");
+
   const updatedMessages = [...messages];
   // Track where new messages start (everything before this is system prompt + loaded history)
   const newMessageStartIndex = updatedMessages.length;
@@ -1112,8 +1134,10 @@ async function orchestrate(
           try {
             await toolProgressCallback(toolName, "start", toolArgs);
           } catch (callbackError) {
-            // eslint-disable-next-line no-console
-            console.error("Tool progress callback error:", callbackError);
+            baseLogger.error(
+              { err: callbackError },
+              "Tool progress callback error"
+            );
           }
         }
 
@@ -1159,8 +1183,10 @@ async function orchestrate(
             try {
               await toolProgressCallback(toolName, "error", { error: error.message });
             } catch (callbackError) {
-              // eslint-disable-next-line no-console
-              console.error("Tool progress callback error:", callbackError);
+              baseLogger.error(
+                { err: callbackError, toolName },
+                "Tool progress callback error (error path)"
+              );
             }
           }
 
@@ -1234,6 +1260,17 @@ async function orchestrate(
       });
     }
 
+    log.info({
+      turn: iterations,
+      model: response.model || aiModel,
+      latencyMs: elapsedMs,
+      promptTokens: response.usage?.prompt_tokens,
+      completionTokens: response.usage?.completion_tokens,
+      totalTokens: response.usage?.total_tokens,
+      finishReason: response.choices?.[0]?.finish_reason,
+      toolCallCount: response.choices?.[0]?.message?.tool_calls?.length || 0,
+    }, "Orchestrator AI turn complete");
+
     assistantMessage = response.choices[0].message;
   }
 
@@ -1262,6 +1299,20 @@ async function orchestrate(
   if (conversation?.id) {
     emitProgressEvent(socketManager, conversation.id, "PROCESSING_COMPLETE");
   }
+
+  const totalTokens = usageRecords.reduce((sum, u) => sum + (u.total_tokens || 0), 0);
+  const totalPromptTokens = usageRecords.reduce((sum, u) => sum + (u.prompt_tokens || 0), 0);
+  const totalCompletionTokens = usageRecords.reduce((sum, u) => sum + (u.completion_tokens || 0), 0);
+
+  log.info({
+    iterations,
+    totalTurns: usageRecords.length,
+    durationMs: Date.now() - orchestrateStartedAt,
+    totalPromptTokens,
+    totalCompletionTokens,
+    totalTokens,
+    snapshotCount: snapshots.length,
+  }, "Orchestrator request complete");
 
   return {
     message: assistantMessage.content,

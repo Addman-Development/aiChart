@@ -5,6 +5,7 @@ const TeamController = require("../controllers/TeamController");
 const verifyToken = require("../modules/verifyToken");
 const DatasetController = require("../controllers/DatasetController");
 const ConnectionController = require("../controllers/ConnectionController");
+const logger = require("../modules/logger").child({ module: "api:DataRequestRoute" });
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -199,7 +200,7 @@ module.exports = (app) => {
         return res.status(200).send(newDataRequest);
       })
       .catch((error) => {
-        console.error("[DataRequestRoute] runRequest error:", error.message, error.stack);
+        logger.error({ err: error }, "DataRequestRoute runRequest failed");
         if (error.message === "401") {
           return res.status(401).send({ error: "Not authorized" });
         }

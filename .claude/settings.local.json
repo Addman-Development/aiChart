@@ -31,7 +31,11 @@
       "Bash(taskkill //PID 21592 //F)",
       "Bash(taskkill //PID 32892 //F)",
       "Bash(taskkill //PID 1712 //F)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "mcp__claude_ai_policy-gate__auto_identify",
+      "mcp__claude_ai_policy-gate__check_policy_status",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\ali.bahar\\\\Documents\\\\gitHub\\\\aiChart\" -Recurse -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)"
     ]
   }
 }

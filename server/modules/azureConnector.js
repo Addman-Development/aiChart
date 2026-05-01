@@ -1,6 +1,7 @@
 const msal = require("@azure/msal-node");
 
 const settings = require("../settings");
+const logger = require("./logger").child({ module: "azureConnector" });
 
 class AzureConnector {
   constructor() {
@@ -24,7 +25,7 @@ class AzureConnector {
     try {
       this.confidentialClient = new msal.ConfidentialClientApplication(this.config);
     } catch (error) {
-      console.error("Failed to initialize Azure MSAL client:", error); // eslint-disable-line
+      logger.error({ err: error }, "Failed to initialize Azure MSAL client");
       this.enabled = false;
     }
   }

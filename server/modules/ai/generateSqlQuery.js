@@ -1,4 +1,5 @@
 const { aiClient, aiModel } = require("./aiClient");
+const logger = require("../logger").child({ module: "generateSqlQuery" });
 
 function _compactSchema(schema, maxChars = 80000) {
   // First try full schema
@@ -78,12 +79,24 @@ IMPORTANT RULES:
       content: question,
     });
 
+    const startedAt = Date.now();
     const response = await aiClient.chat.completions.create({
       model: aiModel,
       messages,
     });
+    const latencyMs = Date.now() - startedAt;
 
     const sqlQuery = response.choices[0].message.content;
+
+    logger.info({
+      model: response.model || aiModel,
+      latencyMs,
+      promptTokens: response.usage?.prompt_tokens,
+      completionTokens: response.usage?.completion_tokens,
+      totalTokens: response.usage?.total_tokens,
+      hasCurrentQuery: Boolean(currentQuery),
+      schemaChars: formattedSchema.length,
+    }, "SQL query generated");
 
     conversationHistory.push({
       role: "user",
@@ -125,7 +138,12 @@ IMPORTANT RULES:
 
     return { query: cleanedQuery, conversationHistory };
   } catch (error) {
-    console.error("[generateSqlQuery] AI error:", error.message, error.status || "", error.code || "");
+    logger.error({
+      err: error,
+      status: error.status,
+      code: error.code,
+      model: aiModel,
+    }, "SQL query generation failed");
     return { query: "", conversationHistory };
   }
 }

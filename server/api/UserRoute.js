@@ -5,6 +5,7 @@ const UserController = require("../controllers/UserController");
 const verifyUser = require("../modules/verifyUser");
 const verifyToken = require("../modules/verifyToken");
 const userResponse = require("../modules/userResponse");
+const logger = require("../modules/logger").child({ module: "api:UserRoute" });
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -348,7 +349,7 @@ module.exports = (app) => {
         const code = err.message || err;
         // 404 = email not found — this is expected and not an error
         if (String(code) !== "404") {
-          console.error("[password-reset] Failed to send reset email:", err.message || err); // eslint-disable-line
+          logger.error({ err }, "password-reset: failed to send reset email");
         }
       });
     return res.status(200).send({ "success": true });

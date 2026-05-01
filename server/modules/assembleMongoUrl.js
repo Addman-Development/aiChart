@@ -1,4 +1,5 @@
 const { decrypt } = require("./cbCrypto");
+const logger = require("./logger").child({ module: "assembleMongoUrl" });
 
 module.exports = (data) => {
   const connection = data;
@@ -29,7 +30,7 @@ module.exports = (data) => {
     connection.username = decrypt(connection.username);
     connection.password = decrypt(connection.password);
   } catch (e) {
-    console.error("[assembleMongoUrl] Decryption failed:", e.message);
+    logger.error({ err: e }, "Mongo URL decryption failed");
   }
 
   let url = "mongodb://";

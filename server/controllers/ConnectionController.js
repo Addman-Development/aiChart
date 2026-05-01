@@ -13,6 +13,7 @@ const ProjectController = require("./ProjectController");
 const externalDbConnection = require("../modules/externalDbConnection");
 const assembleMongoUrl = require("../modules/assembleMongoUrl");
 const paginateRequests = require("../modules/paginateRequests");
+const logger = require("../modules/logger").child({ module: "ConnectionController" });
 const determineType = require("../modules/determineType");
 const drCacheController = require("./DataRequestCacheController");
 const { getQueueOptions } = require("../redisConnection");
@@ -532,7 +533,10 @@ class ConnectionController {
         { type: Sequelize.QueryTypes.SELECT }
       );
     } catch (err) {
-      console.warn("[_getMssqlSchema] Filtered query failed, falling back to INFORMATION_SCHEMA only:", err.message);
+      logger.warn(
+        { err },
+        "_getMssqlSchema filtered query failed, falling back to INFORMATION_SCHEMA only"
+      );
       // Fallback: just use INFORMATION_SCHEMA (no empty-table filtering)
       results = await dbConnection.query(
         `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
@@ -591,7 +595,10 @@ class ConnectionController {
 
       return { success: true, schema };
     } catch (err) {
-      console.error("[testMssql] Error:", err.message || err, err.original?.message || "");
+      logger.error(
+        { err, original: err.original?.message },
+        "testMssql failed"
+      );
       throw new Error(err.message || err);
     } finally {
       if (sqlDb) {
@@ -804,7 +811,10 @@ class ConnectionController {
 
       return dataToCache;
     } catch (error) {
-      console.error("[runMongo] Error:", error.message);
+      logger.error(
+        { err: error, connectionId: id, query: formattedQuery },
+        "runMongo failed"
+      );
       throw error;
     } finally {
       if (mongoConnection) {

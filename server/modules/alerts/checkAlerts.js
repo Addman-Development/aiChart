@@ -5,6 +5,7 @@ const ChartController = require("../../controllers/ChartController");
 const db = require("../../models/models");
 const mail = require("../mail");
 const webhookAlerts = require("./webhookAlerts");
+const logger = require("../logger").child({ module: "alerts:checkAlerts" });
 
 const settings = require("../../settings");
 
@@ -62,7 +63,7 @@ async function processAlert(chart, alert, alerts) {
     snapshotUrl = await chartController.takeSnapshot(chart.id);
     snapshotUrl = `${fullApiUrl}/${snapshotUrl}`;
   } catch (err) {
-    console.log("Could not take snapshot", err); // eslint-disable-line no-console
+    logger.warn({ err, chartId: chart.id }, "Could not take snapshot for alert");
   }
 
   // first process the mediums
@@ -112,7 +113,7 @@ async function processAlert(chart, alert, alerts) {
       Promise.all(integrationAlerts);
     }
   } catch (err) {
-    console.log("Could not process integration alerts", err); // eslint-disable-line no-console
+    logger.warn({ err }, "Could not process integration alerts");
   }
 
   // deactivate alert if required

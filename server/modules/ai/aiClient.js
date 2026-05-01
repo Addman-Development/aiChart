@@ -14,6 +14,8 @@
  *   CB_AI_BASE_URL    - Base URL (required for litellm, optional for anthropic)
  */
 
+const logger = require("../logger").child({ module: "aiClient" });
+
 const aiProvider = (process.env.CB_AI_PROVIDER || "anthropic").toLowerCase();
 const aiKey = process.env.CB_AI_API_KEY || process.env.CB_OPENAI_API_KEY;
 const aiModel = process.env.CB_AI_MODEL || process.env.CB_OPENAI_MODEL || "claude-sonnet-4-20250514";
@@ -172,14 +174,25 @@ let aiClient = null;
 if (aiKey) {
   if (aiProvider === "litellm") {
     if (!aiBaseUrl) {
-      console.warn("[aiClient] CB_AI_PROVIDER=litellm but CB_AI_BASE_URL is not set. LiteLLM requires a proxy URL.");
+      logger.warn(
+        { provider: "litellm" },
+        "CB_AI_PROVIDER=litellm but CB_AI_BASE_URL is not set. LiteLLM requires a proxy URL."
+      );
     }
     aiClient = buildLitellmClient();
-    console.log(`[aiClient] Using LiteLLM provider → ${aiBaseUrl || "default"} (model: ${aiModel})`);
+    logger.info(
+      { provider: "litellm", baseUrl: aiBaseUrl || null, model: aiModel },
+      "AI client initialized"
+    );
   } else {
     aiClient = buildAnthropicClient();
-    console.log(`[aiClient] Using Anthropic provider${aiBaseUrl ? ` → ${aiBaseUrl}` : ""} (model: ${aiModel})`);
+    logger.info(
+      { provider: "anthropic", baseUrl: aiBaseUrl || null, model: aiModel },
+      "AI client initialized"
+    );
   }
+} else {
+  logger.warn("CB_AI_API_KEY not set; AI client disabled");
 }
 
 module.exports = { aiClient, aiModel };

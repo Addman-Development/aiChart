@@ -10,6 +10,7 @@ const { Op } = require("sequelize");
 const db = require("../models/models");
 const mail = require("../modules/mail");
 const { decrypt, encrypt } = require("../modules/cbCrypto");
+const logger = require("../modules/logger").child({ module: "UserController" });
 
 const settings = require("../settings");
 
@@ -352,7 +353,7 @@ class UserController {
         return this.findById(id);
       })
       .catch((error) => {
-        console.error("UserController.update error:", error);
+        logger.error({ err: error, userId: id }, "UserController.update failed");
         return new Promise((resolve, reject) => reject(new Error(error)));
       });
   }

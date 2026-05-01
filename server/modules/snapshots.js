@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const { nanoid } = require("nanoid");
 
 const settings = require("../settings");
+const logger = require("./logger").child({ module: "snapshots" });
 
 module.exports.snapChart = async (shareString) => {
   let browser = null;
@@ -24,7 +25,7 @@ module.exports.snapChart = async (shareString) => {
 
     return `uploads/snapshots/snap-${shareString}-${snapshotId}.png`;
   } catch (err) {
-    console.log("Could not take snapshot", err); // eslint-disable-line no-console
+    logger.warn({ err }, "Could not take chart snapshot");
     return null;
   } finally {
     if (browser) {
@@ -85,7 +86,7 @@ module.exports.snapDashboard = async (dashboard, options = {}) => {
 
     return `uploads/snapshots/snap-${snapshotId}.png`;
   } catch (err) {
-    console.log("Could not take dashboard snapshot", err); // eslint-disable-line no-console
+    logger.warn({ err }, "Could not take dashboard snapshot");
     return null;
   } finally {
     if (browser) {
