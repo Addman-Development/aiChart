@@ -66,6 +66,7 @@
     "qrcode": "^1.5.4",
     "sequelize": "^6.37.8",
     "simplecrypt": "^0.1.0",
+    "sql-formatter": "^15.4.0",
     "socket.io": "^4.8.3",
     "tedious": "^19.2.1",
     "umzug": "^3.8.2",

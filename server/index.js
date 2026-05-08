@@ -74,6 +74,7 @@ app.use(pinoHttp({
   logger,
   customLogLevel: (req, res, err) => {
     if (err || res.statusCode >= 500) return "error";
+    if (res.statusCode === 401 && /\/user\/relog\b/.test(req.url || "")) return "info";
     if (res.statusCode >= 400) return "warn";
     return "info";
   },
@@ -127,6 +128,27 @@ app.get("/", (req, res) => {
 
 app.use("/uploads", express.static("uploads"));
 
+// Readiness state: flips to true once migrations complete so the /health
+// endpoint can return 503 while we're still starting up. The reverse proxy
+// uses /health to gate traffic.
+let isReady = false;
+
+// Health endpoint registered BEFORE other middlewares so it can't be blocked
+// by anything route-related and stays cheap. Liveness is implicit (we
+// responded). Readiness reflects DB/migration state.
+app.get("/health", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  if (!isReady) {
+    return res.status(503).json({ status: "starting" });
+  }
+  try {
+    await db.sequelize.authenticate();
+    return res.status(200).json({ status: "ready", version: packageJson.version });
+  } catch (err) {
+    return res.status(503).json({ status: "db-unhealthy", error: err.message });
+  }
+});
+
 // load middlewares
 app.use(parseQueryParams);
 
@@ -141,6 +163,18 @@ _.each(appsRoutes, (controller, route) => {
 });
 
 const port = process.env.PORT || app.settings.port || 4019;
+
+// Open the port FIRST so the reverse proxy gets connect-success during
+// startup (and /health serves a structured 503), instead of connection
+// refused → opaque 503 from the proxy. Migrations run after.
+const server = app.listen(port, app.settings.api, () => {
+  logger.info({ port }, `Listening on port ${port} (not yet ready)`);
+});
+
+// Initialize Socket.IO immediately — it's independent of the DB schema.
+socketManager.initialize(server).catch((err) => {
+  logger.error({ err }, "socketManager.initialize failed");
+});
 
 db.migrate()
   .then(async (data) => {
@@ -160,25 +194,50 @@ db.migrate()
       // continue
     }
 
-    const server = app.listen(port, app.settings.api, async () => {
-      // Initialize Socket.IO
-      await socketManager.initialize(server);
+    // Check if this is the main cluster and run the cron jobs if it is
+    const isMainCluster = parseInt(process.env.NODE_APP_INSTANCE, 10) === 0;
+    if (isMainCluster || !process.env.NODE_APP_INSTANCE) {
+      // start CronJob, making sure the database is populated for the first time
+      setTimeout(() => {
+        setUpQueues(app);
+        cleanChartCache();
+        cleanAuthCache();
+        cleanGhostChartsCron();
+      }, 5000);
+    }
 
-      // Check if this is the main cluster and run the cron jobs if it is
-      const isMainCluster = parseInt(process.env.NODE_APP_INSTANCE, 10) === 0;
-      if (isMainCluster || !process.env.NODE_APP_INSTANCE) {
-        // start CronJob, making sure the database is populated for the first time
-        setTimeout(() => {
-          setUpQueues(app);
-          cleanChartCache();
-          cleanAuthCache();
-          cleanGhostChartsCron();
-        }, 5000);
-      }
-
-      logger.info({ port }, `Running server on port ${port}`);
-    });
+    isReady = true;
+    logger.info("Server ready");
   })
   .catch((err) => {
-    logger.error({ err }, "Migrations failed, could not run the server app");
+    logger.error({ err }, "Migrations failed; server will continue serving 503 from /health");
   });
+
+// Graceful shutdown: stop accepting new connections, drain in-flight, then
+// exit. Hard-cap at SHUTDOWN_TIMEOUT_MS so a stuck request can't pin us
+// forever. setUpQueues registers its own SIGTERM/SIGINT handlers for queue
+// cleanup; those run concurrently with this one.
+let shuttingDown = false;
+const SHUTDOWN_TIMEOUT_MS = 30000;
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  isReady = false; // immediately fail health checks so the proxy stops routing
+  logger.info({ signal }, "Shutdown signal received; draining HTTP server");
+
+  const forceTimer = setTimeout(() => {
+    logger.warn({ timeoutMs: SHUTDOWN_TIMEOUT_MS }, "Shutdown timeout; forcing exit");
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceTimer.unref();
+
+  server.close((err) => {
+    if (err) logger.error({ err }, "server.close error");
+    else logger.info("HTTP server closed");
+    process.exit(0);
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

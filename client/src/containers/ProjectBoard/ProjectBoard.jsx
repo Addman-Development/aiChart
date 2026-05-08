@@ -13,7 +13,6 @@ import {
 } from "../../slices/team";
 import { getProjectCharts } from "../../slices/chart";
 import canAccess from "../../config/canAccess";
-import checkForUpdates from "../../modules/checkForUpdates";
 import Container from "../../components/Container";
 import Text from "../../components/Text";
 import Row from "../../components/Row";
@@ -24,7 +23,6 @@ import { selectUser } from "../../slices/user";
 */
 function ProjectBoard() {
   const [loading, setLoading] = useState(true);
-  const [setUpdate] = useState({});
 
   const team = useSelector(selectTeam);
   const project = useSelector(selectProject) || {};
@@ -39,14 +37,6 @@ function ProjectBoard() {
       initRef.current = true;
 
       _init();
-
-      checkForUpdates()
-        .then((release) => {
-          if (release && release.upToDate) return true;
-
-          setUpdate(release);
-          return release;
-        });
     }
   }, [params, team]);
 

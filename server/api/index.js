@@ -7,7 +7,6 @@ const savedQuery = require("./SavedQueryRoute");
 const dataRequest = require("./DataRequestRoute");
 const dataset = require("./DatasetRoute");
 const template = require("./TemplateRoute");
-const update = require("./UpdateRoute");
 const integration = require("./IntegrationRoute");
 const ai = require("./AiRoute");
 const azure = require("./AzureRoute");
@@ -22,7 +21,6 @@ module.exports = {
   dataRequest,
   dataset,
   template,
-  update,
   integration,
   ai,
   azure,

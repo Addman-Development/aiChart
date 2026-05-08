@@ -136,29 +136,22 @@ const setUpQueues = (app) => {
   // Uncomment this to enable regular snapshot updates
   // updateSnapshots(updateSnapshotsQueue, takeSnapshotWorker);
 
-  // Handle PM2 shutdown/reload
-  process.on("SIGINT", async () => {
-    logger.info({ signal: "SIGINT" }, "Signal received. Cleaning active jobs...");
+  // Clean BullMQ queues on shutdown. The HTTP graceful-shutdown handler in
+  // index.js (SIGTERM/SIGINT) is responsible for the final process.exit —
+  // these only handle queue cleanup so they run concurrently with HTTP drain.
+  // SIGUSR2 (nodemon reload) still needs an explicit exit since it has no
+  // index.js counterpart.
+  const cleanAll = async (signal) => {
+    logger.info({ signal }, "Signal received. Cleaning active jobs...");
     await cleanActiveJobs(updateChartsQueue);
     await cleanActiveJobs(updateDashboardsQueue);
     await cleanActiveJobs(updateMongoDBSchemaQueue);
-    process.exit(0);
-  });
+  };
 
-  process.on("SIGTERM", async () => {
-    logger.info({ signal: "SIGTERM" }, "Signal received. Cleaning active jobs...");
-    await cleanActiveJobs(updateChartsQueue);
-    await cleanActiveJobs(updateDashboardsQueue);
-    await cleanActiveJobs(updateMongoDBSchemaQueue);
-    process.exit(0);
-  });
-
-  // Handle Nodemon reload
+  process.on("SIGINT", () => cleanAll("SIGINT"));
+  process.on("SIGTERM", () => cleanAll("SIGTERM"));
   process.on("SIGUSR2", async () => {
-    logger.info({ signal: "SIGUSR2" }, "Signal received. Cleaning active jobs...");
-    await cleanActiveJobs(updateChartsQueue);
-    await cleanActiveJobs(updateDashboardsQueue);
-    await cleanActiveJobs(updateMongoDBSchemaQueue);
+    await cleanAll("SIGUSR2");
     process.exit(0);
   });
 };

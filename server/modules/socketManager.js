@@ -24,6 +24,10 @@ class SocketManager {
   }
 
   async initialize(server) {
+    // Engine.IO listens on the raw HTTP server's upgrade event, so the
+    // Express prefix-strip middleware does not apply. Bake the public-facing
+    // base path into the socket path so wss://host/<base>/socket.io matches.
+    const apiBasePath = (process.env.CB_API_BASE_PATH || "").replace(/\/$/, "");
     this.io = new Server(server, {
       cors: {
         origin: process.env.VITE_APP_CLIENT_HOST || false,
@@ -38,7 +42,7 @@ class SocketManager {
         maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
         skipMiddlewares: true,
       },
-      path: "/socket.io"
+      path: `${apiBasePath}/socket.io`
     });
 
     // Try to set up Redis adapter for cross-process communication

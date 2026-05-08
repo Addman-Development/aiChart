@@ -328,7 +328,7 @@ RULES:
           );
         } else {
           aiResponse = await generateSqlQuery(
-            schema, question, conversationHistory, currentQuery
+            schema, question, conversationHistory, currentQuery, connection.type
           );
         }
 

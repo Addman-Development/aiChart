@@ -1,5 +1,28 @@
+const { format: formatSql } = require("sql-formatter");
+
 const { aiClient, aiModel } = require("./aiClient");
 const logger = require("../logger").child({ module: "generateSqlQuery" });
+
+function _formatterLanguage(dbType) {
+  if (dbType === "postgres") return "postgresql";
+  if (dbType === "mysql") return "mysql";
+  if (dbType === "mssql") return "tsql";
+  return "sql";
+}
+
+function _safeFormatSql(query, dbType) {
+  if (!query) return query;
+  try {
+    return formatSql(query, {
+      language: _formatterLanguage(dbType),
+      keywordCase: "upper",
+      tabWidth: 2,
+    });
+  } catch (e) {
+    logger.warn({ err: e, dbType }, "SQL formatting failed; returning unformatted query");
+    return query;
+  }
+}
 
 function _compactSchema(schema, maxChars = 80000) {
   // First try full schema
@@ -31,7 +54,7 @@ function _compactSchema(schema, maxChars = 80000) {
   return full.substring(0, maxChars) + "\n... (schema truncated)";
 }
 
-async function generateSqlQuery(schema, question, conversationHistory = [], currentQuery = "") {
+async function generateSqlQuery(schema, question, conversationHistory = [], currentQuery = "", dbType = "") {
   if (!aiClient) {
     throw new Error("AI client is not initialized. Please check your CB_AI_API_KEY environment variable.");
   }
@@ -136,7 +159,9 @@ IMPORTANT RULES:
       }
     }
 
-    return { query: cleanedQuery, conversationHistory };
+    const formattedQuery = _safeFormatSql(cleanedQuery, dbType);
+
+    return { query: formattedQuery, conversationHistory };
   } catch (error) {
     logger.error({
       err: error,

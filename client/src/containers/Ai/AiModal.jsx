@@ -468,15 +468,16 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
-  const _onAskAi = async (e) => {
-    e.preventDefault();
+  const _onAskAi = async (e, overrideQuestion) => {
+    if (e?.preventDefault) e.preventDefault();
+    const sourceQuestion = typeof overrideQuestion === "string" ? overrideQuestion : question;
     // Allow submission if there's either a question or a selected context
-    const hasContent = question.trim() || selectedContext.multiSelect.length > 0 || selectedContext.singleSelect;
+    const hasContent = sourceQuestion.trim() || selectedContext.multiSelect.length > 0 || selectedContext.singleSelect;
     if (!hasContent || isLoading) return;
 
     const userMessage = {
       role: "user",
-      content: question.trim()
+      content: sourceQuestion.trim()
     };
 
     // Prepare context object (only multiSelect goes to context)
@@ -487,7 +488,7 @@ function AiModal({ isOpen, onClose }) {
 
     setIsLoading(true);
     setProgressEvents([]);
-    let currentQuestion = question.trim();
+    let currentQuestion = sourceQuestion.trim();
 
     // Append singleSelect to the question text
     if (selectedContext.singleSelect) {
@@ -573,6 +574,10 @@ function AiModal({ isOpen, onClose }) {
           }
         }
       } else {
+        // Show the user's message in the chat immediately. It gets cleared
+        // once the server response refreshes full_history below.
+        setLocalMessages([userMessage]);
+
         // Existing conversation - get complete history from database
         const latestConversation = await getAiConversation(conversation.id, team.id);
         const conversationHistory = latestConversation?.conversation?.full_history || [];
@@ -594,6 +599,8 @@ function AiModal({ isOpen, onClose }) {
         const updatedConversation = await getAiConversation(conversation.id, team.id);
         if (updatedConversation?.conversation) {
           setConversation(updatedConversation.conversation);
+          // Local user bubble is now in full_history; clear the placeholder.
+          setLocalMessages([]);
 
           // Immediately refresh any charts that were updated in this round
           const updatedCharts = _getUpdatedChartIds(updatedConversation.conversation.full_history);
@@ -865,20 +872,13 @@ function AiModal({ isOpen, onClose }) {
       .find(msg => msg.role === "user");
 
     if (lastUserMessage) {
-      setQuestion(lastUserMessage.content);
-      // Submit automatically via a short timeout so the input state updates
-      setTimeout(() => {
-        document.getElementById("ai-conversation-form")?.requestSubmit();
-      }, 50);
+      _onAskAi(null, lastUserMessage.content);
     }
   };
 
   const _onContinueResponse = () => {
     if (isLoading) return;
-    setQuestion("Continue");
-    setTimeout(() => {
-      document.getElementById("ai-conversation-form")?.requestSubmit();
-    }, 50);
+    _onAskAi(null, "Continue");
   };
 
   // Initialize feedback state from conversation history
@@ -1108,19 +1108,33 @@ function AiModal({ isOpen, onClose }) {
   const _groupMessages = (messages) => {
     const groups = [];
     let currentGroup = null;
+    // Each chartId gets at most one dedicated card. Subsequent updates to the
+    // same chart fold into the assistant's "Operations performed" block — the
+    // earlier card auto-refreshes from createdCharts, so a second card would
+    // just duplicate the same visual.
+    const shownChartIds = new Set();
+
+    const isChartCard = (parsed) => parsed.type === "chart_updated" || parsed.type === "chart_temporary";
 
     messages.forEach((message) => {
       const parsed = _parseMessage(message);
 
-      if (message.role === "user" || parsed.type === "chart_updated" || parsed.type === "chart_temporary") {
-        // User messages and chart creation/update messages are always separate
+      if (message.role === "user") {
         groups.push({
-          type: parsed.type || "user",
+          type: "user",
+          messages: [message]
+        });
+        currentGroup = null;
+      } else if (isChartCard(parsed) && !shownChartIds.has(parsed.chartId)) {
+        shownChartIds.add(parsed.chartId);
+        groups.push({
+          type: parsed.type,
           messages: [message]
         });
         currentGroup = null;
       } else if (message.role === "assistant" || message.role === "tool") {
-        // Group consecutive assistant and tool messages (except chart creation)
+        // Group consecutive assistant and tool messages, including chart tool
+        // results whose chartId was already rendered above.
         if (!currentGroup || currentGroup.type !== "assistant") {
           currentGroup = {
             type: "assistant",
@@ -2164,6 +2178,13 @@ function AiModal({ isOpen, onClose }) {
                           isLastAssistantGroup: index === lastAssistantGroupIndex,
                         }));
                       })()}
+                      {localMessages.filter(m => m.role === "user").map((m, i) => (
+                        <div key={`local-user-${i}`} className="flex justify-end mb-4 px-4">
+                          <div className="max-w-[70%] bg-primary text-primary-foreground px-4 py-3 rounded-lg">
+                            <div className="text-sm whitespace-pre-wrap">{m.content}</div>
+                          </div>
+                        </div>
+                      ))}
                       {_renderProgressEvents()}
                       {isLoading && progressEvents.length === 0 && (
                         <div className="flex justify-center mb-4 px-4">
@@ -2184,7 +2205,7 @@ function AiModal({ isOpen, onClose }) {
                       )}
                       <div ref={messagesEndRef} />
                     </>
-                  ) : progressEvents.length > 0 ? (
+                  ) : (localMessages.length > 0 || progressEvents.length > 0) ? (
                     <>
                       {localMessages.length > 0 && (
                         <div className="flex justify-end mb-4 px-4">
@@ -2194,6 +2215,23 @@ function AiModal({ isOpen, onClose }) {
                         </div>
                       )}
                       {_renderProgressEvents()}
+                      {isLoading && progressEvents.length === 0 && (
+                        <div className="flex justify-center mb-4 px-4">
+                          <div className="w-full max-w-[90%]">
+                            <div className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Avatar
+                                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                                  size="sm"
+                                  color="primary"
+                                />
+                                <LuLoader size={16} className="animate-spin" />
+                                <span className="text-sm">Thinking...</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div ref={messagesEndRef} />
                     </>
                   ) : isLoading ? (
