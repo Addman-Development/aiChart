@@ -76,6 +76,8 @@ app.use(pinoHttp({
     if (err || res.statusCode >= 500) return "error";
     if (res.statusCode === 401 && /\/user\/relog\b/.test(req.url || "")) return "info";
     if (res.statusCode >= 400) return "warn";
+    // Suppress noisy healthcheck logs on success — only log /health when it fails
+    if (/^\/health(\?|$)/.test(req.url || "")) return "silent";
     return "info";
   },
   customSuccessMessage: (req, res) => `${req.method} ${req.originalUrl || req.url} ${res.statusCode}`,
