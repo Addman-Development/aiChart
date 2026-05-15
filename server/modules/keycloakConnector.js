@@ -87,14 +87,12 @@ class KeycloakConnector {
    * @param {object} params - { code, state, codeVerifier, nonce }
    * @returns {Promise<{ keycloakId: string, email: string, name: string, idToken: string }>}
    */
-  async getToken({ code, state, codeVerifier, nonce }) {
+  async getToken({ code, state, iss, codeVerifier, nonce }) {
     const client = await this.getClient();
 
-    // openid-client wants the raw query params; we hand it back the code/state
-    // we received from Keycloak.
     const tokenSet = await client.callback(
       this.redirectUri,
-      { code, state },
+      { code, state, ...(iss ? { iss } : {}) },
       { state, code_verifier: codeVerifier, nonce },
     );
 

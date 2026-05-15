@@ -77,7 +77,7 @@ module.exports = (app) => {
       return res.redirect(`${app.settings.client}/login?error=keycloak_not_configured`);
     }
 
-    const { code, state, error, error_description: errorDescription } = req.query;
+    const { code, state, iss, error, error_description: errorDescription } = req.query;
 
     if (error) {
       res.clearCookie(OIDC_COOKIE, { path: "/" });
@@ -116,6 +116,7 @@ module.exports = (app) => {
       const kcUser = await keycloakConnector.getToken({
         code,
         state,
+        iss,
         codeVerifier: stash.codeVerifier,
         nonce: stash.nonce,
       });
