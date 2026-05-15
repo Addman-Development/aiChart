@@ -13,9 +13,10 @@ import Text from "../components/Text";
 const expires = moment().add(1, "month").toDate();
 
 /*
-  Azure OAuth Callback Handler
+  Keycloak OIDC Callback Handler. The server has already done the code
+  exchange and redirected us here with a signed app token in the URL.
 */
-function AzureCallback() {
+function KeycloakCallback() {
   const [status, setStatus] = useState("loading");
   const [message, setMessage] = useState("Processing your login...");
   const navigate = useNavigate();
@@ -43,30 +44,27 @@ function AzureCallback() {
           return;
         }
 
-        // Save token to cookie
         cookie.remove(tokenKey, { path: "/" });
         cookie.save(tokenKey, token, { expires, path: "/" });
 
-        // Fetch user data
         await dispatch(relog());
 
         setStatus("success");
         if (isNewUser) {
           setMessage("Account created successfully! Redirecting...");
         } else if (isLinked) {
-          setMessage("Microsoft account linked successfully! Redirecting...");
+          setMessage("Keycloak account linked successfully! Redirecting...");
         } else {
           setMessage("Login successful! Redirecting...");
         }
 
-        // Redirect to dashboard after a short delay
         setTimeout(() => {
           navigate("/");
         }, 1500);
       } catch (err) {
         setStatus("error");
         setMessage("Failed to complete login. Please try again.");
-        console.error("Azure callback error:", err);
+        console.error("Keycloak callback error:", err);
       }
     };
 
@@ -75,12 +73,15 @@ function AzureCallback() {
 
   const getErrorMessage = (error, message) => {
     const errorMessages = {
-      azure_not_configured: "Azure authentication is not configured. Please contact your administrator.",
-      azure_auth_failed: `Authentication failed: ${message || "Unknown error"}`,
-      no_authorization_code: "No authorization code received from Microsoft.",
-      no_email_from_azure: "Could not retrieve your email from Microsoft. Please ensure your account has an email address.",
-      email_already_linked: "This email is already linked to another Microsoft account.",
-      azure_callback_failed: `Login failed: ${message || "Unknown error"}`,
+      keycloak_not_configured: "Single sign-on is not configured. Please contact your administrator.",
+      keycloak_auth_failed: `Authentication failed: ${message || "Unknown error"}`,
+      no_authorization_code: "No authorization code received from the identity provider.",
+      no_email_from_keycloak: "Could not retrieve your email from Keycloak. Please ensure your account has an email address.",
+      email_already_linked: "This email is already linked to another Keycloak account.",
+      keycloak_callback_failed: `Login failed: ${message || "Unknown error"}`,
+      keycloak_state_missing: "Your login session expired. Please try signing in again.",
+      keycloak_state_invalid: "Your login session is invalid. Please try signing in again.",
+      keycloak_state_mismatch: "Login could not be verified. Please try signing in again.",
       token_generation_failed: "Failed to generate authentication token. Please try again.",
     };
 
@@ -134,4 +135,4 @@ function AzureCallback() {
   );
 }
 
-export default AzureCallback;
+export default KeycloakCallback;

@@ -42,15 +42,15 @@ class UserController {
           admin: isFirstUser,
         };
 
-        // Add Azure fields if provided (optional)
-        if (user.azureId) {
-          userData.azureId = user.azureId;
+        // Add Keycloak/SSO fields if provided (optional)
+        if (user.keycloakId) {
+          userData.keycloakId = user.keycloakId;
         }
         if (user.authProvider) {
           userData.authProvider = user.authProvider;
         }
-        if (user.azureLinkedAt) {
-          userData.azureLinkedAt = user.azureLinkedAt;
+        if (user.keycloakLinkedAt) {
+          userData.keycloakLinkedAt = user.keycloakLinkedAt;
         }
 
         return db.User.create(userData);
@@ -216,10 +216,10 @@ class UserController {
         throw new Error(401);
       }
 
-      // Check if Azure SSO is enabled and user is Azure-only
-      const azureEnabled = settings.azure && settings.azure.clientId;
-      if (azureEnabled && foundUser.authProvider === "azure" && !foundUser.password) {
-        throw new Error("AZURE_ONLY");
+      // Block local-password login for SSO-only users
+      const keycloakEnabled = settings.keycloak && settings.keycloak.issuer;
+      if (keycloakEnabled && foundUser.authProvider === "keycloak" && !foundUser.password) {
+        throw new Error("KEYCLOAK_ONLY");
       }
 
       // Check if user has a password for local auth
@@ -720,9 +720,9 @@ class UserController {
     });
   }
 
-  findByAzureId(azureId) {
+  findByKeycloakId(keycloakId) {
     return db.User.findOne({
-      where: { azureId },
+      where: { keycloakId },
       include: [{ model: db.TeamRole }],
     }).then((user) => {
       return user;

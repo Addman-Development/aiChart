@@ -11,8 +11,6 @@
     "prepare-settings": "echo n | cp -vipr src/config/settings.template.js src/config/settings.js | true"
   },
   "dependencies": {
-    "@azure/msal-browser": "^3.30.0",
-    "@azure/msal-react": "^2.2.0",
     "@heroui/react": "^2.8.10",
     "@heroui/theme": "^2.4.26",
     "@internationalized/date": "^3.12.0",

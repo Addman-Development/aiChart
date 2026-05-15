@@ -224,6 +224,10 @@ module.exports = (app) => {
           return res.status(401).json({ message: "The credentials are incorrect" });
         }
 
+        if (error.message === "KEYCLOAK_ONLY") {
+          return res.status(400).json({ error: "KEYCLOAK_ONLY" });
+        }
+
         return res.status(400).send(error);
       });
   });

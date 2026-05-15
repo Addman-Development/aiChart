@@ -121,11 +121,11 @@ function LoginForm() {
       setLoading(false);
       navigate("/");
     } catch (err) {
-      // Handle Azure-only user error
-      if (err.message === "AZURE_ONLY") {
+      // Surface SSO-only accounts (no local password set)
+      if (err.message === "KEYCLOAK_ONLY") {
         setErrors({
           ...errors,
-          login: "This account uses Microsoft login. Please use the 'Sign in with Microsoft' button above."
+          login: "This account uses single sign-on. Please use the 'Sign in with SSO' button above."
         });
       } else {
         setErrors({ ...errors, login: err.message });

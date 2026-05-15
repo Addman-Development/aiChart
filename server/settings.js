@@ -14,12 +14,16 @@ module.exports = {
       pass: process.env.SMTP_PASS,
     },
   },
-  azure: {
-    clientId: process.env.AZURE_AD_CLIENT_ID,
-    clientSecret: process.env.AZURE_AD_CLIENT_SECRET,
-    tenantId: process.env.AZURE_AD_TENANT_ID,
-    redirectUri: process.env.AZURE_AD_REDIRECT_URI,
-    authority: process.env.AZURE_AD_AUTHORITY,
+  keycloak: {
+    // Full issuer URL, e.g. https://keycloak.addman.internal/realms/addman
+    issuer: process.env.KEYCLOAK_ISSUER,
+    clientId: process.env.KEYCLOAK_CLIENT_ID,
+    clientSecret: process.env.KEYCLOAK_CLIENT_SECRET,
+    redirectUri: process.env.KEYCLOAK_REDIRECT_URI,
+    // Optional: where Keycloak should send the user after RP-initiated logout
+    postLogoutRedirectUri: process.env.KEYCLOAK_POST_LOGOUT_REDIRECT_URI,
+    // Space-separated scopes; defaults to "openid profile email"
+    scope: process.env.KEYCLOAK_SCOPE,
   },
   teamRestricted: process.env.CB_RESTRICT_TEAMS,
   signupRestricted: process.env.CB_RESTRICT_SIGNUP,

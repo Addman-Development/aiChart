@@ -129,7 +129,7 @@ const router = createBrowserRouter([
         path: "google-auth",
       },
       {
-        path: "azure-callback",
+        path: "keycloak-callback",
       },
       {
         path: "passwordReset"

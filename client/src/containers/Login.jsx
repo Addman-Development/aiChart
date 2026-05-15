@@ -8,13 +8,13 @@ import {
 import _ from "lodash";
 
 import LoginForm from "../components/LoginForm";
-import AzureLoginButton from "../components/AzureLoginButton";
+import KeycloakLoginButton from "../components/KeycloakLoginButton";
 import { cleanErrors as cleanErrorsAction } from "../actions/error";
 import cbLogoSmall from "../assets/logo_inverted.png";
 import Row from "../components/Row";
 import Text from "../components/Text";
 import { areThereAnyUsers, relog } from "../slices/user";
-import { isAzureConfigured } from "../config/azureConfig";
+import { isKeycloakConfigured } from "../config/keycloakConfig";
 
 /*
   Login container with an embedded login form
@@ -25,13 +25,13 @@ function Login(props) {
 
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const azureEnabled = isAzureConfigured();
+  const keycloakEnabled = isKeycloakConfigured();
   const [signupAllowed, setSignupAllowed] = useState(false);
 
-  // Check for Azure error in URL params
+  // Surface any SSO error that bounced the user back to the login page
   const params = new URLSearchParams(window.location.search);
-  const azureError = params.get("error");
-  const azureMessage = params.get("message");
+  const ssoError = params.get("error");
+  const ssoMessage = params.get("message");
 
   useEffect(() => {
     cleanErrors();
@@ -65,9 +65,9 @@ function Login(props) {
             <h1 className={"mt-4 text-xl font-bold"}>{"Welcome back to ADDMAN-SmartChart"}</h1>
           </CardHeader>
           <CardBody>
-            {azureEnabled && (
+            {keycloakEnabled && (
               <>
-                <AzureLoginButton />
+                <KeycloakLoginButton />
                 <Spacer y={4} />
                 <div className="flex items-center gap-2">
                   <div className="flex-1 h-px bg-divider" />
@@ -77,11 +77,11 @@ function Login(props) {
                 <Spacer y={4} />
               </>
             )}
-            {azureError && (
+            {ssoError && (
               <>
                 <div className="p-3 bg-danger-50 border border-danger-200 rounded-lg">
                   <Text className="text-danger text-sm">
-                    {azureMessage || "Azure authentication failed. Please try again."}
+                    {ssoMessage || "Single sign-on failed. Please try again."}
                   </Text>
                 </div>
                 <Spacer y={2} />

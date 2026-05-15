@@ -44,7 +44,7 @@ const ManageUser = lazy(() => import("./Settings/ManageUser"));
 const PublicDashboard = lazy(() => import("./PublicDashboard/PublicDashboard"));
 const PasswordReset = lazy(() => import("./PasswordReset"));
 const EmbeddedChart = lazy(() => import("./EmbeddedChart"));
-const AzureCallback = lazy(() => import("./AzureCallback"));
+const KeycloakCallback = lazy(() => import("./KeycloakCallback"));
 const ProjectRedirect = lazy(() => import("./ProjectRedirect"));
 import FeedbackForm from "../components/FeedbackForm";
 import ForcePasswordChange from "../components/ForcePasswordChange";
@@ -86,7 +86,7 @@ function authenticatePage() {
     return false;
   } else if (path === "/feedback") {
     return false;
-  } else if (path === "/azure-callback") {
+  } else if (path === "/keycloak-callback") {
     return false;
   } else if (path.indexOf("embedded") > -1) {
     return false;
@@ -304,7 +304,7 @@ function Main(props) {
               {signupAllowed && (
                 <Route exact path="/signup" element={<Signup />} />
               )}
-              <Route exact path="/azure-callback" element={<AzureCallback />} />
+              <Route exact path="/keycloak-callback" element={<KeycloakCallback />} />
               <Route exact path="/login" element={<Login />} />
               <Route exact path="/user" element={<UserDashboard />} />
               <Route exact path="/user/profile" element={<ManageUser />} />

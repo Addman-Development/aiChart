@@ -9,7 +9,7 @@ const dataset = require("./DatasetRoute");
 const template = require("./TemplateRoute");
 const integration = require("./IntegrationRoute");
 const ai = require("./AiRoute");
-const azure = require("./AzureRoute");
+const keycloak = require("./KeycloakRoute");
 
 module.exports = {
   team,
@@ -23,5 +23,5 @@ module.exports = {
   template,
   integration,
   ai,
-  azure,
+  keycloak,
 };
