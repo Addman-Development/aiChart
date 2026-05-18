@@ -26,13 +26,10 @@ class UserController {
       .then(async (foundUser) => {
         if (foundUser) return new Promise((resolve, reject) => reject(new Error(409)));
 
-        // Check if this is the first user — make them global admin
         const isFirstUser = !(await this.areThereAnyUsers());
 
-        // Hash password only if provided (local users)
         const bcryptHash = user.password ? await bcrypt.hash(user.password, 10) : null;
 
-        // Build user data object
         const userData = {
           name: user.name,
           email: user.email,
@@ -42,7 +39,6 @@ class UserController {
           admin: isFirstUser,
         };
 
-        // Add Keycloak/SSO fields if provided (optional)
         if (user.keycloakId) {
           userData.keycloakId = user.keycloakId;
         }
@@ -64,9 +60,6 @@ class UserController {
       });
   }
 
-  // JIT-create an SSO user after a successful Keycloak login when no
-  // matching local user exists. No auto-team — the user will land on the
-  // onboarding page and either request access or create one.
   async createSSOUser({ email, name, keycloakId }) {
     const existing = await db.User.findOne({ where: { email } });
     if (existing) {
@@ -77,9 +70,6 @@ class UserController {
     const iconSource = name || email;
     const icon = iconSource.substring(0, 2).toUpperCase();
 
-    // The schema permits null password (Keycloak users), but we hash a
-    // random value anyway so the column isn't trivially-empty in case any
-    // legacy code path tries to bcrypt-compare against it.
     const placeholderHash = await bcrypt.hash(nanoid(32), 10);
 
     return db.User.create({
@@ -100,19 +90,16 @@ class UserController {
     try {
       let gTeam;
 
-      // Delete saved queries for the user
       await db.SavedQuery.destroy({
         where: { "user_id": id },
         transaction
       });
 
-      // Find all team roles for the user
       const teamRoles = await db.TeamRole.findAll({
         where: { "user_id": id },
         transaction
       });
 
-      // Process team roles and identify teams to delete
       if (teamRoles.length > 0) {
         const teamDeletions = [];
         const roleDeletions = [];
@@ -120,7 +107,6 @@ class UserController {
         teamRoles.forEach((teamRole) => {
           if (teamRole.role === "teamOwner") {
             gTeam = teamRole.team_id;
-            // Batch team deletion
             teamDeletions.push(
               db.Team.destroy({
                 where: { "id": teamRole.team_id },
@@ -128,7 +114,6 @@ class UserController {
               })
             );
           }
-          // Batch team role deletion
           roleDeletions.push(
             db.TeamRole.destroy({
               where: { "user_id": id },
@@ -137,29 +122,23 @@ class UserController {
           );
         });
 
-        // Execute all team and role deletions in parallel
         await Promise.all([...teamDeletions, ...roleDeletions]);
       }
 
-      // If user was a team owner, delete all team-related data
       if (gTeam) {
-        // Find all projects for the team
         const projects = await db.Project.findAll({
           where: { "team_id": gTeam },
           transaction
         });
 
-        // Batch delete all charts for all projects
         const chartDeletions = projects
           .map((project) => db.Chart.destroy({
             where: { "project_id": project.id },
             transaction
           }));
 
-        // Execute chart deletions first, then team-related entities
         await Promise.all(chartDeletions);
 
-        // Delete team-related entities
         await Promise.all([
           db.Project.destroy({
             where: { "team_id": gTeam },
@@ -176,18 +155,15 @@ class UserController {
         ]);
       }
 
-      // Delete the user
       await db.User.destroy({
         where: { id },
         transaction
       });
 
-      // Commit the transaction
       await transaction.commit();
 
       return { deleted: true };
     } catch (error) {
-      // Rollback the transaction on any error
       await transaction.rollback();
       throw error;
     }
@@ -201,13 +177,11 @@ class UserController {
         throw new Error(401);
       }
 
-      // Block local-password login for SSO-only users
       const keycloakEnabled = settings.keycloak && settings.keycloak.issuer;
       if (keycloakEnabled && foundUser.authProvider === "keycloak" && !foundUser.password) {
         throw new Error("KEYCLOAK_ONLY");
       }
 
-      // Check if user has a password for local auth
       if (!foundUser.password) {
         throw new Error(401);
       }
@@ -266,7 +240,6 @@ class UserController {
       return foundUser;
     }
 
-    // Avoid triggering the model getter when backup is null (getter decrypts the value)
     if (user2FA.getDataValue("backup")) {
       try {
         const backupCodes = JSON.parse(user2FA.backup);
@@ -279,7 +252,6 @@ class UserController {
           }
         }
       } catch (e) {
-        // do nothing
       }
     }
 
@@ -414,7 +386,6 @@ class UserController {
   }
 
   async changePassword({ token, hash, password }) {
-    // decrypt the hash to get the user information
     let user;
     try {
       user = JSON.parse(decrypt(hash));
@@ -422,7 +393,6 @@ class UserController {
       return new Promise((resolve, reject) => reject(e));
     }
 
-    // check if the existing token is valid first
     return this.findById(user.id)
       .then(async (existingUser) => {
         if (existingUser.passwordResetToken !== token) {
@@ -492,7 +462,6 @@ class UserController {
   }
 
   requestEmailUpdate(id, email) {
-    // check if the email is already in use
     return this.emailExists(email)
       .then((exists) => {
         if (exists) {
@@ -534,7 +503,6 @@ class UserController {
       return new Promise((resolve, reject) => reject(new Error(401)));
     }
 
-    // check if email exists
     return this.emailExists(decodedToken.newEmail)
       .then((exists) => {
         if (exists) {
@@ -578,18 +546,15 @@ class UserController {
 
     const secret = new TOTP().secret.base32;
 
-    // Save secret to DB
     await db.User2fa.create({
       user_id: userId,
       secret,
       method: "app",
-      isEnabled: false, // Enabled after verification only
+      isEnabled: false,
     });
 
-    // Generate QR Code URL
     const qrCodeURL = this.generateQrCodeUrl(user.email, secret);
 
-    // Generate QR code
     try {
       return await QRCode.toDataURL(qrCodeURL);
     } catch (e) {
@@ -603,7 +568,6 @@ class UserController {
       return new Promise((resolve, reject) => reject(new Error(404)));
     }
 
-    // check if the password is correct
     const isCorrect = await bcrypt.compare(password, user.password);
     if (!isCorrect) {
       return new Promise((resolve, reject) => reject(new Error(401)));
@@ -624,7 +588,6 @@ class UserController {
       for (let i = 0; i < 10; i++) {
         backupCodes.push(nanoid(8));
       }
-      // Mark 2FA as enabled and add backup codes
       await user2FA.update({ isEnabled: true, backup: JSON.stringify(backupCodes) });
       return new Promise((resolve) => resolve(backupCodes));
     } else {

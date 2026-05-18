@@ -13,9 +13,6 @@ import { getTeam, selectTeam } from "../slices/team";
 import { selectProjects } from "../slices/project";
 import Text from "./Text";
 
-// Renders a banner above the team members table when the URL has
-// ?access_request_id=X. Lets the team owner approve or reject the request
-// inline, picking role/projects the same way the regular invite flow does.
 function PendingAccessRequestCard(props) {
   const { requestId, onResolved } = props;
 
@@ -54,9 +51,6 @@ function PendingAccessRequestCard(props) {
         if (cancelled) return;
         setRequest(data);
 
-        // The deep link in the email may belong to a team that isn't the
-        // currently-selected one. Switch teams so the rest of the page
-        // (members list, projects picker) matches.
         if (data.requested_team_id && data.requested_team_id !== team?.id) {
           dispatch(getTeam(data.requested_team_id));
         }
@@ -127,8 +121,6 @@ function PendingAccessRequestCard(props) {
 
   if (!request) return null;
 
-  // Resolved requests should be a no-op banner (the email link is still in
-  // the owner's inbox after they've acted on it).
   if (request.status !== "pending") {
     return (
       <Card className="mb-4">

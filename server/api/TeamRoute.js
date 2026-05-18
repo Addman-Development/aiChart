@@ -9,7 +9,7 @@ const accessControl = require("../modules/accessControl");
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
-    windowMs: 60 * 1000, // 1 minute
+    windowMs: 60 * 1000,
     max,
   });
 };
@@ -26,13 +26,11 @@ module.exports = (app) => {
     return async (req, res, next) => {
       const { id } = req.params;
 
-      // Global admins bypass all team-level permission checks
       if (req.user.admin) {
         req.user.isEditor = true;
         return next();
       }
 
-      // Fetch the TeamRole for the user
       const teamRole = await teamController.getTeamRole(id, req.user.id);
 
       if (!teamRole) {
@@ -46,7 +44,6 @@ module.exports = (app) => {
 
       const { role } = teamRole;
 
-      // Handle permissions for teamOwner and teamAdmin
       if (["teamOwner", "teamAdmin"].includes(role)) {
         req.user.isEditor = true;
         return next();
@@ -60,11 +57,7 @@ module.exports = (app) => {
     };
   };
 
-  /**
-   * Get all teams based on the authentication token
-   */
   app.get("/team", verifyToken, (req, res) => {
-    // Global admins can see all teams
     const teamsPromise = req.user.admin
       ? teamController.getAllTeams()
       : teamController.getUserTeams(req.user.id);
@@ -77,9 +70,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // route to get a team by its id
+
   app.get("/team/:id", verifyToken, checkPermissions(), (req, res) => {
     return teamController.findById(req.params.id)
       .then((team) => {
@@ -93,9 +85,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // route to create a team
+
   app.post("/team", verifyToken, apiLimiter(10), async (req, res) => {
     try {
       const team = await teamController.createTeam(req.body, req.user.id);
@@ -104,9 +95,8 @@ module.exports = (app) => {
       return res.status(400).send({ error: "Error creating team" });
     }
   });
-  // --------------------------------------
 
-  // route to delete a team
+
   app.delete("/team/:id", verifyToken, checkPermissions("deleteOwn", "team"), (req, res) => {
     return teamController.deleteTeam(req.params.id, req.user.id)
       .then((result) => {
@@ -117,9 +107,8 @@ module.exports = (app) => {
         return res.status(400).send({ error: error?.message || "Error deleting team" });
       });
   });
-  // --------------------------------------
 
-  // route to update a team
+
   app.put("/team/:id", verifyToken, (req, res) => {
     if (!req.params || !req.body) return res.status(400).send("Missing fields");
     let gTeamRole;
@@ -142,9 +131,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // route to transfer ownership of a team
+
   app.put("/team/:id/transfer", verifyToken, checkPermissions("updateAny", "team"), (req, res) => {
     return teamController.transferOwnership(req.params.id, req.user.id, req.body.newOwnerId)
       .then((updated) => {
@@ -154,9 +142,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // a route to send a team invite
+
   app.post("/team/:id/invite", verifyToken, checkPermissions("createAny", "teamInvite"), (req, res) => {
     const payload = {
       projects: req.body.projects,
@@ -167,7 +154,7 @@ module.exports = (app) => {
     };
 
     const token = jwt.sign(payload, app.settings.encryptionKey, {
-      expiresIn: 2592000 // a month
+      expiresIn: 2592000
     }, (err, token) => {
       if (err) throw new Error(err);
       return res.status(200).send({
@@ -177,9 +164,8 @@ module.exports = (app) => {
 
     return token;
   });
-  // --------------------------------------
 
-  // route for adding a team member with invite url
+
   app.post("/team/user/:user_id", verifyToken, (req, res) => {
     if (!req.params.user_id || !req.body.token) return res.status(400).send("Missing fields");
     if (`${req.params.user_id}` !== `${req.user.id}`) {
@@ -203,9 +189,8 @@ module.exports = (app) => {
         });
     });
   });
-  // --------------------------------------
 
-  // route to get all team users
+
   app.get("/team/:id/members", verifyToken, checkPermissions(), (req, res) => {
     return teamController.getTeamMembersId(req.params.id)
       .then((userIds) => {
@@ -220,9 +205,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // route to update a team role
+
   app.put("/team/:id/role", verifyToken, checkPermissions("updateAny", "teamRole"), (req, res) => {
     return teamController.updateTeamRole(req.params.id, req.body.user_id, req.body)
       .then((updated) => {
@@ -233,9 +217,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // route to delete a team member
+
   app.delete("/team/:id/member/:userId", verifyToken, checkPermissions("deleteAny", "teamRole"), (req, res) => {
     return teamController.getTeamRole(req.params.id, req.params.userId)
       .then(async (teamRole) => {
@@ -260,9 +243,8 @@ module.exports = (app) => {
         return res.status(400).send(error);
       });
   });
-  // --------------------------------------
 
-  // route for admin/owner to reset a team member's password
+
   app.put("/team/:id/member/:userId/password-reset", verifyToken, checkPermissions("updateAny", "teamRole"), apiLimiter(10), async (req, res) => {
     const { newPassword } = req.body;
 
@@ -271,7 +253,6 @@ module.exports = (app) => {
     }
 
     try {
-      // Prevent resetting the team owner's password
       const targetRole = await teamController.getTeamRole(req.params.id, req.params.userId);
       if (!targetRole) {
         return res.status(404).json({ error: "User is not a member of this team" });
@@ -286,9 +267,8 @@ module.exports = (app) => {
       return res.status(400).json({ error: error.message });
     }
   });
-  // --------------------------------------
 
-  // route to get users available to add to the team (not already members)
+
   app.get("/team/:id/availableUsers", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
     try {
       const users = await teamController.getAvailableUsers(req.params.id);
@@ -297,9 +277,8 @@ module.exports = (app) => {
       return res.status(400).json({ error: error.message || "Error fetching available users" });
     }
   });
-  // --------------------------------------
 
-  // route to add an existing user to the team (admin/owner only)
+
   app.post("/team/:id/addExistingUser", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
     const { userId, role, projects, canExport } = req.body;
 
@@ -321,9 +300,8 @@ module.exports = (app) => {
       return res.status(400).json({ error: error.message || "Error adding user to team" });
     }
   });
-  // --------------------------------------
 
-  // route to create a new user and add them to the team (admin/owner only)
+
   app.post("/team/:id/createUser", verifyToken, checkPermissions("createAny", "teamInvite"), async (req, res) => {
     const { name, email, role, projects, canExport, sendEmail } = req.body;
 
@@ -349,9 +327,8 @@ module.exports = (app) => {
       return res.status(400).json({ error: error.message || "Error creating user" });
     }
   });
-  // --------------------------------------
 
-  // route to create a new API key to access the team content
+
   app.post("/team/:id/apikey", verifyToken, checkPermissions("createAny", "apiKey"), (req, res) => {
     if (!req.body.name) return res.status(400).send("Missing required fields.");
 
@@ -363,9 +340,8 @@ module.exports = (app) => {
         return res.status(400).send(err);
       });
   });
-  // --------------------------------------
 
-  // route to get an API key
+
   app.get("/team/:id/apikey", verifyToken, checkPermissions("readAny", "apiKey"), (req, res) => {
     return teamController.getApiKeys(req.params.id)
       .then((apiKey) => {
@@ -375,9 +351,8 @@ module.exports = (app) => {
         return res.status(400).send(err);
       });
   });
-  // --------------------------------------
 
-  // route to remove an API key
+
   app.delete("/team/:id/apikey/:keyId", verifyToken, checkPermissions("deleteAny", "apiKey"), (req, res) => {
     return teamController.deleteApiKey(req.params.keyId)
       .then(() => {
@@ -387,7 +362,6 @@ module.exports = (app) => {
         return res.status(400).send(err);
       });
   });
-  // --------------------------------------
 
   return (req, res, next) => {
     next();

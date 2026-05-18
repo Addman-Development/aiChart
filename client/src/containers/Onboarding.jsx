@@ -27,13 +27,10 @@ function Onboarding() {
   const user = useSelector(selectUser);
   const teams = useSelector(selectTeams);
 
-  // Cold open of /onboarding (e.g. user refreshed) — kick the auth flow so
-  // user.data populates from the session cookie.
   useEffect(() => {
     if (!user?.id) dispatch(relog());
   }, [user?.id, dispatch]);
 
-  // If the user already has a team (arrived here by mistake), bounce home.
   useEffect(() => {
     if (teams && teams.length > 0) {
       navigate("/user", { replace: true });
@@ -102,7 +99,7 @@ function JoinTeamPanel() {
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [submitted, setSubmitted] = useState(null); // { duplicate }
+  const [submitted, setSubmitted] = useState(null);
 
   const fetchTeams = useMemo(() => _.debounce((q, signal) => {
     const url = `${API_HOST}/api/access-requests/teams${q ? `?q=${encodeURIComponent(q)}` : ""}`;

@@ -396,7 +396,6 @@ export const teamSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // CREATE TEAM
       .addCase(createTeam.pending, (state) => {
         state.loading = true;
       })
@@ -409,7 +408,6 @@ export const teamSlice = createSlice({
         state.loading = false;
         state.error = true;
       })
-      // GET TEAMS
       .addCase(getTeams.pending, (state) => {
         state.loading = true;
       })
@@ -422,7 +420,6 @@ export const teamSlice = createSlice({
         state.loading = false;
         state.error = true;
       })
-      // GET TEAM
       .addCase(getTeam.pending, (state) => {
         state.loading = true;
       })
@@ -434,7 +431,6 @@ export const teamSlice = createSlice({
         state.loading = false;
         state.error = true;
       })
-      // UPDATE TEAM
       .addCase(updateTeam.pending, (state) => {
         state.loading = true;
       })
@@ -453,7 +449,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // TRANSFER OWNERSHIP
       .addCase(transferOwnership.pending, (state) => {
         state.loading = true;
       })
@@ -465,7 +460,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // ADD TEAM MEMBER
       .addCase(addTeamMember.pending, (state) => {
         state.loading = true;
       })
@@ -484,7 +478,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // GET TEAM MEMBERS
       .addCase(getTeamMembers.pending, (state) => {
         state.loading = true;
       })
@@ -497,7 +490,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // UPDATE TEAM ROLE
       .addCase(updateTeamRole.pending, (state) => {
         state.loading = true;
       })
@@ -519,7 +511,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // DELETE TEAM MEMBER
       .addCase(deleteTeamMember.pending, (state) => {
         state.loading = true;
       })
@@ -532,7 +523,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // DELETE TEAM
       .addCase(deleteTeam.pending, (state) => {
         state.loading = true;
       })

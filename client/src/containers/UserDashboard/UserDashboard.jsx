@@ -26,9 +26,6 @@ import TopNav from "../../components/TopNav";
 import { selectSidebarCollapsed } from "../../slices/ui";
 import { getDatasets } from "../../slices/dataset";
 
-/*
-  The user dashboard with all the teams and projects
-*/
 function UserDashboard(props) {
   const { cleanErrors } = props;
   const collapsed = useSelector(selectSidebarCollapsed);
@@ -71,9 +68,6 @@ function UserDashboard(props) {
     }
   }, [user.data.id, user.loading]);
 
-  // Authenticated user with no team memberships → send them to the
-  // onboarding page. teamsFetched gates the redirect so we only fire after
-  // getTeams has actually returned (not on the initial empty-array state).
   useEffect(() => {
     if (user.data.id && teamsFetched && !teamsLoading && teams.length === 0) {
       navigate("/onboarding", { replace: true });
@@ -84,9 +78,6 @@ function UserDashboard(props) {
   useEffect(() => {
     if (teamsLength > 0 && !teamsRef.current) {
       teamsRef.current = true;
-      // Pick the user's team: prefer localStorage, then the team they belong to.
-      // getTeams() only returns teams the user has a role on, so every
-      // entry is already scoped to their membership.
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
       let selectedTeam;
       if (storageActiveTeam) {
@@ -187,7 +178,6 @@ function UserDashboard(props) {
 const styles = {
   container: (height) => ({
     flex: 1,
-    // backgroundColor: "#103751",
     minHeight: height,
   }),
 };

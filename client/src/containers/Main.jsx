@@ -23,7 +23,6 @@ import AddChart from "./AddChart/AddChart";
 import ProjectSettings from "./ProjectSettings";
 import Integrations from "./Integrations/Integrations";
 import Dataset from "./Dataset/Dataset";
-// import { getProjects } from "../slices/project";
 import ConnectionWizard from "./Connections/ConnectionWizard";
 import { Toaster } from "react-hot-toast";
 import ConnectionList from "./UserDashboard/ConnectionList";
@@ -57,17 +56,15 @@ import Integration from "./Integrations/Integration/Integration";
 import NoAccessPage from "../components/NoAccessPage";
 import { SITE_HOST } from "../config/settings";
 
-// Derive the base path so pathname checks work under a sub-path deployment
 let _basePath = "/";
 try {
   const { pathname } = new URL(SITE_HOST);
   if (pathname && pathname !== "/") {
     _basePath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
   }
-} catch { /* keep default */ }
+} catch (e) { _basePath = "/"; }
 
 function authenticatePage() {
-  // Strip the base path prefix so comparisons work regardless of sub-path
   let path = window.location.pathname;
   if (_basePath !== "/" && path.startsWith(_basePath)) {
     path = path.slice(_basePath.length) || "/";
@@ -99,9 +96,6 @@ function authenticatePage() {
   return true;
 }
 
-/*
-  The main component where the entire app routing resides
-*/
 function Main(props) {
   const { cleanErrors } = props;
 
@@ -144,9 +138,7 @@ function Main(props) {
 
           return null;
         })
-        .then(() => {
-          // return dispatch(getProjects({ team_id: data.payload?.[0]?.id }));
-        });
+        .then(() => {});
 
       dispatch(areThereAnyUsers())
         .then((anyUsers) => {
@@ -156,16 +148,13 @@ function Main(props) {
           const hasInviteToken = params.has("inviteToken") || params.has("token");
 
           if (!hasUsers) {
-            // No users yet — allow first signup
             setSignupAllowed(true);
             if (pathname === "/login" || pathname === "/") {
               navigate("/signup");
             }
           } else if (!restricted || hasInviteToken) {
-            // Users exist but signups are open, or user has an invite token
             setSignupAllowed(true);
           } else {
-            // Users exist and signups are restricted
             setSignupAllowed(false);
             if (pathname === "/signup") {
               navigate("/login");
@@ -174,20 +163,15 @@ function Main(props) {
         });
     }
 
-    // Keyboard shortcut for AI modal (Cmd+K on Mac, Ctrl+K on Windows)
     const handleKeyDown = (event) => {
-      // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
-        // Prevent default browser behavior (usually search)
         event.preventDefault();
         dispatch(toggleAiModal());
       }
     };
 
-    // Add event listener
     window.addEventListener("keydown", handleKeyDown);
 
-    // Cleanup event listener
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -199,15 +183,11 @@ function Main(props) {
       teamsRef.current = true;
 
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
-      // Pick the user's team: prefer localStorage, then the team they belong to.
-      // getTeams() only returns teams the user has a role on, so every
-      // entry is already scoped to their membership.
       let selectedTeam;
       if (storageActiveTeam) {
         selectedTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
       }
       if (!selectedTeam) {
-        // Prefer a team the user owns, then fall back to the first team they belong to
         selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id))
           || teams[0];
       }
@@ -358,7 +338,6 @@ function Main(props) {
       {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
         <AiModal isOpen={aiModalOpen} onClose={() => {
           dispatch(hideAiModal());
-          // Refresh charts if on a dashboard/project page to pick up any AI-created charts
           const dashboardMatch = pathname.match(/\/dashboard\/(\d+)/);
           if (dashboardMatch) {
             dispatch(getProjectCharts({ project_id: dashboardMatch[1] }));

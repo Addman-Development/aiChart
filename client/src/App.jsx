@@ -15,8 +15,6 @@ const store = configureStore({
   reducer,
 });
 
-// Derive basename from VITE_APP_CLIENT_HOST so routing works under a sub-path
-// (e.g. /smart-chart). Falls back to "/" for root deployments.
 let basename = "/";
 try {
   const clientHost = import.meta.env.VITE_APP_CLIENT_HOST;
@@ -26,9 +24,7 @@ try {
       basename = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
     }
   }
-} catch {
-  // keep default
-}
+} catch (e) { basename = "/"; }
 
 const router = createBrowserRouter([
   {

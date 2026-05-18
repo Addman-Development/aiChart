@@ -13,17 +13,11 @@ module.exports = {
       });
     }
 
-    // keycloak_sub was required by the first version of this table, but the
-    // refactored flow identifies requesters by user_id and never sets it.
-    // Relax the constraint so new inserts succeed.
     await queryInterface.changeColumn("AccessRequest", "keycloak_sub", {
       type: Sequelize.STRING,
       allowNull: true,
     });
 
-    // Swap the partial unique index from keycloak_sub to user_id. Doing it
-    // unconditionally is safe — DROP IF EXISTS handles both fresh installs
-    // and the brief window where the older index existed.
     await queryInterface.sequelize.query(
       "DROP INDEX IF EXISTS \"access_request_pending_unique\"",
     );

@@ -18,8 +18,6 @@ const apiLimiter = (max = 10) => {
 module.exports = (app) => {
   const controller = new AccessRequestController();
 
-  // Owner-only guard: the caller must hold teamOwner or teamAdmin on the
-  // request's team. Loads the AccessRequest as req.accessRequest.
   const requireOwner = async (req, res, next) => {
     try {
       const request = await controller.findById(req.params.id);
@@ -42,8 +40,6 @@ module.exports = (app) => {
     }
   };
 
-  // Searchable team directory for the onboarding page. Authenticated so we
-  // don't expose team names to anonymous callers.
   app.get("/api/access-requests/teams", verifyToken, apiLimiter(60), async (req, res) => {
     try {
       const q = (req.query.q || "").trim();
@@ -65,8 +61,6 @@ module.exports = (app) => {
     }
   });
 
-  // Submit an access request. The user is authenticated; identity comes
-  // from their session, not a JWT payload.
   app.post("/api/access-requests", verifyToken, apiLimiter(20), async (req, res) => {
     const { teamId, reason } = req.body || {};
 
@@ -78,7 +72,6 @@ module.exports = (app) => {
       const team = await db.Team.findByPk(teamId);
       if (!team) return res.status(404).json({ error: "Team not found" });
 
-      // Already a member? Nothing to request.
       const existingRole = await db.TeamRole.findOne({
         where: { team_id: teamId, user_id: req.user.id },
       });
@@ -102,8 +95,6 @@ module.exports = (app) => {
         reason: reason ? String(reason).slice(0, 2000) : null,
       });
 
-      // Best-effort owner notification. Failure here doesn't roll back the
-      // request — the owner can still see it on the members page.
       try {
         const owner = await controller.getTeamOwnerUser(teamId);
         if (owner && owner.email) {

@@ -58,8 +58,6 @@ module.exports = {
     await queryInterface.addIndex("AccessRequest", ["keycloak_sub"]);
     await queryInterface.addIndex("AccessRequest", ["status"]);
 
-    // One pending request per (keycloak user, team). Once resolved, the row
-    // stays for audit but no longer blocks a new request.
     await queryInterface.sequelize.query(
       "CREATE UNIQUE INDEX \"access_request_pending_unique\" "
       + "ON \"AccessRequest\" (\"keycloak_sub\", \"requested_team_id\") "

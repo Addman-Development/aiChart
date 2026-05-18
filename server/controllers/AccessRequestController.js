@@ -55,9 +55,6 @@ class AccessRequestController {
     }).then((tr) => (tr ? tr.User : null));
   }
 
-  // Approve: user already exists (created at SSO auto-create or via invite).
-  // Just add the TeamRole and mark resolved, in one transaction so a partial
-  // failure can't leave the row marked approved without team membership.
   async approve(requestId, { role, projects, canExport, resolverId }) {
     const request = await db.AccessRequest.findByPk(requestId);
     if (!request) throw new Error("Access request not found");

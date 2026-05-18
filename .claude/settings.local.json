@@ -37,7 +37,10 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\ali.bahar\\\\Documents\\\\gitHub\\\\aiChart\" -Recurse -ErrorAction SilentlyContinue)",
       "Bash(Select-Object FullName)",
       "Bash(bunx eslint *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(sed -i '/^  \\\\/\\\\/ --------------------------------------$/d' server/api/TeamRoute.js)",
+      "Bash(sed -i 's/^  \\\\/\\\\/ route .*$//' server/api/TeamRoute.js)",
+      "Bash(sed -i 's/^  \\\\/\\\\/ a route .*$//' server/api/TeamRoute.js)"
     ]
   }
 }

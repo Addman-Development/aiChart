@@ -15,10 +15,8 @@ const apiLimiter = (max = 10) => {
   });
 };
 
-// Short-lived cookie holding the {state, codeVerifier, nonce} tuple for the
-// in-flight login. Cleared on callback success or failure.
 const OIDC_COOKIE = "kc_oidc";
-const OIDC_COOKIE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const OIDC_COOKIE_TTL_MS = 10 * 60 * 1000;
 
 const oidcCookieOptions = (req) => ({
   httpOnly: true,
@@ -34,7 +32,7 @@ module.exports = (app) => {
   const tokenizeUser = (user, res, redirectParams = {}) => {
     const userToken = { id: user.id, email: user.email };
     jwt.sign(userToken, app.settings.encryptionKey, {
-      expiresIn: 2592000, // one month
+      expiresIn: 2592000,
     }, (err, token) => {
       if (err) {
         return res.redirect(`${app.settings.client}/login?error=token_generation_failed`);
@@ -44,10 +42,6 @@ module.exports = (app) => {
     });
   };
 
-  /*
-  ** Initiate Keycloak login: build authz URL, stash PKCE/state in a cookie,
-  ** return the URL to the client which then performs the redirect.
-  */
   app.get("/api/keycloak/auth", apiLimiter(10), async (req, res) => {
     if (!keycloakConnector.isEnabled()) {
       return res.status(503).json({ error: "Keycloak authentication is not configured" });
@@ -68,10 +62,6 @@ module.exports = (app) => {
     }
   });
 
-  /*
-  ** Handle the Keycloak redirect. Validate state, exchange the code, then
-  ** JIT-provision or link the local user before issuing our own JWT.
-  */
   app.get("/api/keycloak/auth/callback", apiLimiter(10), async (req, res) => {
     if (!keycloakConnector.isEnabled()) {
       return res.redirect(`${app.settings.client}/login?error=keycloak_not_configured`);
@@ -109,7 +99,6 @@ module.exports = (app) => {
       return res.redirect(`${app.settings.client}/login?error=keycloak_state_mismatch`);
     }
 
-    // One-shot: clear before we touch the token endpoint so a replay can't reuse it.
     res.clearCookie(OIDC_COOKIE, { path: "/" });
 
     try {
@@ -132,7 +121,6 @@ module.exports = (app) => {
         return tokenizeUser(user, res);
       }
 
-      // Account linking: existing local user with the same email
       user = await userController.findByEmail(kcUser.email).catch(() => null);
 
       if (user) {
@@ -150,11 +138,6 @@ module.exports = (app) => {
         return tokenizeUser(user, res, { linked: "true" });
       }
 
-      // No matching local user. By default we JIT-create from the verified
-      // Keycloak claims (the client's onboarding page will then prompt for
-      // team join/create). When CB_SSO_AUTOCREATE_USERS=false the operator
-      // has disabled this; bounce the user back to login with a clear
-      // message so they don't get a silent failure.
       if (!app.settings.ssoAutoCreate) {
         const message = encodeURIComponent(
           "No account exists for this email. Please contact your administrator for an invite.",
@@ -179,11 +162,6 @@ module.exports = (app) => {
     }
   });
 
-  /*
-  ** Link a Keycloak identity to the currently logged-in local user.
-  ** Expects the client to have completed the OIDC dance and to pass `code`
-  ** plus the original cookie still in place.
-  */
   app.post("/api/keycloak/link", verifyToken, apiLimiter(5), async (req, res) => {
     if (!keycloakConnector.isEnabled()) {
       return res.status(503).json({ error: "Keycloak authentication is not configured" });
@@ -252,10 +230,6 @@ module.exports = (app) => {
     }
   });
 
-  /*
-  ** Unlink the Keycloak identity. Requires the user to still have a password
-  ** so they don't lock themselves out.
-  */
   app.delete("/api/keycloak/unlink", verifyToken, apiLimiter(5), async (req, res) => {
     const { password } = req.body;
 

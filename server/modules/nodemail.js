@@ -4,9 +4,6 @@ const ejs = require("ejs");
 const settings = require("../settings");
 const logger = require("./logger").child({ module: "nodemail" });
 
-// setup nodemailer
-// In tests we don't want to connect to a real SMTP server.
-// jsonTransport stores the email payload in-memory and resolves immediately.
 const transportConfig = process.env.NODE_ENV === "test"
   ? { jsonTransport: true }
   : settings.mailSettings;
@@ -200,7 +197,6 @@ module.exports.sendChartAlert = (data) => {
     subject: `ADDMAN-SmartChart - ${data.chartName} alert`,
   };
 
-  /** TEXT */
   message.text = `Your "${data.chartName}" chart has a new alert`;
   message.text += "\n";
   message.text += `${data.thresholdText}`;
@@ -212,7 +208,6 @@ module.exports.sendChartAlert = (data) => {
   message.text += `Check your dashboard here: ${data.dashboardUrl}`;
   message.text += "\n";
   message.text += "- ADDMAN-SmartChart";
-  // ------------------------------
 
   ejs.renderFile(`${__dirname}/emailTemplates/alert.ejs`, {
     chartName: data.chartName,

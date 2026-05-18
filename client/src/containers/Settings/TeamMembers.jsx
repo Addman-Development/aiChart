@@ -26,9 +26,6 @@ import { selectUser } from "../../slices/user";
 import { getAuthToken } from "../../modules/auth";
 import { API_HOST } from "../../config/settings";
 
-/*
-  Contains Pending Invites and All team members with functionality to delete/change role
-*/
 function TeamMembers(props) {
   const { style = {} } = props;
 
@@ -155,7 +152,6 @@ function TeamMembers(props) {
   };
 
   const _onDeleteTeamMember = (memberId) => {
-    // deleting from teamRole
     setLoading(true);
     dispatch(deleteTeamMember({ memberId: memberId, team_id: team.id }))
       .then(() => {
@@ -211,7 +207,6 @@ function TeamMembers(props) {
   };
 
   const _teamsOwned = () => {
-    // go through all the teams and get all the teams that the user is a teamOwner of
     const teamsOwned = teams.filter((t) => t.TeamRoles.some((tr) => tr.user_id === user.id && tr.role === "teamOwner"));
     return teamsOwned;
   };
@@ -244,8 +239,6 @@ function TeamMembers(props) {
         <PendingAccessRequestCard
           requestId={accessRequestId}
           onResolved={() => {
-            // Refresh members + clear the deep-link query param so the
-            // banner doesn't reappear on every render.
             if (team?.id) dispatch(getTeamMembers({ team_id: team.id }));
             setSearchParams((prev) => {
               const next = new URLSearchParams(prev);
@@ -462,7 +455,6 @@ function TeamMembers(props) {
         )}
       </div>
 
-      {/* Remove user modal */}
       <Modal isOpen={!!deleteMember} backdrop="blur" onClose={() => setDeleteMember(false)}>
         <ModalContent>
           <ModalHeader>
@@ -490,7 +482,6 @@ function TeamMembers(props) {
         </ModalContent>
       </Modal>
 
-      {/* Reset password modal */}
       <Modal
         isOpen={!!resetPasswordMember}
         backdrop="blur"
@@ -541,7 +532,6 @@ function TeamMembers(props) {
         </ModalContent>
       </Modal>
 
-      {/* Project access modal */}
       <Modal isOpen={projectModal} onClose={() => setProjectModal(false)} size="4xl">
         <ModalContent>
           <ModalHeader>
@@ -608,7 +598,6 @@ function TeamMembers(props) {
         </ModalContent>
       </Modal>
 
-      {/* Transfer ownership modal */}
       <Modal isOpen={!!transferOwnershipMember} onClose={() => setTransferOwnershipMember(null)} size="lg">
         <ModalContent>
           <ModalHeader className="font-bold">

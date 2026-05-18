@@ -27,9 +27,6 @@ class KeycloakConnector {
     return this.enabled;
   }
 
-  // Lazy discovery: openid-client is ESM-only in v6 but v5 is CJS-friendly.
-  // We pin to ^5 and require it on first use so module load never fails the
-  // server when Keycloak is unconfigured.
   async getClient() {
     if (!this.enabled) {
       throw new Error("Keycloak authentication is not configured");
@@ -49,7 +46,6 @@ class KeycloakConnector {
         });
         return this.client;
       })().catch((err) => {
-        // Reset so a later request can retry discovery (Keycloak may be briefly down)
         this.discoveryPromise = null;
         logger.error({ err, issuer: this.issuerUrl }, "Keycloak discovery failed");
         throw err;
@@ -58,11 +54,6 @@ class KeycloakConnector {
     return this.discoveryPromise;
   }
 
-  /**
-   * Build the authorization URL plus the PKCE/state values that must be
-   * round-tripped back from the callback.
-   * @returns {Promise<{ authUrl: string, state: string, codeVerifier: string, nonce: string }>}
-   */
   async getAuthUrl() {
     const client = await this.getClient();
     const state = this.generators.state();
@@ -81,12 +72,6 @@ class KeycloakConnector {
     return { authUrl, state, codeVerifier, nonce };
   }
 
-  /**
-   * Exchange the authorization code for tokens and return the OIDC claims we
-   * care about for user provisioning.
-   * @param {object} params - { code, state, codeVerifier, nonce }
-   * @returns {Promise<{ keycloakId: string, email: string, name: string, idToken: string }>}
-   */
   async getToken({ code, state, iss, codeVerifier, nonce }) {
     const client = await this.getClient();
 
@@ -114,11 +99,6 @@ class KeycloakConnector {
     };
   }
 
-  /**
-   * Build an RP-initiated logout URL so we can sign the user out at Keycloak
-   * after we clear the local session.
-   * @param {string} idTokenHint - The id_token from the original login
-   */
   async getLogoutUrl(idTokenHint) {
     const client = await this.getClient();
     return client.endSessionUrl({
