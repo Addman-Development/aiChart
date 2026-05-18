@@ -57,56 +57,41 @@ class UserController {
       })
       .then((newUser) => {
         gNewUser = newUser;
-
-        if (settings.teamRestricted === "1") {
-          return newUser;
-        }
-
-        const newTeam = {
-          name: `${newUser.name}'s team`
-        };
-        return db.Team.create(newTeam);
-      })
-      .then((data) => {
-        if (settings.teamRestricted === "1") {
-          return data;
-        }
-
-        // create a default first project
-        const newProject = {
-          name: "Your First Dash",
-          team_id: data.id,
-          brewName: `your-first-dash-${nanoid(8)}`,
-          dashboardTitle: "Your First Dash",
-        };
-
-        // create a ghost project
-        const ghostProject = {
-          team_id: data.id,
-          name: "Ghost Project",
-          brewName: `ghost-project-${nanoid(8)}`,
-          dashboardTitle: "Ghost Project",
-          ghost: true,
-        };
-
-        // create async
-        db.Project.create(newProject);
-        db.Project.create(ghostProject);
-
-        const teamRole = {
-          team_id: data.id,
-          user_id: gNewUser.id,
-          role: "teamOwner",
-          canExport: true,
-        };
-        return db.TeamRole.create(teamRole);
-      })
-      .then(() => {
         return gNewUser;
       })
       .catch((error) => {
         return new Promise((resolve, reject) => reject(new Error(error.message)));
       });
+  }
+
+  // JIT-create an SSO user after a successful Keycloak login when no
+  // matching local user exists. No auto-team — the user will land on the
+  // onboarding page and either request access or create one.
+  async createSSOUser({ email, name, keycloakId }) {
+    const existing = await db.User.findOne({ where: { email } });
+    if (existing) {
+      throw new Error("User already exists");
+    }
+
+    const isFirstUser = !(await this.areThereAnyUsers());
+    const iconSource = name || email;
+    const icon = iconSource.substring(0, 2).toUpperCase();
+
+    // The schema permits null password (Keycloak users), but we hash a
+    // random value anyway so the column isn't trivially-empty in case any
+    // legacy code path tries to bcrypt-compare against it.
+    const placeholderHash = await bcrypt.hash(nanoid(32), 10);
+
+    return db.User.create({
+      name: name || email,
+      email,
+      password: placeholderHash,
+      keycloakId,
+      authProvider: "keycloak",
+      active: true,
+      admin: isFirstUser,
+      icon,
+    });
   }
 
   async deleteUser(id) {

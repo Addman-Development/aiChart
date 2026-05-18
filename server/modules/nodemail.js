@@ -107,6 +107,62 @@ module.exports.sendUserCreatedInvite = (data) => {
   return nodemail.sendMail(message);
 };
 
+module.exports.sendAccessRequest = (data) => {
+  const reasonBlockText = data.reason ? `\n      Reason: ${data.reason}\n` : "";
+  const reasonBlockHtml = data.reason
+    ? `<p><strong>Reason:</strong><br/>${data.reason.replace(/\n/g, "<br/>")}</p>`
+    : "";
+
+  const message = {
+    from: settings.adminMail,
+    to: data.ownerEmail,
+    subject: `ADDMAN-SmartChart - Access request for ${data.teamName}`,
+    text: `
+      Hi ${data.ownerName || "there"},
+
+      ${data.requesterName || data.requesterEmail} has requested access to ${data.teamName}.
+
+      Email: ${data.requesterEmail}${reasonBlockText}
+
+      Review and approve from the team members page:
+      ${data.reviewUrl}
+
+      - ADDMAN-SmartChart
+    `,
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h3>Access request for ${data.teamName}</h3>
+
+        <p><strong>${data.requesterName || data.requesterEmail}</strong> has requested access to <strong>${data.teamName}</strong>.</p>
+
+        <table style="border-collapse: collapse; margin: 8px 0; font-size: 14px;">
+          <tr>
+            <td style="padding: 4px 12px 4px 0; font-weight: bold;">Email</td>
+            <td style="padding: 4px 0;">${data.requesterEmail}</td>
+          </tr>
+          ${data.requesterName ? `<tr><td style="padding: 4px 12px 4px 0; font-weight: bold;">Name</td><td style="padding: 4px 0;">${data.requesterName}</td></tr>` : ""}
+        </table>
+
+        ${reasonBlockHtml}
+
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${data.reviewUrl}"
+             style="background-color: #006FEE; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
+            Review request
+          </a>
+        </div>
+
+        <p style="color: #666; font-size: 13px;">If the button doesn't work, paste this link into your browser:</p>
+        <p style="color: #666; font-size: 13px; word-break: break-all;">${data.reviewUrl}</p>
+
+        <p>- ADDMAN-SmartChart</p>
+      </div>
+    `,
+  };
+
+  return nodemail.sendMail(message);
+};
+
 module.exports.passwordReset = (data) => {
   const message = {
     from: settings.adminMail,

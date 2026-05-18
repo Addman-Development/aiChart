@@ -9,6 +9,7 @@ import {
 } from "@heroui/react";
 import _ from "lodash";
 import toast from "react-hot-toast";
+import { useSearchParams } from "react-router";
 import { LuFolderKey, LuInfo, LuStar, LuUser, LuX, LuCircleX, LuKeyRound, LuIdCard, LuCircleCheck, LuLock } from "react-icons/lu";
 
 import {
@@ -18,6 +19,7 @@ import {
 } from "../../slices/team";
 import InviteMembersForm from "../../components/InviteMembersForm";
 import CreateUserForm from "../../components/CreateUserForm";
+import PendingAccessRequestCard from "../../components/PendingAccessRequestCard";
 import canAccess from "../../config/canAccess";
 import { selectProjects } from "../../slices/project";
 import { selectUser } from "../../slices/user";
@@ -50,6 +52,8 @@ function TeamMembers(props) {
   const teams = useSelector(selectTeams);
 
   const dispatch = useDispatch();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accessRequestId = searchParams.get("access_request_id");
 
   useEffect(() => {
     if (projects && projects.length > 0 && team && team.TeamRoles) {
@@ -236,6 +240,22 @@ function TeamMembers(props) {
 
   return (
     <div style={style}>
+      {accessRequestId && _canAccess("teamAdmin") && (
+        <PendingAccessRequestCard
+          requestId={accessRequestId}
+          onResolved={() => {
+            // Refresh members + clear the deep-link query param so the
+            // banner doesn't reappear on every render.
+            if (team?.id) dispatch(getTeamMembers({ team_id: team.id }));
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("access_request_id");
+              return next;
+            }, { replace: true });
+          }}
+        />
+      )}
+
       {_canAccess("teamAdmin") && (
         <div className="bg-content1 p-4 rounded-lg border border-divider">
           <Tabs aria-label="Invite options" variant="underlined" color="primary">

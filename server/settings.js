@@ -25,6 +25,9 @@ module.exports = {
     // Space-separated scopes; defaults to "openid profile email"
     scope: process.env.KEYCLOAK_SCOPE,
   },
-  teamRestricted: process.env.CB_RESTRICT_TEAMS,
   signupRestricted: process.env.CB_RESTRICT_SIGNUP,
+  // Kill switch for the SSO auto-create flow. Default on (new behavior).
+  // Set CB_SSO_AUTOCREATE_USERS=false to fall back to rejecting unmatched
+  // SSO logins with a "no account, contact admin" message.
+  ssoAutoCreate: process.env.CB_SSO_AUTOCREATE_USERS !== "false",
 };

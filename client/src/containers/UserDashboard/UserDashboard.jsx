@@ -15,7 +15,8 @@ import Container from "../../components/Container";
 import Row from "../../components/Row";
 import Text from "../../components/Text";
 import {
-  selectTeam, selectTeams, getTeams, saveActiveTeam, getTeamMembers,
+  selectTeam, selectTeams, selectTeamsLoading, selectTeamsFetched,
+  getTeams, saveActiveTeam, getTeamMembers,
 } from "../../slices/team";
 
 import DashboardList from "./DashboardList";
@@ -34,6 +35,8 @@ function UserDashboard(props) {
 
   const team = useSelector(selectTeam);
   const teams = useSelector(selectTeams);
+  const teamsLoading = useSelector(selectTeamsLoading);
+  const teamsFetched = useSelector(selectTeamsFetched);
 
   const user = useSelector((state) => state.user);
 
@@ -67,6 +70,15 @@ function UserDashboard(props) {
       _checkParameters();
     }
   }, [user.data.id, user.loading]);
+
+  // Authenticated user with no team memberships → send them to the
+  // onboarding page. teamsFetched gates the redirect so we only fire after
+  // getTeams has actually returned (not on the initial empty-array state).
+  useEffect(() => {
+    if (user.data.id && teamsFetched && !teamsLoading && teams.length === 0) {
+      navigate("/onboarding", { replace: true });
+    }
+  }, [user.data.id, teamsFetched, teamsLoading, teams.length]);
 
   const teamsLength = teams?.length || 0;
   useEffect(() => {
@@ -157,7 +169,7 @@ function UserDashboard(props) {
 
       <Spacer y={4} />
 
-      {(teams && teams.length === 0) && (
+      {(teams && teams.length === 0 && teamsLoading) && (
         <div className="bg-content2 pt-10 mt-[-20px]">
           <div className="flex justify-center items-center">
             <Spinner variant="simple" aria-label="Loading" />

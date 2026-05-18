@@ -45,6 +45,7 @@ const PublicDashboard = lazy(() => import("./PublicDashboard/PublicDashboard"));
 const PasswordReset = lazy(() => import("./PasswordReset"));
 const EmbeddedChart = lazy(() => import("./EmbeddedChart"));
 const KeycloakCallback = lazy(() => import("./KeycloakCallback"));
+const Onboarding = lazy(() => import("./Onboarding"));
 const ProjectRedirect = lazy(() => import("./ProjectRedirect"));
 import FeedbackForm from "../components/FeedbackForm";
 import ForcePasswordChange from "../components/ForcePasswordChange";
@@ -305,6 +306,7 @@ function Main(props) {
                 <Route exact path="/signup" element={<Signup />} />
               )}
               <Route exact path="/keycloak-callback" element={<KeycloakCallback />} />
+              <Route exact path="/onboarding" element={<Onboarding />} />
               <Route exact path="/login" element={<Login />} />
               <Route exact path="/user" element={<UserDashboard />} />
               <Route exact path="/user/profile" element={<ManageUser />} />

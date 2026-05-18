@@ -132,6 +132,9 @@ const router = createBrowserRouter([
         path: "keycloak-callback",
       },
       {
+        path: "onboarding",
+      },
+      {
         path: "passwordReset"
       },
       {

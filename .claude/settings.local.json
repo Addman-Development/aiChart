@@ -36,7 +36,8 @@
       "mcp__claude_ai_policy-gate__check_policy_status",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\ali.bahar\\\\Documents\\\\gitHub\\\\aiChart\" -Recurse -ErrorAction SilentlyContinue)",
       "Bash(Select-Object FullName)",
-      "Bash(bunx eslint *)"
+      "Bash(bunx eslint *)",
+      "Bash(npm install *)"
     ]
   }
 }

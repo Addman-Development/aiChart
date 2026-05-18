@@ -6,6 +6,7 @@ import { createSelector } from "@reduxjs/toolkit";
 
 const initialState = {
   loading: false,
+  fetched: false,
   error: false,
   isTeamOwner: false,
   data: [],
@@ -414,6 +415,7 @@ export const teamSlice = createSlice({
       })
       .addCase(getTeams.fulfilled, (state, action) => {
         state.loading = false;
+        state.fetched = true;
         state.data = action.payload;
       })
       .addCase(getTeams.rejected, (state) => {
@@ -549,6 +551,8 @@ export const teamSlice = createSlice({
 export const { saveActiveTeam, saveTeamList, addNewTeam } = teamSlice.actions;
 export const selectTeam = (state) => state.team.active;
 export const selectTeams = (state) => state.team.data;
+export const selectTeamsLoading = (state) => state.team.loading;
+export const selectTeamsFetched = (state) => state.team.fetched;
 export const selectTeamMembers = (state) => state.team.teamMembers;
 export const selectProjectMembers = createSelector(
   (state) => state.team.teamMembers,

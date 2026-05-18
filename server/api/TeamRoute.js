@@ -97,10 +97,6 @@ module.exports = (app) => {
 
   // route to create a team
   app.post("/team", verifyToken, apiLimiter(10), async (req, res) => {
-    if (app.settings.teamRestricted === "1" && !req.user.admin) {
-      return res.status(400).send({ error: "Team restricted" });
-    }
-
     try {
       const team = await teamController.createTeam(req.body, req.user.id);
       return res.status(200).send(team);

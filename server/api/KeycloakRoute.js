@@ -150,17 +150,24 @@ module.exports = (app) => {
         return tokenizeUser(user, res, { linked: "true" });
       }
 
-      // JIT provision new Keycloak-only user
-      const iconSource = kcUser.name || kcUser.email;
-      const icon = iconSource.substring(0, 2).toUpperCase();
-      const newUser = await userController.createUser({
-        name: kcUser.name || kcUser.email,
+      // No matching local user. By default we JIT-create from the verified
+      // Keycloak claims (the client's onboarding page will then prompt for
+      // team join/create). When CB_SSO_AUTOCREATE_USERS=false the operator
+      // has disabled this; bounce the user back to login with a clear
+      // message so they don't get a silent failure.
+      if (!app.settings.ssoAutoCreate) {
+        const message = encodeURIComponent(
+          "No account exists for this email. Please contact your administrator for an invite.",
+        );
+        return res.redirect(
+          `${app.settings.client}/login?error=sso_account_required&message=${message}`,
+        );
+      }
+
+      const newUser = await userController.createSSOUser({
         email: kcUser.email,
+        name: kcUser.name,
         keycloakId: kcUser.keycloakId,
-        authProvider: "keycloak",
-        password: null,
-        active: true,
-        icon,
       });
 
       return tokenizeUser(newUser, res, { new: "true" });
