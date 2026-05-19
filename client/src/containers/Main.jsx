@@ -92,7 +92,7 @@ function authenticatePage() {
     return false;
   }
 
-  window.location.pathname = `${_basePath}/login`;
+  window.location.pathname = `${_basePath === "/" ? "" : _basePath}/login`;
   return true;
 }
 
@@ -132,9 +132,7 @@ function Main(props) {
             return dispatch(getTeams());
           }
 
-          if (authenticatePage()) {
-            window.location.pathname = "/login";
-          }
+          authenticatePage();
 
           return null;
         })
