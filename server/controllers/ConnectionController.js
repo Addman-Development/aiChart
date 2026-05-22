@@ -769,20 +769,21 @@ class ConnectionController {
       mongoConnection = mongoose.createConnection(url, { connectTimeoutMS: 100000 });
       await mongoConnection.asPromise();
 
-      // Build the query function - try with .toArray() first, then without
+      // Execute the query once, then materialize the result.
+      // Avoid the older try-`.toArray()`/fallback-without pattern: terminal
+      // operations like .findOne() return a Promise, so calling .toArray() on
+      // it throws synchronously while the findOne is already in flight. The
+      // finally block then closes the session before the orphaned operation
+      // completes -> MongoExpiredSessionError.
       let data;
       try {
-        data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}.toArray()`)()(mongoConnection, ObjectId); // eslint-disable-line
-      } catch (toArrayErr) {
-        try {
-          data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
-        } catch (queryErr) {
-          throw new Error(`Invalid MongoDB query: ${queryErr.message}`);
-        }
+        data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
+      } catch (queryErr) {
+        throw new Error(`Invalid MongoDB query: ${queryErr.message}`);
       }
 
       let finalData = data;
-      if (data && typeof data?.next === "function") {
+      if (data && typeof data?.toArray === "function" && typeof data?.next === "function") {
         finalData = await data.toArray();
       }
       // MongoDB returns a plain number when count() is used, transform this into an object

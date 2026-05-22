@@ -33,6 +33,11 @@ module.exports = (app) => {
         if (!project) return res.status(404).json({ message: "Project not found" });
       }
 
+      if (req.user.admin) {
+        req.user.isEditor = true;
+        return next();
+      }
+
       if (teamId) {
         teamRole = await teamController.getTeamRole(teamId, req.user.id);
       } else {

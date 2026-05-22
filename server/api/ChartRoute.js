@@ -54,6 +54,11 @@ module.exports = (app) => {
         return res.status(404).json({ message: "Project not found" });
       }
 
+      if (req.user.admin) {
+        req.user.isEditor = true;
+        return next();
+      }
+
       const teamRole = await teamController.getTeamRole(project.team_id, req.user.id);
 
       req.user.teamRole = teamRole;

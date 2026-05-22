@@ -111,7 +111,7 @@ function TeamSettings() {
       toast.success("Team deleted. Switched to another team.");
       navigate(`/${remainingTeams[0].id}/dashboard`);
     } else {
-      window.location.href = "/";
+      navigate("/");
     }
 
     setDeleting(false);

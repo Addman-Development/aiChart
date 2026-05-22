@@ -55,6 +55,11 @@ module.exports = (app) => {
     return async (req, res, next) => {
       const { team_id } = req.params;
 
+      if (req.user.admin) {
+        req.user.isEditor = true;
+        return next();
+      }
+
       // Fetch the TeamRole for the user
       const teamRole = await teamController.getTeamRole(team_id, req.user.id);
 

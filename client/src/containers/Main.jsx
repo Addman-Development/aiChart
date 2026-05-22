@@ -186,8 +186,10 @@ function Main(props) {
         selectedTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
       }
       if (!selectedTeam) {
-        selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id))
-          || teams[0];
+        selectedTeam = teams.find((t) => (
+          Array.isArray(t.TeamRoles)
+            && t.TeamRoles.some((tr) => tr && tr.role === "teamOwner" && tr.user_id === user.id)
+        )) || teams[0];
       }
 
       if (selectedTeam) {

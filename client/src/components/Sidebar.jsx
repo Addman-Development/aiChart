@@ -44,7 +44,9 @@ function Sidebar() {
 
   const _getTeamRole = (teamRoles) => {
     if (!teamRoles) return "";
-    return teamRoles.filter((o) => o.user_id === user.data.id)[0].role;
+    const match = teamRoles.find((o) => o.user_id === user.data?.id);
+    if (match) return match.role;
+    return user.data?.admin ? "admin" : "";
   };
 
   const _onChangeTeam = (teamId) => {
