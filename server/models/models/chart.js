@@ -243,6 +243,21 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       defaultValue: 10,
     },
+    tableSearchEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      description: "Whether the table search bar is shown to viewers"
+    },
+    tableFilterEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      description: "Whether per-column filters are shown to viewers"
+    },
+    tableSortEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      description: "Whether viewers can click column headers to sort"
+    },
     /*
     ** LEGACY FIELDS
     ** These fields are no longer used and will be removed in a future release

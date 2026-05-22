@@ -1,6 +1,6 @@
 import { Avatar, Button, Card, CardBody, CardFooter, Checkbox, Chip, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Select, SelectItem, Spacer, Tooltip } from "@heroui/react"
-import React, { useState } from "react"
-import { LuCopy, LuDownload, LuEllipsis, LuInfo, LuPencilLine, LuPlug, LuPlus, LuSearch, LuTags, LuTrash } from "react-icons/lu"
+import React, { useEffect, useState } from "react"
+import { LuCopy, LuDownload, LuEllipsis, LuInfo, LuPencilLine, LuPlug, LuPlus, LuSearch, LuShare2, LuTags, LuTrash, LuUsers } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux"
 import { Link, useNavigate } from "react-router"
 import { toast } from "react-hot-toast"
@@ -9,7 +9,18 @@ import { selectTeam, selectTeams } from "../../slices/team"
 import canAccess from "../../config/canAccess"
 import { selectUser } from "../../slices/user"
 import connectionImages from "../../config/connectionImages"
-import { duplicateConnection, importConnections, removeConnection, saveConnection, selectConnections } from "../../slices/connection"
+import {
+  duplicateConnection,
+  getSharedConnections,
+  getTeamConnections,
+  importConnections,
+  optInSharedConnection,
+  optOutSharedConnection,
+  removeConnection,
+  saveConnection,
+  selectConnections,
+  selectSharedConnections,
+} from "../../slices/connection"
 import { useTheme } from "../../modules/ThemeContext"
 import { selectProjects } from "../../slices/project"
 import { selectDatasets } from "../../slices/dataset"
@@ -37,12 +48,50 @@ function ConnectionList() {
   const user = useSelector(selectUser);
   const teams = useSelector(selectTeams);
   const connections = useSelector(selectConnections);
+  const sharedConnections = useSelector(selectSharedConnections);
   const projects = useSelector(selectProjects);
   const datasets = useSelector(selectDatasets);
-  
+
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { isDark } = useTheme();
+
+  useEffect(() => {
+    if (team?.id) {
+      dispatch(getSharedConnections({ team_id: team.id }));
+    }
+  }, [team?.id]);
+
+  const _availableSharedConnections = (sharedConnections || []).filter((c) => (
+    !c.isOwner && !c.isOptedIn && team?.id && c.team_id !== team.id
+  ));
+
+  const _isOptedInShared = (connectionId) => {
+    if (!team?.id) return false;
+    const connection = (connections || []).find((c) => c.id === connectionId);
+    if (!connection) return false;
+    return connection.team_id !== team.id;
+  };
+
+  const _onOptIn = async (connection) => {
+    try {
+      await dispatch(optInSharedConnection({ team_id: team.id, connection_id: connection.id })).unwrap();
+      await dispatch(getTeamConnections({ team_id: team.id }));
+      toast.success(`"${connection.name}" added to ${team.name}`);
+    } catch (e) {
+      toast.error(e.message || "Failed to opt in");
+    }
+  };
+
+  const _onOptOut = async (connection) => {
+    try {
+      await dispatch(optOutSharedConnection({ team_id: team.id, connection_id: connection.id })).unwrap();
+      await dispatch(getTeamConnections({ team_id: team.id }));
+      toast.success(`Removed "${connection.name}" from ${team.name}`);
+    } catch (e) {
+      toast.error(e.message || "Failed to opt out");
+    }
+  };
 
   const _canAccess = (role, teamRoles) => {
     return canAccess(role, user.id, teamRoles, user);
@@ -267,6 +316,51 @@ function ConnectionList() {
       </div>
       <Spacer y={4} />
 
+      {_canAccess("teamAdmin", team.TeamRoles) && _availableSharedConnections.length > 0 && (
+        <>
+          <div className="flex flex-row items-center gap-2 mb-2">
+            <LuShare2 size={16} className="text-foreground-500" />
+            <div className="text-sm font-medium">Shared with you</div>
+            <Tooltip content="Connections a global admin has marked available to all teams. Opt in to use them in this team.">
+              <div className="text-foreground-400"><LuInfo size={14} /></div>
+            </Tooltip>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
+            {_availableSharedConnections.map((connection) => (
+              <Card
+                key={`shared-${connection.id}`}
+                shadow="none"
+                className="border-1 border-dashed border-primary-200 p-4"
+                fullWidth
+              >
+                <CardBody>
+                  <div className="flex flex-row items-center justify-between">
+                    <div className="flex flex-row items-center gap-2">
+                      <Avatar src={connectionImages(isDark)[connection.subType]} />
+                      <div className="text-lg font-semibold font-tw">{connection.name}</div>
+                    </div>
+                    <Chip size="sm" variant="flat" color="primary" radius="sm" startContent={<LuShare2 size={12} />}>
+                      Shared
+                    </Chip>
+                  </div>
+                </CardBody>
+                <CardBody>
+                  <div className="text-xs text-foreground-500 flex items-center gap-1">
+                    <LuUsers size={12} />
+                    {`${connection.optedInTeamIds?.length || 0} team${(connection.optedInTeamIds?.length || 0) === 1 ? "" : "s"} using this`}
+                  </div>
+                </CardBody>
+                <CardFooter>
+                  <Button color="primary" variant="flat" size="sm" fullWidth onPress={() => _onOptIn(connection)} startContent={<LuPlus />}>
+                    Add to {team.name}
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
         {_getFilteredConnections()?.map((connection) => (
           <div key={connection.id}>
@@ -282,7 +376,21 @@ function ConnectionList() {
                     <Avatar src={connectionImages(isDark)[connection.subType]} />
                     <Link to={`/connections/${connection.id}`} className="text-lg font-semibold text-foreground! font-tw cursor-pointer">{connection.name}</Link>
                   </div>
-                  <div>
+                  <div className="flex flex-row items-center gap-1">
+                    {connection.shared && team?.id === connection.team_id && (
+                      <Tooltip content="This connection is available to all teams.">
+                        <Chip size="sm" variant="flat" color="primary" radius="sm" startContent={<LuShare2 size={12} />}>
+                          Shared
+                        </Chip>
+                      </Tooltip>
+                    )}
+                    {_isOptedInShared(connection.id) && (
+                      <Tooltip content="Shared by another team. Opt out to remove.">
+                        <Chip size="sm" variant="flat" color="secondary" radius="sm" startContent={<LuShare2 size={12} />}>
+                          Shared
+                        </Chip>
+                      </Tooltip>
+                    )}
                     {_getRelatedDatasets(connection.id).length > 0 && (
                       <Tooltip content="Datasets are using this connection.">
                         <Chip size="sm" variant="flat" color="success" radius="sm">
@@ -339,20 +447,26 @@ function ConnectionList() {
                       <LuEllipsis />
                     </Button>
                   </DropdownTrigger>
-                  <DropdownMenu variant="flat">
+                  <DropdownMenu
+                    variant="flat"
+                    disabledKeys={_isOptedInShared(connection.id) ? ["edit", "tags", "delete"] : []}
+                  >
                     <DropdownItem
+                      key="edit"
                       onPress={() => navigate(`/connections/${connection.id}`)}
                       startContent={<LuPencilLine />}
                     >
                       Edit connection
                     </DropdownItem>
                     <DropdownItem
+                      key="tags"
                       onPress={() => setConnectionToEdit(connection)}
                       startContent={<LuTags />}
                     >
                       Edit tags
                     </DropdownItem>
                     <DropdownItem
+                      key="duplicate"
                       onPress={() => {
                         setViewingDuplicateModal(connection);
                         setDuplicateName(connection.name);
@@ -361,13 +475,25 @@ function ConnectionList() {
                     >
                       Duplicate connection
                     </DropdownItem>
-                    <DropdownItem
-                      onPress={() => setConnectionToDelete(connection)}
-                      startContent={<LuTrash />}
-                      color="danger"
-                    >
-                      Delete
-                    </DropdownItem>
+                    {_isOptedInShared(connection.id) ? (
+                      <DropdownItem
+                        key="optout"
+                        onPress={() => _onOptOut(connection)}
+                        startContent={<LuTrash />}
+                        color="danger"
+                      >
+                        Remove from team
+                      </DropdownItem>
+                    ) : (
+                      <DropdownItem
+                        key="delete"
+                        onPress={() => setConnectionToDelete(connection)}
+                        startContent={<LuTrash />}
+                        color="danger"
+                      >
+                        Delete
+                      </DropdownItem>
+                    )}
                   </DropdownMenu>
                 </Dropdown>
               </CardFooter>

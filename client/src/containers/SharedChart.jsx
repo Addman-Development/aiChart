@@ -423,6 +423,9 @@ function SharedChart() {
               embedded
               datasets={chart.ChartDatasetConfigs}
               defaultRowsPerPage={chart.defaultRowsPerPage}
+              searchEnabled={chart.tableSearchEnabled !== false}
+              filterEnabled={chart.tableFilterEnabled !== false}
+              sortEnabled={chart.tableSortEnabled !== false}
             />
           )}
           {(chart.type === "kpi" || chart.type === "avg") && (

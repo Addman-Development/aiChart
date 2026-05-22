@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { LuArrowLeft, LuBrainCircuit, LuChartArea, LuClipboard, LuClipboardCheck, LuCompass, LuLayoutDashboard, LuPartyPopper, LuSearch } from "react-icons/lu";
-import { Button, Card, CardBody, CardFooter, CardHeader, Chip, Divider, Image, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Tooltip } from "@heroui/react";
+import { LuArrowLeft, LuBrainCircuit, LuChartArea, LuClipboard, LuClipboardCheck, LuCompass, LuLayoutDashboard, LuPartyPopper, LuSearch, LuShare2 } from "react-icons/lu";
+import { Button, Card, CardBody, CardFooter, CardHeader, Chip, Divider, Image, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Switch, Tooltip } from "@heroui/react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router";
 import toast from "react-hot-toast";
@@ -272,6 +272,46 @@ function ConnectionWizard() {
               <span className="text-xl font-semibold">Edit your connection</span>
             </div>
           )}
+
+          {newConnection && newConnection.id && user?.admin && (
+            <>
+              <Spacer y={2} />
+              <Card shadow="none" className="border-1 border-divider">
+                <CardBody>
+                  <div className="flex flex-row items-center justify-between gap-4">
+                    <div className="flex flex-row items-start gap-3">
+                      <LuShare2 size={20} className="mt-0.5 text-primary" />
+                      <div className="flex flex-col">
+                        <div className="text-sm font-semibold">Available to all teams</div>
+                        <div className="text-xs text-foreground-500">
+                          When on, this connection appears in every team's "Shared with you" panel.
+                          Other teams can opt in to use it without exposing the credentials.
+                        </div>
+                      </div>
+                    </div>
+                    <Switch
+                      isSelected={!!newConnection.shared}
+                      onValueChange={async (val) => {
+                        const previous = !!newConnection.shared;
+                        setNewConnection({ ...newConnection, shared: val });
+                        const result = await dispatch(saveConnection({
+                          team_id: team.id,
+                          connection: { id: newConnection.id, shared: val },
+                        }));
+                        if (result?.error) {
+                          setNewConnection({ ...newConnection, shared: previous });
+                          toast.error("Failed to update sharing");
+                        } else {
+                          toast.success(val ? "Connection shared with all teams" : "Connection is no longer shared");
+                        }
+                      }}
+                    />
+                  </div>
+                </CardBody>
+              </Card>
+            </>
+          )}
+
           <Spacer y={4} />
 
           {selectedType === "api" && (

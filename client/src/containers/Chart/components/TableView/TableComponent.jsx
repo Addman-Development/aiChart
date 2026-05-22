@@ -1,5 +1,5 @@
-import React, { useEffect } from "react";
-import { usePagination, useSortBy, useTable } from "react-table";
+import React, { useEffect, useMemo, useState } from "react";
+import { useFilters, useGlobalFilter, usePagination, useSortBy, useTable } from "react-table";
 import PropTypes from "prop-types";
 import {
   Dropdown, Spacer, Link as LinkNext, Table, Popover, Pagination, Chip,
@@ -9,14 +9,59 @@ import {
   DropdownMenu,
   Button,
   DropdownItem,
+  Input,
   Progress,
   Tooltip,
   Image,
 } from "@heroui/react";
-import { LuChevronDown, LuCircleChevronDown, LuCircleChevronUp, LuExpand } from "react-icons/lu";
+import {
+  LuChevronDown, LuChevronUp, LuChevronsUpDown, LuExpand, LuFilter, LuSearch, LuX,
+} from "react-icons/lu";
 
 import Row from "../../../../components/Row";
 import Text from "../../../../components/Text";
+
+function ColumnFilterPopover({ column }) {
+  const value = column.filterValue || "";
+  return (
+    <Popover placement="bottom" aria-label={`Filter ${column.id}`}>
+      <PopoverTrigger>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="light"
+          aria-label={`Filter ${column.id}`}
+          className={`min-w-6 w-6 h-6 ${value ? "text-primary" : "text-foreground-400"}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <LuFilter size={14} />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent>
+        <div className="flex flex-col gap-2 p-2 w-64">
+          <Text className="text-xs text-foreground-500">{`Filter ${column.id}`}</Text>
+          <Input
+            size="sm"
+            variant="bordered"
+            value={value}
+            placeholder="Contains..."
+            onChange={(e) => column.setFilter(e.target.value || undefined)}
+            onClick={(e) => e.stopPropagation()}
+            endContent={value && (
+              <Button isIconOnly size="sm" variant="light" onPress={() => column.setFilter(undefined)} aria-label="Clear filter">
+                <LuX size={14} />
+              </Button>
+            )}
+          />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+ColumnFilterPopover.propTypes = {
+  column: PropTypes.object.isRequired,
+};
 
 const paginationOptions = [5, 10, 20, 30, 40, 50].map((pageSize) => ({
   key: pageSize,
@@ -191,9 +236,36 @@ const renderCellContent = (value, columnKey, columnsFormatting) => {
 
 function TableComponent({
   columns, data, embedded = false, dataset, defaultRowsPerPage = 10,
+  searchEnabled = true, filterEnabled = true, sortEnabled = true,
 }) {
   const columnsFormatting = dataset?.configuration?.columnsFormatting;
-  
+  const [searchInput, setSearchInput] = useState("");
+
+  const defaultColumn = useMemo(() => ({
+    Filter: () => null,
+    filter: (rows, columnIds, filterValue) => {
+      const needle = String(filterValue ?? "").toLowerCase();
+      if (!needle) return rows;
+      const [columnId] = columnIds;
+      return rows.filter((row) => {
+        const cell = row.values?.[columnId];
+        if (cell === null || cell === undefined) return false;
+        return String(cell).toLowerCase().includes(needle);
+      });
+    },
+  }), []);
+
+  const globalFilterFn = useMemo(() => (rows, _columnIds, filterValue) => {
+    const needle = String(filterValue ?? "").toLowerCase().trim();
+    if (!needle) return rows;
+    return rows.filter((row) => (
+      Object.values(row.values || {}).some((v) => {
+        if (v === null || v === undefined) return false;
+        return String(v).toLowerCase().includes(needle);
+      })
+    ));
+  }, []);
+
   const {
     getTableProps,
     getTableBodyProps,
@@ -203,12 +275,18 @@ function TableComponent({
     pageCount,
     gotoPage,
     setPageSize,
-    state: { pageSize },
+    setGlobalFilter,
+    state: { pageSize, globalFilter },
+    rows: filteredRows,
   } = useTable({
     columns,
     data,
+    defaultColumn,
+    globalFilter: globalFilterFn,
     initialState: { pageIndex: 0, pageSize: defaultRowsPerPage }
   },
+  useFilters,
+  useGlobalFilter,
   useSortBy,
   usePagination);
 
@@ -216,26 +294,63 @@ function TableComponent({
     setPageSize(defaultRowsPerPage);
   }, [defaultRowsPerPage]);
 
+  useEffect(() => {
+    const handle = setTimeout(() => {
+      setGlobalFilter(searchInput || undefined);
+      gotoPage(0);
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasHeaders = headerGroups
+    && headerGroups[headerGroups.length - 1]
+    && headerGroups[headerGroups.length - 1].headers;
+
   return (
-    <div style={styles.mainBody(embedded)}>
-      {(!headerGroups
-        || !headerGroups[headerGroups.length - 1]
-        || !headerGroups[headerGroups.length - 1].headers
-      ) && (
+    <div style={styles.mainBody(embedded)} className="flex flex-col h-full min-h-0">
+      {hasHeaders && searchEnabled && (
+        <Row align="center" className="gap-2 mb-2">
+          <Input
+            size="sm"
+            variant="bordered"
+            placeholder="Search table..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            startContent={<LuSearch size={14} className="text-foreground-400" />}
+            endContent={searchInput && (
+              <Button isIconOnly size="sm" variant="light" onPress={() => setSearchInput("")} aria-label="Clear search">
+                <LuX size={14} />
+              </Button>
+            )}
+            className="max-w-[280px]"
+            aria-label="Search table"
+          />
+          {(globalFilter || searchInput) && (
+            <Chip size="sm" variant="flat" color="primary" radius="sm">
+              {`${filteredRows.length} of ${data.length}`}
+            </Chip>
+          )}
+        </Row>
+      )}
+
+      {!hasHeaders && (
         <Text i>No results in this table</Text>
       )}
 
-      {headerGroups
-        && headerGroups[headerGroups.length - 1]
-        && headerGroups[headerGroups.length - 1].headers
-        && (
+      {hasHeaders && (
         <>
           <Table
             aria-label="Table data"
             {...getTableProps()}
             isStriped
             shadow="none"
-            classNames={{ wrapper: "bg-content1" }}
+            isHeaderSticky
+            classNames={{
+              base: "flex-1 min-h-0",
+              wrapper: "bg-content1 max-h-full overflow-auto p-0",
+              thead: "[&>tr]:first:shadow-none",
+              th: "sticky top-0 z-20 bg-content2 backdrop-blur",
+            }}
             bottomContent={(
               <div>
                 <Row align="center">
@@ -276,33 +391,51 @@ function TableComponent({
           >
             <TableHeader>
               {headerGroups[headerGroups.length - 1].headers.map((column) => {
+                const sortToggleProps = column.getSortByToggleProps();
                 return (
                   <TableColumn
-                    key={column.getHeaderProps(column.getSortByToggleProps()).key}
+                    key={column.getHeaderProps(sortToggleProps).key}
                     style={{ whiteSpace: "unset" }}
-                    className={"pl-10 pr-10 max-w-[400px]"}
+                    className={"pl-6 pr-2 max-w-[400px]"}
                   >
-                    <Row align="center">
-                      {column.isSorted
-                        ? column.isSortedDesc
-                          ? (<LuCircleChevronDown size={16} />)
-                          : (<LuCircleChevronUp size={16} />)
-                        : ""}
-
-                      {(column.isSorted || column.isSortedDesc) && <Spacer x={1} />}
-                      <LinkNext
-                        className="text-sm cursor-pointer hover:text-secondary"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          column.getSortByToggleProps().onClick(e);
-                        }}
-                      >
-                        <Text className={"text-foreground-500"}>
+                    <div className="flex flex-row items-center gap-1">
+                      {sortEnabled ? (
+                        <LinkNext
+                          className="text-sm cursor-pointer hover:text-secondary select-none flex-1"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            sortToggleProps.onClick(e);
+                          }}
+                          title="Click to sort"
+                        >
+                          <Text className={"text-foreground-500"}>
+                            {typeof column.render("Header") === "object"
+                              ? column.render("Header") : column.render("Header").replace("__cb_group", "")}
+                          </Text>
+                        </LinkNext>
+                      ) : (
+                        <Text className={"text-foreground-500 text-sm flex-1"}>
                           {typeof column.render("Header") === "object"
                             ? column.render("Header") : column.render("Header").replace("__cb_group", "")}
                         </Text>
-                      </LinkNext>
-                    </Row>
+                      )}
+                      {sortEnabled && (
+                        <button
+                          type="button"
+                          aria-label={`Sort ${column.id}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            sortToggleProps.onClick(e);
+                          }}
+                          className={`p-0.5 rounded-full hover:bg-content3 ${column.isSorted ? "text-primary" : "text-foreground-300"}`}
+                        >
+                          {column.isSorted
+                            ? (column.isSortedDesc ? <LuChevronDown size={14} /> : <LuChevronUp size={14} />)
+                            : <LuChevronsUpDown size={14} />}
+                        </button>
+                      )}
+                      {filterEnabled && column.canFilter && <ColumnFilterPopover column={column} />}
+                    </div>
                   </TableColumn>
                 );
               })}
@@ -333,7 +466,7 @@ function TableComponent({
 
                       return (
                         <TableCell
-                          key={`${row.id}-${cell.column.Header}`}
+                          key={`${row.id}-${cell.column.id || cellIndex}`}
                           {...(() => { const { key, ...rest } = cell.getCellProps(); return rest; })()}
                           className={"max-w-[300px] pr-10 pl-10 truncate"}
                           css={{
@@ -388,8 +521,6 @@ function TableComponent({
 
 const styles = {
   mainBody: (embedded) => ({
-    overflowY: "auto",
-    overflowX: "auto",
     paddingBottom: embedded ? 30 : 0,
   }),
   table: {
@@ -406,6 +537,9 @@ TableComponent.propTypes = {
   embedded: PropTypes.bool,
   dataset: PropTypes.object.isRequired,
   defaultRowsPerPage: PropTypes.number,
+  searchEnabled: PropTypes.bool,
+  filterEnabled: PropTypes.bool,
+  sortEnabled: PropTypes.bool,
 };
 
 export default TableComponent;

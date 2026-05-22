@@ -924,6 +924,9 @@ function Chart(props) {
                         tabularData={chart.chartData}
                         datasets={chart.ChartDatasetConfigs}
                         defaultRowsPerPage={chart.defaultRowsPerPage}
+                        searchEnabled={chart.tableSearchEnabled !== false}
+                        filterEnabled={chart.tableFilterEnabled !== false}
+                        sortEnabled={chart.tableSortEnabled !== false}
                       />
                     </div>
                   )}

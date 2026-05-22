@@ -292,7 +292,12 @@ module.exports = (app) => {
   ** Route to update a connection
   */
   app.put("/team/:team_id/connections/:connection_id", verifyToken, checkPermissions("updateOwn"), (req, res) => {
-    return connectionController.update(req.params.connection_id, req.body)
+    const body = { ...req.body };
+    // Only global admins may set the `shared` flag
+    if (typeof body.shared !== "undefined" && !req.user.admin) {
+      delete body.shared;
+    }
+    return connectionController.update(req.params.connection_id, body)
       .then((connection) => {
         return res.status(200).send(connection);
       })
@@ -304,6 +309,70 @@ module.exports = (app) => {
       });
   });
   // -------------------------------------------
+
+  /*
+  ** Route to list all shared connections (available to any authenticated user)
+  */
+  app.get("/connection/shared", verifyToken, async (req, res) => {
+    try {
+      const shared = await connectionController.findShared();
+      const teamIdParam = req.query.team_id ? parseInt(req.query.team_id, 10) : null;
+
+      const enriched = await Promise.all(shared.map(async (c) => {
+        const optedInTeamIds = await connectionController.getOptedInTeamIds(c.id);
+        const json = c.toJSON();
+        json.optedInTeamIds = optedInTeamIds;
+        json.isOptedIn = teamIdParam ? optedInTeamIds.includes(teamIdParam) : false;
+        json.isOwner = teamIdParam ? c.team_id === teamIdParam : false;
+        return json;
+      }));
+
+      return res.status(200).send(enriched);
+    } catch (error) {
+      return res.status(400).json({ message: error.message });
+    }
+  });
+  // -----------------------------------------
+
+  /*
+  ** Route to opt a team into a shared connection
+  */
+  app.post(
+    "/team/:team_id/connections/:connection_id/optin",
+    verifyToken,
+    checkPermissions("createOwn"),
+    async (req, res) => {
+      try {
+        const row = await connectionController.optInTeam(
+          req.params.team_id, req.params.connection_id
+        );
+        return res.status(200).send(row || { ok: true });
+      } catch (error) {
+        return res.status(400).json({ message: error.message });
+      }
+    }
+  );
+  // -----------------------------------------
+
+  /*
+  ** Route to opt a team out of a shared connection
+  */
+  app.delete(
+    "/team/:team_id/connections/:connection_id/optin",
+    verifyToken,
+    checkPermissions("deleteOwn"),
+    async (req, res) => {
+      try {
+        const removed = await connectionController.optOutTeam(
+          req.params.team_id, req.params.connection_id
+        );
+        return res.status(200).send({ removed });
+      } catch (error) {
+        return res.status(400).json({ message: error.message });
+      }
+    }
+  );
+  // -----------------------------------------
 
   /*
   ** Route to trigger a MongoDB schema update for a connection

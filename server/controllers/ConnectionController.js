@@ -210,19 +210,74 @@ class ConnectionController {
       });
   }
 
-  findByTeam(teamId) {
-    return db.Connection.findAll({
+  async findByTeam(teamId) {
+    const owned = await db.Connection.findAll({
       where: { team_id: teamId },
       attributes: { exclude: ["password", "schema"] },
       include: [{ model: db.OAuth, attributes: { exclude: ["refreshToken"] } }],
       order: [["createdAt", "DESC"]],
-    })
-      .then((connections) => {
-        return connections;
-      })
-      .catch((error) => {
-        return new Promise((resolve, reject) => reject(error));
-      });
+    });
+
+    const optedInIds = (await db.TeamConnection.findAll({
+      where: { team_id: teamId },
+      attributes: ["connection_id"],
+    })).map((tc) => tc.connection_id);
+
+    const ownedIds = new Set(owned.map((c) => c.id));
+    const sharedIds = optedInIds.filter((id) => !ownedIds.has(id));
+    if (sharedIds.length === 0) return owned;
+
+    const shared = await db.Connection.findAll({
+      where: { id: sharedIds, shared: true },
+      attributes: { exclude: ["password", "schema"] },
+      include: [{ model: db.OAuth, attributes: { exclude: ["refreshToken"] } }],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return [...owned, ...shared];
+  }
+
+  async findShared() {
+    return db.Connection.findAll({
+      where: { shared: true },
+      attributes: { exclude: ["password", "schema"] },
+      include: [{ model: db.OAuth, attributes: { exclude: ["refreshToken"] } }],
+      order: [["createdAt", "DESC"]],
+    });
+  }
+
+  async getOptedInTeamIds(connectionId) {
+    const rows = await db.TeamConnection.findAll({
+      where: { connection_id: connectionId },
+      attributes: ["team_id"],
+    });
+    return rows.map((r) => r.team_id);
+  }
+
+  async isTeamOptedIn(teamId, connectionId) {
+    const row = await db.TeamConnection.findOne({
+      where: { team_id: teamId, connection_id: connectionId },
+    });
+    return !!row;
+  }
+
+  async optInTeam(teamId, connectionId) {
+    const connection = await db.Connection.findByPk(connectionId);
+    if (!connection) throw new Error("Connection not found");
+    if (!connection.shared) throw new Error("Connection is not shared");
+    if (`${connection.team_id}` === `${teamId}`) return null;
+
+    const [row] = await db.TeamConnection.findOrCreate({
+      where: { team_id: teamId, connection_id: connectionId },
+      defaults: { team_id: teamId, connection_id: connectionId },
+    });
+    return row;
+  }
+
+  async optOutTeam(teamId, connectionId) {
+    return db.TeamConnection.destroy({
+      where: { team_id: teamId, connection_id: connectionId },
+    });
   }
 
   findByProject(projectId) {
