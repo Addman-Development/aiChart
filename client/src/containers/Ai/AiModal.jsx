@@ -1688,10 +1688,22 @@ function AiModal({ isOpen, onClose }) {
       backdrop="blur"
       isOpen={isOpen}
       onClose={onClose}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      hideCloseButton
       size={conversation ? "6xl" : "xl"}
       scrollBehavior={conversation ? "normal" : "inside"}
     >
       <ModalContent>{(closeModal) => (<>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={() => onClose()}
+          className="absolute top-1 right-1 z-50 p-2 text-foreground-500 rounded-full hover:bg-default-100 active:bg-default-200 outline-none focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
+        >
+          <LuX size={18} />
+        </button>
         {!conversation && (
           <ModalBody className="pt-8">
             <div className="flex flex-col gap-2 items-center justify-center">
