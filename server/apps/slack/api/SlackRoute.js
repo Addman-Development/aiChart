@@ -96,7 +96,7 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
-  ** Auth Complete - Link Slack workspace to ADDMAN-SmartChart team
+  ** Auth Complete - Link Slack workspace to Edison team
   */
   app.post("/apps/slack/auth/complete", verifyToken, async (req, res) => {
     const { state_token, team_id, default_project_id } = req.body;

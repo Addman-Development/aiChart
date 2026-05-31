@@ -13,13 +13,13 @@ function send(data) {
   if (alert.type === "milestone") {
     title = `You reached your milestone of *${value}*!`;
   } else if (alert.type === "threshold_above") {
-    title = `ADDMAN-SmartChart found some values above your threshold of *${value}*.`;
+    title = `Edison found some values above your threshold of *${value}*.`;
   } else if (alert.type === "threshold_below") {
-    title = `ADDMAN-SmartChart found some values below your threshold of *${value}*.`;
+    title = `Edison found some values below your threshold of *${value}*.`;
   } else if (alert.type === "threshold_between") {
-    title = `ADDMAN-SmartChart found some values between your thresholds of *${lower}* and *${upper}*.`;
+    title = `Edison found some values between your thresholds of *${lower}* and *${upper}*.`;
   } else if (alert.type === "threshold_outside") {
-    title = `ADDMAN-SmartChart found some values your thresholds of *${lower}* and *${upper}*.`;
+    title = `Edison found some values your thresholds of *${lower}* and *${upper}*.`;
   }
 
   const valueSections = [];

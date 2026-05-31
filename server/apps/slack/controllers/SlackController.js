@@ -116,8 +116,8 @@ class SlackController {
 
       if (!integration) {
         throw new Error(
-          "ADDMAN-SmartChart app is not installed in this workspace. "
-          + "Please install the ADDMAN-SmartChart app from the Slack App Directory first, "
+          "Edison app is not installed in this workspace. "
+          + "Please install the Edison app from the Slack App Directory first, "
           + "then run `/smartchart connect` again."
         );
       }
@@ -128,7 +128,7 @@ class SlackController {
       const isInstaller = integration.config.installer_slack_user_id === slackUserId;
 
       if (!isAdmin && !isInstaller) {
-        throw new Error("Only workspace admins can connect to ADDMAN-SmartChart.");
+        throw new Error("Only workspace admins can connect to Edison.");
       }
 
       // Generate state token
@@ -151,13 +151,13 @@ class SlackController {
         botToken,
         slackUserId,
         {
-          text: "Connect this Slack workspace to your ADDMAN-SmartChart team",
+          text: "Connect this Slack workspace to your Edison team",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "🔗 Connect this Slack workspace to your ADDMAN-SmartChart team:",
+                text: "🔗 Connect this Slack workspace to your Edison team:",
               },
             },
             {
@@ -214,7 +214,7 @@ class SlackController {
 
     // Create new conversation if needed
     if (!conversationId) {
-      // Find an ADDMAN-SmartChart user from this team to own the conversation
+      // Find an Edison user from this team to own the conversation
       // Prefer team owner/admin
       const teamRole = await db.TeamRole.findOne({
         where: {
@@ -293,7 +293,7 @@ class SlackController {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "❌ *This integration is not allowed in this channel.*\n\nTo enable ADDMAN-SmartChart in this channel, add it to the allowed channels list.",
+            text: "❌ *This integration is not allowed in this channel.*\n\nTo enable Edison in this channel, add it to the allowed channels list.",
           },
         },
         {
@@ -341,17 +341,17 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
+        throw new Error("This workspace isn't connected to Edison. Use `/smartchart connect` to get started.");
       }
 
       if (!integration.team_id || !integration.apikey_id) {
-        throw new Error("This workspace isn't connected to a ADDMAN-SmartChart team. Use `/smartchart connect` to get started.");
+        throw new Error("This workspace isn't connected to a Edison team. Use `/smartchart connect` to get started.");
       }
 
       // Get bot token
       botToken = integration.config.bot_token;
       if (!botToken) {
-        throw new Error("Bot token not found. Please reinstall the ADDMAN-SmartChart Slack app.");
+        throw new Error("Bot token not found. Please reinstall the Edison Slack app.");
       }
 
       // Check channel access
@@ -650,7 +650,7 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
+        throw new Error("This workspace isn't connected to Edison. Use `/smartchart connect` to get started.");
       }
 
       // Check channel access early - before processing the question
@@ -727,18 +727,18 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
+        throw new Error("This workspace isn't connected to Edison. Use `/smartchart connect` to get started.");
       }
 
       if (!integration.team_id || !integration.apikey_id) {
-        await sendDM(integration?.config?.bot_token, slackUserId, "This workspace isn't connected to ADDMAN-SmartChart. Use `/smartchart connect` to get started.");
+        await sendDM(integration?.config?.bot_token, slackUserId, "This workspace isn't connected to Edison. Use `/smartchart connect` to get started.");
         return;
       }
 
       // Get bot token
       const botToken = integration.config.bot_token;
       if (!botToken) {
-        await sendDM(integration.config.bot_token, slackUserId, "Bot token not found. Please reinstall the ADDMAN-SmartChart Slack app.");
+        await sendDM(integration.config.bot_token, slackUserId, "Bot token not found. Please reinstall the Edison Slack app.");
         return;
       }
 
@@ -747,7 +747,7 @@ class SlackController {
           type: "header",
           text: {
             type: "plain_text",
-            text: "ADDMAN-SmartChart Integration Status",
+            text: "Edison Integration Status",
           },
         },
       ];
@@ -775,13 +775,13 @@ class SlackController {
           type: "section",
           text: {
             type: "mrkdwn",
-            text: "❌ Not connected to a ADDMAN-SmartChart team\nUse `/smartchart connect` to get started",
+            text: "❌ Not connected to a Edison team\nUse `/smartchart connect` to get started",
           },
         });
       }
 
       const statusMessage = {
-        text: "ADDMAN-SmartChart Integration Status",
+        text: "Edison Integration Status",
         blocks,
       };
 
@@ -817,13 +817,13 @@ class SlackController {
    */
   async handleHelp(slackTeamId, slackUserId, channelId, responseUrl = null) { // eslint-disable-line max-len
     const helpMessage = {
-      text: "ADDMAN-SmartChart Slack Commands",
+      text: "Edison Slack Commands",
       blocks: [
         {
           type: "header",
           text: {
             type: "plain_text",
-            text: "ADDMAN-SmartChart Slack Commands",
+            text: "Edison Slack Commands",
           },
         },
         {
@@ -834,9 +834,9 @@ class SlackController {
               + "Tag @smartchart in any channel to ask questions about your data. Each thread maintains its own conversation history.\n\n"
               + "*Example:* `@smartchart how many users do I have?`\n\n"
               + "*Setup Commands:*\n"
-              + "• `/smartchart connect` - Connect this workspace to a ADDMAN-SmartChart team\n"
+              + "• `/smartchart connect` - Connect this workspace to a Edison team\n"
               + "• `/smartchart status` - Check connection status\n"
-              + "• `/smartchart disconnect` - Disconnect from ADDMAN-SmartChart team\n"
+              + "• `/smartchart disconnect` - Disconnect from Edison team\n"
               + "• `/smartchart help` - Show this help message",
           },
         },
@@ -899,13 +899,13 @@ class SlackController {
       });
 
       if (!integration) {
-        throw new Error("This workspace isn't connected to ADDMAN-SmartChart.");
+        throw new Error("This workspace isn't connected to Edison.");
       }
 
       // Check if user is admin
       const botToken = integration.config.bot_token;
       if (!botToken) {
-        throw new Error("Bot token not found. Please reinstall the ADDMAN-SmartChart Slack app.");
+        throw new Error("Bot token not found. Please reinstall the Edison Slack app.");
       }
 
       const isAdmin = await isWorkspaceAdmin(botToken, slackUserId);
@@ -933,13 +933,13 @@ class SlackController {
 
       if (!integration.team_id || !integration.apikey_id) {
         const message = {
-          text: "Not connected to a ADDMAN-SmartChart team.",
+          text: "Not connected to a Edison team.",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "❌ Not connected to a ADDMAN-SmartChart team.",
+                text: "❌ Not connected to a Edison team.",
               },
             },
           ],
@@ -959,13 +959,13 @@ class SlackController {
       });
 
       const successMessage = {
-        text: "Disconnected from ADDMAN-SmartChart team. Use `/smartchart connect` to reconnect.",
+        text: "Disconnected from Edison team. Use `/smartchart connect` to reconnect.",
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: "✅ Disconnected from ADDMAN-SmartChart team. Use `/smartchart connect` to reconnect.",
+              text: "✅ Disconnected from Edison team. Use `/smartchart connect` to reconnect.",
             },
           },
         ],
@@ -1046,20 +1046,20 @@ class SlackController {
         tokenData.bot_token,
         tokenData.installer_user_id,
         {
-          text: "ADDMAN-SmartChart has been installed in your workspace!",
+          text: "Edison has been installed in your workspace!",
           blocks: [
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "🎉 *ADDMAN-SmartChart has been installed in your workspace!*",
+                text: "🎉 *Edison has been installed in your workspace!*",
               },
             },
             {
               type: "section",
               text: {
                 type: "mrkdwn",
-                text: "To connect this workspace to a ADDMAN-SmartChart team, use the command:\n`/smartchart connect`",
+                text: "To connect this workspace to a Edison team, use the command:\n`/smartchart connect`",
               },
             },
           ],
@@ -1073,7 +1073,7 @@ class SlackController {
   }
 
   /**
-   * Handle auth complete - Link Slack workspace to ADDMAN-SmartChart team
+   * Handle auth complete - Link Slack workspace to Edison team
    */
   async handleAuthComplete(stateToken, teamId, userId, defaultProjectId, userEmail = null) {
     // Find and verify auth state
@@ -1148,13 +1148,13 @@ class SlackController {
       integration.config.bot_token,
       authState.external_user_id,
       {
-        text: `Successfully connected to ADDMAN-SmartChart team: ${team.name}`,
+        text: `Successfully connected to Edison team: ${team.name}`,
         blocks: [
           {
             type: "section",
             text: {
               type: "mrkdwn",
-              text: `✅ *Successfully connected to ADDMAN-SmartChart team: ${team.name}*`,
+              text: `✅ *Successfully connected to Edison team: ${team.name}*`,
             },
           },
           {

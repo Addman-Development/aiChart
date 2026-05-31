@@ -258,7 +258,7 @@ function ChartPreview(props) {
                   {"Use cached data"}
                 </Checkbox>
                 <Tooltip
-                  content="ADDMAN-SmartChart will use cached data for extra editing speed ⚡️"
+                  content="Edison will use cached data for extra editing speed ⚡️"
                 >
                   <div><LuInfo /></div>
                 </Tooltip>

@@ -5,6 +5,7 @@ const UserController = require("../controllers/UserController");
 const verifyToken = require("../modules/verifyToken");
 const userResponse = require("../modules/userResponse");
 const keycloakConnector = require("../modules/keycloakConnector");
+const keycloakTokenStore = require("../modules/keycloakTokenStore");
 const logger = require("../modules/logger").child({ module: "api:KeycloakRoute" });
 
 const apiLimiter = (max = 10) => {
@@ -118,6 +119,7 @@ module.exports = (app) => {
 
       if (user) {
         await userController.update(user.id, { lastLogin: new Date() });
+        await keycloakTokenStore.cacheTokens(user.id, kcUser);
         return tokenizeUser(user, res);
       }
 
@@ -135,6 +137,7 @@ module.exports = (app) => {
           lastLogin: new Date(),
         });
 
+        await keycloakTokenStore.cacheTokens(user.id, kcUser);
         return tokenizeUser(user, res, { linked: "true" });
       }
 
@@ -153,6 +156,7 @@ module.exports = (app) => {
         keycloakId: kcUser.keycloakId,
       });
 
+      await keycloakTokenStore.cacheTokens(newUser.id, kcUser);
       return tokenizeUser(newUser, res, { new: "true" });
     } catch (err) {
       logger.error({ err }, "keycloak: callback failed");
@@ -223,6 +227,7 @@ module.exports = (app) => {
         keycloakLinkedAt: new Date(),
       });
 
+      await keycloakTokenStore.cacheTokens(req.user.id, kcUser);
       return res.status(200).json(userResponse(updatedUser));
     } catch (err) {
       logger.error({ err }, "keycloak: link failed");

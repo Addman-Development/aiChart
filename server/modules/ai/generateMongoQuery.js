@@ -40,7 +40,7 @@ async function generateMongoQuery(schema, question, conversationHistory = [], cu
         - If the user asks for a query with variables, use the variables in the query.
         - Example: collection('movies').find({status: {{status}}}).limit(10)
         - Don't add variables if not specified by the user.
-        - ADDMAN-SmartChart supports a "Scope dates to query" feature using the reserved variables {{start_date}} and {{end_date}}. These are automatically converted to new Date() objects at runtime, so use them directly without wrapping in new Date() or quotes.
+        - Edison supports a "Scope dates to query" feature using the reserved variables {{start_date}} and {{end_date}}. These are automatically converted to new Date() objects at runtime, so use them directly without wrapping in new Date() or quotes.
         - DEFAULT BEHAVIOR: When the schema contains date/timestamp fields that can logically scope the result set (e.g. created_at, updated_at, order_date, timestamp), ALWAYS include {{start_date}} and {{end_date}} in the query filters. This is the preferred pattern for all time-series or date-bound queries.
         - Example: collection('orders').find({created_at: {$gte: {{start_date}}, $lte: {{end_date}}}}).sort({created_at: 1})
         - The system will automatically enable date scoping on the chart. These variables are populated from the chart's date picker.

@@ -275,7 +275,7 @@ function ConnectionList() {
             Data connections
           </div>
           <div className="text-sm text-foreground-500">
-            {"Connect your data sources to ADDMAN-SmartChart"}
+            {"Connect your data sources to Edison"}
           </div>
         </div>
 

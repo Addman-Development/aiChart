@@ -37,7 +37,7 @@ export async function createTestApp() {
 
   // Basic health check route
   app.get("/", (req, res) => {
-    return res.json({ message: "ADDMAN-SmartChart Test API", status: "ok" });
+    return res.json({ message: "Edison Test API", status: "ok" });
   });
 
   // Load middlewares

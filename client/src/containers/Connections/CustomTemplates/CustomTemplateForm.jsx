@@ -243,7 +243,7 @@ function CustomTemplateForm(props) {
             </div>
           )}
           <Row>
-            <Text b>{"Select which charts you want ADDMAN-SmartChart to create for you"}</Text>
+            <Text b>{"Select which charts you want Edison to create for you"}</Text>
           </Row>
           <Spacer y={1} />
           <div className="grid grid-cols-12 gap-2">

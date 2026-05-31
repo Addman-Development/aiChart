@@ -49,7 +49,7 @@ function Onboarding() {
     <div className="pt-20">
       <Row justify="center" align="center">
         <Link to="/">
-          <img src={cbLogoSmall} style={{ width: 70 }} alt="ADDMAN-SmartChart logo" />
+          <img src={cbLogoSmall} style={{ width: 70 }} alt="Edison logo" />
         </Link>
       </Row>
       <Row justify="center" align="center" className="mt-6">

@@ -16,7 +16,7 @@ module.exports.sendInvite = (invite, admin, teamName) => {
   const message = {
     from: settings.adminMail,
     to: invite.email,
-    subject: "ADDMAN-SmartChart - Join the team",
+    subject: "Edison - Join the team",
     text: `
       Hi there,
 
@@ -24,7 +24,7 @@ module.exports.sendInvite = (invite, admin, teamName) => {
 
       ${inviteUrl}
 
-      - ADDMAN-SmartChart
+      - Edison
     `,
     html: `
       <h3>Hi there 👋</h3>
@@ -33,7 +33,7 @@ module.exports.sendInvite = (invite, admin, teamName) => {
 
       <p>${inviteUrl}</p>
 
-      - ADDMAN-SmartChart
+      - Edison
     `,
   };
 
@@ -44,7 +44,7 @@ module.exports.sendUserCreatedInvite = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.email,
-    subject: "ADDMAN-SmartChart - Your account has been created",
+    subject: "Edison - Your account has been created",
     text: `
       Hi ${data.name},
 
@@ -60,7 +60,7 @@ module.exports.sendUserCreatedInvite = (data) => {
 
       You will be asked to change your password on your first login.
 
-      - ADDMAN-SmartChart
+      - Edison
     `,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -73,7 +73,7 @@ module.exports.sendUserCreatedInvite = (data) => {
         <div style="text-align: center; margin: 24px 0;">
           <a href="${data.loginUrl}"
              style="background-color: #006FEE; color: #ffffff; padding: 12px 32px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">
-            Log in to ADDMAN-SmartChart
+            Log in to Edison
           </a>
         </div>
 
@@ -96,7 +96,7 @@ module.exports.sendUserCreatedInvite = (data) => {
 
         <p><strong>You will be asked to change your password on your first login.</strong></p>
 
-        <p>- ADDMAN-SmartChart</p>
+        <p>- Edison</p>
       </div>
     `,
   };
@@ -113,7 +113,7 @@ module.exports.sendAccessRequest = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.ownerEmail,
-    subject: `ADDMAN-SmartChart - Access request for ${data.teamName}`,
+    subject: `Edison - Access request for ${data.teamName}`,
     text: `
       Hi ${data.ownerName || "there"},
 
@@ -124,7 +124,7 @@ module.exports.sendAccessRequest = (data) => {
       Review and approve from the team members page:
       ${data.reviewUrl}
 
-      - ADDMAN-SmartChart
+      - Edison
     `,
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -152,7 +152,7 @@ module.exports.sendAccessRequest = (data) => {
         <p style="color: #666; font-size: 13px;">If the button doesn't work, paste this link into your browser:</p>
         <p style="color: #666; font-size: 13px; word-break: break-all;">${data.reviewUrl}</p>
 
-        <p>- ADDMAN-SmartChart</p>
+        <p>- Edison</p>
       </div>
     `,
   };
@@ -164,26 +164,26 @@ module.exports.passwordReset = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.email,
-    subject: "ADDMAN-SmartChart - Reset your password",
+    subject: "Edison - Reset your password",
     text: `
-      Reset your ADDMAN-SmartChart password
+      Reset your Edison password
 
       You can reset your password by clicking the link below:
 
       ${data.resetUrl}
 
       Cheers,
-      ADDMAN-SmartChart
+      Edison
     `,
     html: `
-      <h3>Reset your ADDMAN-SmartChart password 🔑</h3>
+      <h3>Reset your Edison password 🔑</h3>
 
       <p>You can reset your password by clicking the link below:</p>
 
       <p>${data.resetUrl}</p>
 
       Cheers,
-      ADDMAN-SmartChart
+      Edison
     `,
   };
 
@@ -194,7 +194,7 @@ module.exports.sendChartAlert = (data) => {
   const message = {
     from: settings.adminMail,
     bcc: data.recipients,
-    subject: `ADDMAN-SmartChart - ${data.chartName} alert`,
+    subject: `Edison - ${data.chartName} alert`,
   };
 
   message.text = `Your "${data.chartName}" chart has a new alert`;
@@ -207,7 +207,7 @@ module.exports.sendChartAlert = (data) => {
   }
   message.text += `Check your dashboard here: ${data.dashboardUrl}`;
   message.text += "\n";
-  message.text += "- ADDMAN-SmartChart";
+  message.text += "- Edison";
 
   ejs.renderFile(`${__dirname}/emailTemplates/alert.ejs`, {
     chartName: data.chartName,
@@ -229,7 +229,7 @@ module.exports.emailUpdate = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.email,
-    subject: "ADDMAN-SmartChart - new email confirmation",
+    subject: "Edison - new email confirmation",
   };
 
   ejs.renderFile(`${__dirname}/emailTemplates/emailUpdate.ejs`, {
@@ -245,7 +245,7 @@ module.exports.sendDashboardSnapshot = (data) => {
   const message = {
     from: settings.adminMail,
     to: data.recipients,
-    subject: `ADDMAN-SmartChart - ${data.projectName} snapshot`,
+    subject: `Edison - ${data.projectName} snapshot`,
   };
 
   ejs.renderFile(`${__dirname}/emailTemplates/snapshot.ejs`, {

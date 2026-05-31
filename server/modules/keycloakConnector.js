@@ -96,6 +96,21 @@ class KeycloakConnector {
       email,
       name,
       idToken: tokenSet.id_token,
+      accessToken: tokenSet.access_token,
+      refreshToken: tokenSet.refresh_token,
+      expiresAt: tokenSet.expires_at, // epoch seconds
+    };
+  }
+
+  async refresh(refreshToken) {
+    const client = await this.getClient();
+    const tokenSet = await client.refresh(refreshToken);
+
+    return {
+      accessToken: tokenSet.access_token,
+      // Keycloak rotates refresh tokens; fall back to the old one if not returned.
+      refreshToken: tokenSet.refresh_token || refreshToken,
+      expiresAt: tokenSet.expires_at,
     };
   }
 

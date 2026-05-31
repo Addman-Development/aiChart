@@ -5,7 +5,7 @@ const { getRedisOptions } = require("../redisConnection");
 const logger = require("./logger").child({ module: "socketManager" });
 
 /**
- * Socket.IO Manager for ADDMAN-SmartChart
+ * Socket.IO Manager for Edison
  *
  * Handles real-time communication for AI orchestrations and other features.
  * Provides room-based isolation for teams/users and progress tracking.

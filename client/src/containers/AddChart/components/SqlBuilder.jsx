@@ -408,7 +408,7 @@ function SqlBuilder(props) {
             </Checkbox>
             <Spacer x={0.5} />
             <Tooltip
-              content={"ADDMAN-SmartChart will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change any query settings."}
+              content={"Edison will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change any query settings."}
               className="max-w-[400px]"
             >
               <div><LuInfo /></div>

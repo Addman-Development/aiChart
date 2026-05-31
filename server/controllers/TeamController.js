@@ -553,7 +553,7 @@ class TeamController {
     if (sendEmail) {
       try {
         const team = await db.Team.findByPk(teamId);
-        const teamName = team ? team.name : "ADDMAN-SmartChart";
+        const teamName = team ? team.name : "Edison";
 
         // Create a signed token with the credentials for a prepopulated login link
         let loginUrl = `${settings.client}/login`;

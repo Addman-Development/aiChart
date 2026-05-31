@@ -1,7 +1,7 @@
 /**
  * Entity Creation Rules for AI Orchestrator
  *
- * Provides structured instructions for creating ADDMAN-SmartChart entities.
+ * Provides structured instructions for creating Edison entities.
  * Edit this file to adjust how the AI creates datasets, charts, etc.
  */
 

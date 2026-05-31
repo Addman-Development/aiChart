@@ -198,9 +198,9 @@ function TeamSettings() {
             onValueChange={(selected) => _onToggleBranding(selected)}
             size="sm"
           >
-            Show ADDMAN-SmartChart branding
+            Show Edison branding
           </Switch>
-          <Tooltip content="ADDMAN-SmartChart branding is shown in the footer of the dashboard reports">
+          <Tooltip content="Edison branding is shown in the footer of the dashboard reports">
             <div><LuInfo size={18} className="text-foreground" /></div>
           </Tooltip>
         </div>

@@ -184,7 +184,7 @@ function WebhookIntegrations({ teamId }) {
           <Link href="#" target="_blank" rel="noopener" className="text-sm">
             <LuInfo size={16} />
             <Spacer x={1} />
-            {"Click to see what ADDMAN-SmartChart sends over the webhook"}
+            {"Click to see what Edison sends over the webhook"}
           </Link>
         </div>
       </div>
@@ -272,7 +272,7 @@ function WebhookIntegrations({ teamId }) {
             </div>
             <div>
               <Input
-                label="The URL where ADDMAN-SmartChart sends a POST request to"
+                label="The URL where Edison sends a POST request to"
                 placeholder="Webhook URL"
                 fullWidth
                 value={newIntegration.url}
@@ -369,7 +369,7 @@ function WebhookIntegrations({ teamId }) {
               className="relative pb-[56.25%] min-h-full"
             >
               <iframe
-                title="ADDMAN-SmartChart Slack alerts"
+                title="Edison Slack alerts"
                 src="https://www.loom.com/embed/84e390c2e9b844748cb30812dc0591e1"
                 frameBorder="0"
                 webkitallowfullscreen

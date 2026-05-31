@@ -1714,7 +1714,7 @@ function AiModal({ isOpen, onClose }) {
               />
               <div className="flex flex-col items-center justify-center">
                 <div className="flex flex-row items-center gap-2">
-                  <div className="font-tw font-medium text-lg">ADDMAN-SmartChart AI</div>
+                  <div className="font-tw font-medium text-lg">Edison AI</div>
                   <Chip color="primary" variant="flat" size="sm" radius="sm" className="shadow-sm">
                     Beta
                   </Chip>

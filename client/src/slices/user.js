@@ -184,21 +184,32 @@ export const relog = createAsyncThunk(
 
 export const sendFeedback = createAsyncThunk(
   "user/sendFeedback",
-  async ({ name, feedback, email }) => {
-    const url = `${API_HOST}/user/feedback`;
+  async ({ category, message, pageUrl, module }, { rejectWithValue }) => {
+    const url = `${API_HOST}/api/feedback`;
     const body = JSON.stringify({
-      "from": name,
-      "email": email,
-      "data": feedback,
+      category,
+      message,
+      pageUrl,
+      module,
     });
     const headers = new Headers({
       "Accept": "application/json",
       "Content-Type": "application/json",
+      "Authorization": `Bearer ${getAuthToken()}`,
     });
 
     const response = await fetch(url, { body, headers, method: "POST" });
     if (!response.ok) {
-      throw new Error("Error sending feedback");
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (e) { /* non-JSON error body */ }
+      // Surface the server's reauth signal so the caller can re-authenticate and retry.
+      return rejectWithValue({
+        status: response.status,
+        reauthRequired: Boolean(payload.reauthRequired),
+        error: payload.error || "Error sending feedback",
+      });
     }
 
     const data = await response.json();

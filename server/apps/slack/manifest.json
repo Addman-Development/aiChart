@@ -1,9 +1,9 @@
 {
   "display_information": {
-    "name": "ADDMAN-SmartChart",
-    "description": "ADDMAN-SmartChart insights in Slack",
+    "name": "Edison",
+    "description": "Edison insights in Slack",
     "background_color": "#048bde",
-    "long_description": "ADDMAN-SmartChart brings your data into Slack, so your team can get answers without context switching. Connect data sources, pick dashboards or projects, ask questions in plain English, and get clear, shareable insights with links back to ADDMAN-SmartChart."
+    "long_description": "Edison brings your data into Slack, so your team can get answers without context switching. Connect data sources, pick dashboards or projects, ask questions in plain English, and get clear, shareable insights with links back to Edison."
   },
   "features": {
     "app_home": {
@@ -12,14 +12,14 @@
       "messages_tab_read_only_enabled": false
     },
     "bot_user": {
-      "display_name": "ADDMAN-SmartChart",
+      "display_name": "Edison",
       "always_online": true
     },
     "slash_commands": [
       {
         "command": "/smartchart",
         "url": "https://api.your-smartchart-url.com/apps/slack/commands",
-        "description": "ADDMAN-SmartChart commands",
+        "description": "Edison commands",
         "usage_hint": "help | connect | disconnect | status",
         "should_escape": false
       }

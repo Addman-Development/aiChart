@@ -118,7 +118,7 @@ const setUpQueues = (app) => {
     serverAdapter,
     options: {
       uiConfig: {
-        boardTitle: "ADDMAN-SmartChart Jobs",
+        boardTitle: "Edison Jobs",
       },
     },
   });

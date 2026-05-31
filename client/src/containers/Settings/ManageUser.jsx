@@ -592,7 +592,7 @@ function ManageUser() {
           </ModalHeader>
           <ModalBody>
             <div>Are you sure you want to remove your 2FA method? You can add a new one afterwards.</div>
-            <div>To proceed with the deletion, please confirm your ADDMAN-SmartChart password.</div>
+            <div>To proceed with the deletion, please confirm your Edison password.</div>
             <Input
               label="Password"
               placeholder="Enter your password"

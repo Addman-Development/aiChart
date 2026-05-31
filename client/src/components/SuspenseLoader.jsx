@@ -6,7 +6,7 @@ function SuspenseLoader() {
     <div className="flex flex-col items-center justify-center h-[70vh]">
       <img 
         src={cbLogoInverted} 
-        alt="ADDMAN-SmartChart Logo" 
+        alt="Edison Logo" 
         width={80} 
         className="animate-pulse"
       />

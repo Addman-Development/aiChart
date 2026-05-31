@@ -165,7 +165,7 @@ async function availableTools() {
     },
     {
       name: "create_dataset",
-      description: "Persist an SQL query as an ADDMAN-SmartChart dataset (before making a chart).",
+      description: "Persist an SQL query as an Edison dataset (before making a chart).",
       parameters: {
         type: "object",
         properties: {
@@ -482,7 +482,7 @@ This is a continuing conversation. Be aware of previous interactions and maintai
 
   const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
 
-  return `You are an AI assistant for ADDMAN-SmartChart, a data visualization platform. Your role is to help users query their data and create charts.
+  return `You are an AI assistant for Edison, a data visualization platform. Your role is to help users query their data and create charts.
 
 ## Current Date
 Today is ${today}. Use this when interpreting relative date references (e.g. "YTD", "last month", "this quarter").
@@ -506,7 +506,7 @@ ${projects.map((p) => `- ${p.name} [ID: ${p.id}] - ${p.Charts?.length || 0} char
 ## Chart Types Available
 ${chartCatalog.map((catalog) => Object.entries(catalog).map(([type, info]) => `- ${type}: ${info.description}`).join("\n")).join("\n")}
 
-## How ADDMAN-SmartChart Works
+## How Edison Works
 1. **Connections**: Store database credentials and schemas. Currently supported:
    - **MySQL connections**: SQL databases with tables/columns
    - **PostgreSQL connections**: SQL databases with tables/columns
@@ -541,7 +541,7 @@ ${ENTITY_CREATION_RULES}
 - **Only ask questions when**: Context is truly ambiguous, multiple valid options exist with no clear preference, or you need clarification on user intent.
 
 ## Limitations
-**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. ADDMAN-SmartChart visualizes data from connected databases. Connect MySQL, PostgreSQL, SQL Server, or MongoDB via the Connections page."
+**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. Edison visualizes data from connected databases. Connect MySQL, PostgreSQL, SQL Server, or MongoDB via the Connections page."
 
 ## Workflow Guidelines
 1. When a user asks a data question:

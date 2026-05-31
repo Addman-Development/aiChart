@@ -38,7 +38,7 @@ function NoticeBoard() {
             <div className="relative pb-[60.25%] h-0 mb-4">
               <Image
                 src={startVideoThumbnail}
-                alt="ADDMAN-SmartChart quick start video"
+                alt="Edison quick start video"
                 className="rounded-md"
                 onClick={() => setShowQuickStart(true)}
               />

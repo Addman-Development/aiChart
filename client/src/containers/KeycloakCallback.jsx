@@ -5,10 +5,33 @@ import { Spinner } from "@heroui/react";
 import cookie from "react-cookies";
 import moment from "moment";
 
-import { relog } from "../slices/user";
+import toast from "react-hot-toast";
+
+import { relog, sendFeedback } from "../slices/user";
 import { tokenKey } from "../modules/auth";
+import { FEEDBACK_PENDING_KEY, FEEDBACK_REAUTH_ATTEMPTED_KEY } from "../modules/keycloakReauth";
 import Row from "../components/Row";
 import Text from "../components/Text";
+
+// If a feedback submission was interrupted by a re-auth redirect, resubmit it
+// once now that the server has re-seeded the Keycloak token cache.
+async function resumePendingFeedback(dispatch) {
+  const pendingRaw = sessionStorage.getItem(FEEDBACK_PENDING_KEY);
+  if (!pendingRaw) return;
+
+  // Clear immediately so we never resubmit more than once.
+  sessionStorage.removeItem(FEEDBACK_PENDING_KEY);
+
+  try {
+    const pending = JSON.parse(pendingRaw);
+    await dispatch(sendFeedback(pending)).unwrap();
+    sessionStorage.removeItem(FEEDBACK_REAUTH_ATTEMPTED_KEY);
+    toast.success("Thanks! Your feedback was sent.");
+  } catch (e) {
+    // Keep the attempt marker so a persistent failure (e.g. iss mismatch) doesn't loop.
+    toast.error("We re-authenticated, but couldn't send your feedback. Please try again later.");
+  }
+}
 
 const expires = moment().add(1, "month").toDate();
 
@@ -33,12 +56,17 @@ function KeycloakCallback() {
         const isLinked = params.get("linked") === "true";
 
         if (error) {
+          // Don't leave a stale pending submission to auto-fire on a later login.
+          sessionStorage.removeItem(FEEDBACK_PENDING_KEY);
+          sessionStorage.removeItem(FEEDBACK_REAUTH_ATTEMPTED_KEY);
           setStatus("error");
           setMessage(getErrorMessage(error, errorMessage));
           return;
         }
 
         if (!token) {
+          sessionStorage.removeItem(FEEDBACK_PENDING_KEY);
+          sessionStorage.removeItem(FEEDBACK_REAUTH_ATTEMPTED_KEY);
           setStatus("error");
           setMessage("No authentication token received. Please try again.");
           return;
@@ -48,6 +76,9 @@ function KeycloakCallback() {
         cookie.save(tokenKey, token, { expires, path: "/" });
 
         await dispatch(relog());
+
+        // Resume a feedback submission that triggered this re-auth, if any.
+        await resumePendingFeedback(dispatch);
 
         setStatus("success");
         if (isNewUser) {

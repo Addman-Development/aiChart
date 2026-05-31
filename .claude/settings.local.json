@@ -40,7 +40,17 @@
       "Bash(npm install *)",
       "Bash(sed -i '/^  \\\\/\\\\/ --------------------------------------$/d' server/api/TeamRoute.js)",
       "Bash(sed -i 's/^  \\\\/\\\\/ route .*$//' server/api/TeamRoute.js)",
-      "Bash(sed -i 's/^  \\\\/\\\\/ a route .*$//' server/api/TeamRoute.js)"
+      "Bash(sed -i 's/^  \\\\/\\\\/ a route .*$//' server/api/TeamRoute.js)",
+      "Bash(python rebrand_tmp.py)",
+      "Bash(python -c \"import json; json.load\\(open\\('server/apps/slack/manifest.json', encoding='utf-8'\\)\\); print\\('manifest.json: valid JSON'\\)\")",
+      "Bash(npx eslint *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run tests/unit/keycloakTokenStore.test.js)",
+      "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run tests/integration/feedbackRoute.test.js)",
+      "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run)",
+      "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run tests/integration/user.emailUpdate.test.js tests/integration/user.passwordReset.test.js)",
+      "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run tests/unit/keycloakTokenStore.test.js tests/integration/feedbackRoute.test.js)",
+      "Bash(docker info *)"
     ]
   }
 }

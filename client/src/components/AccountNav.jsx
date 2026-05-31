@@ -226,7 +226,7 @@ function AccountNav() {
       <Modal isOpen={showAppearance} onClose={() => setShowAppearance(false)} width="500px">
         <ModalContent>
           <ModalHeader>
-            <Text size="h4">ADDMAN-SmartChart UI Appearance</Text>
+            <Text size="h4">Edison UI Appearance</Text>
           </ModalHeader>
           <ModalBody>
             <div className="flex flex-row justify-between gap-2">

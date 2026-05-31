@@ -11,6 +11,7 @@ const integration = require("./IntegrationRoute");
 const ai = require("./AiRoute");
 const keycloak = require("./KeycloakRoute");
 const accessRequest = require("./AccessRequestRoute");
+const feedback = require("./FeedbackRoute");
 
 module.exports = {
   team,
@@ -26,4 +27,5 @@ module.exports = {
   ai,
   keycloak,
   accessRequest,
+  feedback,
 };

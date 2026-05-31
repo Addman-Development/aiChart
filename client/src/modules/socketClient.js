@@ -15,7 +15,7 @@ try {
 } catch { /* keep defaults */ }
 
 /**
- * Singleton Socket.IO client for ADDMAN-SmartChart AI
+ * Singleton Socket.IO client for Edison AI
  * Handles connection, authentication, and room management
  */
 class SocketClient {

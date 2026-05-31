@@ -7,7 +7,6 @@ import Text from "./Text";
 import { useTheme } from "../modules/ThemeContext";
 import cbLogoDark from "../assets/cb_logo_dark.svg";
 import cbLogoLight from "../assets/cb_logo_light.svg";
-import { SITE_HOST } from "../config/settings";
 
 function SimpleNavbar() {
   const { isDark } = useTheme();
@@ -15,8 +14,8 @@ function SimpleNavbar() {
   return (
     <Navbar maxWidth={"full"} className="z-50" isBordered>
       <NavbarBrand>
-        <a href={`${SITE_HOST}`}>
-          <Image src={isDark ? cbLogoDark : cbLogoLight} alt="ADDMAN-SmartChart Logo" width={150} radius="sm" />
+        <a href="https://aos.addmangroup.com/home">
+          <Image src={isDark ? cbLogoDark : cbLogoLight} alt="Edison Logo" width={150} radius="sm" />
         </a>
       </NavbarBrand>
       <NavbarContent justify="flex-end">

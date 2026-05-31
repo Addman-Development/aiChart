@@ -529,7 +529,7 @@ class UserController {
   generateQrCodeUrl(email, secret) {
     const totp = new TOTP({
       secret,
-      issuer: "ADDMAN-SmartChart",
+      issuer: "Edison",
       label: email,
       digits: 6,
       period: 30,

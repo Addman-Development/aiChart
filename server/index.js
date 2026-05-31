@@ -125,7 +125,7 @@ app.use(helmet({
 //---------------------------------------
 
 app.get("/", (req, res) => {
-  return res.send("Welcome to ADDMAN-SmartChart server API");
+  return res.send("Welcome to Edison server API");
 });
 
 app.use("/uploads", express.static("uploads"));

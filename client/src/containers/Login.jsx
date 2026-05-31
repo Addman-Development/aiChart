@@ -55,14 +55,14 @@ function Login(props) {
     <div className="pt-20">
       <Row justify="center" align="center">
         <Link to="/">
-          <img size="tiny" src={cbLogoSmall} style={{ width: 70 }} alt="ADDMAN-SmartChart logo" />
+          <img size="tiny" src={cbLogoSmall} style={{ width: 70 }} alt="Edison logo" />
         </Link>
       </Row>
       <Spacer y={4} />
       <div className="sm:flex m-4 justify-center">
         <Card shadow="none" className="border-1 border-divider">
           <CardHeader className={"flex justify-center"}>
-            <h1 className={"mt-4 text-xl font-bold"}>{"Welcome back to ADDMAN-SmartChart"}</h1>
+            <h1 className={"mt-4 text-xl font-bold"}>{"Welcome back to Edison"}</h1>
           </CardHeader>
           <CardBody>
             {keycloakEnabled && (

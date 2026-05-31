@@ -623,7 +623,7 @@ function ChartSettings({ chart, onChange }) {
           </ModalHeader>
           <ModalBody>
             <div className="text-sm">
-              {"ADDMAN-SmartChart will use this format when injecting the dates as variables in your queries. The variables are"}
+              {"Edison will use this format when injecting the dates as variables in your queries. The variables are"}
               {" "}
               <Code size="sm">{"{{start_date}}"}</Code>
               {" "}

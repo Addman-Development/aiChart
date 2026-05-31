@@ -2,7 +2,7 @@ import React, { useState } from "react"
 import { Avatar, Button, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer } from "@heroui/react"
 import { Link, useNavigate } from "react-router"
 import { useDispatch, useSelector } from "react-redux"
-import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
+import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMessageSquare, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
 
 import { cn } from "../modules/utils"
 import { useTheme } from "../modules/ThemeContext"
@@ -14,7 +14,7 @@ import canAccess from "../config/canAccess"
 import { createTeam, getTeamMembers, saveActiveTeam, selectTeam, selectTeams } from "../slices/team"
 import { clearConnections } from "../slices/connection"
 import { clearDatasets, getDatasets } from "../slices/dataset"
-import { selectSidebarCollapsed } from "../slices/ui"
+import { selectSidebarCollapsed, showFeedbackModal } from "../slices/ui"
 import toast from "react-hot-toast"
 import { logout } from "../slices/user"
 
@@ -113,13 +113,13 @@ function Sidebar() {
     >
       <div className="flex flex-col h-full justify-between">
         <div className="flex flex-col">
-          <Link to="/" className="flex items-center justify-start h-16 px-4">
+          <a href="https://aos.addmangroup.com/home" className="flex items-center justify-start h-16 px-4">
             {collapsed ? (
-              <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="ADDMAN-SmartChart Logo" width={40} radius="none" />
+              <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="Edison Logo" width={40} radius="none" />
             ) : (
-              <Image src={isDark ? cbLogoDark : cbLogoLight} alt="ADDMAN-SmartChart Logo" width={120} radius="none" />
+              <Image src={isDark ? cbLogoDark : cbLogoLight} alt="Edison Logo" width={120} radius="none" />
             )}
-          </Link>
+          </a>
 
           {collapsed && <Divider className="mb-4" />}
 
@@ -358,6 +358,18 @@ function Sidebar() {
                     Profile
                   </div>
                 </Link>
+              </DropdownItem>
+
+              <DropdownItem
+                startContent={<LuMessageSquare />}
+                key="feedback"
+                showDivider
+                onClick={() => dispatch(showFeedbackModal())}
+                textValue="Send feedback"
+              >
+                <div className="w-full text-foreground">
+                  Send feedback
+                </div>
               </DropdownItem>
 
               <DropdownItem startContent={<LuLogOut />} onClick={() => dispatch(logout())} textValue="Sign out">

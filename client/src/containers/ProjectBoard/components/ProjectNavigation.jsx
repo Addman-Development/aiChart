@@ -285,13 +285,13 @@ function ProjectNavigation(props) {
                 rel="noopener noreferrer"
                 onPress={_onVersionClicked}
                 style={{ color: "white" }}
-                title={(update && update.tag_name && "New version available") || "Current ADDMAN-SmartChart version"}
+                title={(update && update.tag_name && "New version available") || "Current Edison version"}
               >
                 <div className={"text-default-600 text-xs font-tw font-bold"} style={menuSize !== "small" ? styles.cbVersion : styles.cbVersionCollapsed}>
                   {update && update.tag_name && (
                     <LuChevronsUp color={secondary} />
                   )}
-                  ADDMAN-SmartChart
+                  Edison
                   { ` ${APP_VERSION || "v3.0.0"}`}
                 </div>
               </LinkNext>
@@ -303,7 +303,7 @@ function ProjectNavigation(props) {
                 rel="noopener noreferrer"
                 onPress={_onVersionClicked}
                 style={{ color: "white" }}
-                title={(update && update.tag_name && "New version available") || "Current ADDMAN-SmartChart version"}
+                title={(update && update.tag_name && "New version available") || "Current Edison version"}
               >
                 <div className={"text-default-600 text-xs font-tw font-bold"} style={menuSize !== "small" ? styles.cbVersion : styles.cbVersionCollapsed}>
                   {update && update.tag_name && (

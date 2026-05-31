@@ -304,45 +304,6 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
-  ** Route to send a new feedback email
-  */
-  app.post("/user/feedback", (req, res) => {
-    let { from } = req.body;
-    if (!from) from = "Anonymous";
-
-    const message = {
-      "from": { "email": "info@depomo.com" },
-      "subject": `${from} left us a feedback - ${req.body.email}`,
-      "personalizations": [{
-        "to": [{ email: "info@depomo.com" }]
-      }],
-      "content": [
-        {
-          "type": "text/plain",
-          "value": req.body.data
-        }
-      ]
-    };
-
-    return fetch(`${app.settings.sendgridHost}/mail/send`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${app.settings.sendgridKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(message),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(response.statusText);
-        return res.status(200).send({});
-      })
-      .catch((err) => {
-        return res.status(400).send(err);
-      });
-  });
-  // --------------------------------------
-
-  /*
   ** Route to request a password reset email
   */
   app.post("/user/password/reset", apiLimiter(10), (req, res) => {
