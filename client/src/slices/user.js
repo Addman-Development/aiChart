@@ -184,19 +184,37 @@ export const relog = createAsyncThunk(
 
 export const sendFeedback = createAsyncThunk(
   "user/sendFeedback",
-  async ({ category, message, pageUrl, module }, { rejectWithValue }) => {
+  async ({
+    category, message, pageUrl, module, screenshots,
+  }, { rejectWithValue }) => {
     const url = `${API_HOST}/api/feedback`;
-    const body = JSON.stringify({
-      category,
-      message,
-      pageUrl,
-      module,
-    });
+
     const headers = new Headers({
       "Accept": "application/json",
-      "Content-Type": "application/json",
       "Authorization": `Bearer ${getAuthToken()}`,
     });
+
+    // Send multipart when screenshots are attached so the files ride along; fall
+    // back to JSON otherwise. Don't set Content-Type for FormData — the browser
+    // adds the multipart boundary itself.
+    let body;
+    if (Array.isArray(screenshots) && screenshots.length > 0) {
+      const form = new FormData();
+      form.append("category", category);
+      form.append("message", message);
+      if (pageUrl) form.append("pageUrl", pageUrl);
+      if (module) form.append("module", module);
+      screenshots.forEach((file) => form.append("screenshots", file));
+      body = form;
+    } else {
+      headers.set("Content-Type", "application/json");
+      body = JSON.stringify({
+        category,
+        message,
+        pageUrl,
+        module,
+      });
+    }
 
     const response = await fetch(url, { body, headers, method: "POST" });
     if (!response.ok) {

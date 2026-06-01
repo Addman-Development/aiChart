@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { Avatar, Button, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer } from "@heroui/react"
+import { Avatar, Button, ButtonGroup, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Tooltip } from "@heroui/react"
 import { Link, useNavigate } from "react-router"
 import { useDispatch, useSelector } from "react-redux"
 import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMessageSquare, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
@@ -60,35 +60,6 @@ function Sidebar() {
     dispatch(getDatasets({ team_id: team.id }));
 
     navigate("/");
-  };
-
-  const _getTheme = () => {
-    if (theme === "system") {
-      return {
-        name: "System",
-        icon: <LuMonitor size={18} />,
-      };
-    } else if (theme === "light") {
-      return {
-        name: "Light",
-        icon: <LuSun size={18} />,
-      };
-    } else if (theme === "dark") {
-      return {
-        name: "Dark",
-        icon: <LuMoon size={18} />,
-      };
-    }
-  }
-
-  const _onCycleTheme = () => {
-    if (theme === "system") {
-      setTheme("light");
-    } else if (theme === "light") {
-      setTheme("dark");
-    } else if (theme === "dark") {
-      setTheme("system");
-    }
   };
 
   const _onCreateTeam = async () => {
@@ -314,19 +285,6 @@ function Sidebar() {
         </div>
         
         <div className="flex flex-col">
-          <div className={cn(collapsed ? "px-0 flex flex-col items-center" : "px-2")}>
-            <Button
-              variant="light"
-              startContent={collapsed? null : _getTheme().icon}
-              onPress={() => _onCycleTheme()}
-              fullWidth
-              className={cn(collapsed ? "justify-center" : "justify-start")}
-              isIconOnly={collapsed}
-            >
-              {collapsed ? _getTheme().icon : _getTheme().name}
-            </Button>
-          </div>
-          <Spacer y={2} />
           <Divider />
           <Spacer y={2} />
           <Dropdown aria-label="Select a user option">
@@ -369,6 +327,51 @@ function Sidebar() {
               >
                 <div className="w-full text-foreground">
                   Send feedback
+                </div>
+              </DropdownItem>
+
+              <DropdownItem
+                isReadOnly
+                key="theme"
+                showDivider
+                closeOnSelect={false}
+                className="cursor-default data-[hover=true]:bg-transparent"
+                textValue="Theme"
+              >
+                <div className="flex flex-row items-center justify-between gap-2 w-full">
+                  <span className="text-foreground">Theme</span>
+                  <ButtonGroup size="sm" variant="flat">
+                    <Tooltip content="Light">
+                      <Button
+                        isIconOnly
+                        aria-label="Light theme"
+                        color={theme === "light" ? "secondary" : "default"}
+                        onPress={() => setTheme("light")}
+                      >
+                        <LuSun size={16} />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="Dark">
+                      <Button
+                        isIconOnly
+                        aria-label="Dark theme"
+                        color={theme === "dark" ? "secondary" : "default"}
+                        onPress={() => setTheme("dark")}
+                      >
+                        <LuMoon size={16} />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="System">
+                      <Button
+                        isIconOnly
+                        aria-label="System theme"
+                        color={theme === "system" ? "secondary" : "default"}
+                        onPress={() => setTheme("system")}
+                      >
+                        <LuMonitor size={16} />
+                      </Button>
+                    </Tooltip>
+                  </ButtonGroup>
                 </div>
               </DropdownItem>
 

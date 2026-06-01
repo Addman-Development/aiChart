@@ -13,11 +13,14 @@ const require = createRequire(import.meta.url);
 // and the Keycloak token store is controllable per-test. Originals are restored
 // in afterAll so we don't leak into other files (the suite runs single-fork).
 const getFreshAccessToken = vi.fn();
+const uploadFeedbackScreenshots = vi.fn();
 
 const verifyTokenPath = require.resolve("../../modules/verifyToken.js");
 const tokenStorePath = require.resolve("../../modules/keycloakTokenStore.js");
+const azureBlobPath = require.resolve("../../modules/azureBlob.js");
 const originalVerifyToken = require.cache[verifyTokenPath];
 const originalTokenStore = require.cache[tokenStorePath];
+const originalAzureBlob = require.cache[azureBlobPath];
 
 require.cache[verifyTokenPath] = {
   id: verifyTokenPath,
@@ -30,6 +33,12 @@ require.cache[tokenStorePath] = {
   filename: tokenStorePath,
   loaded: true,
   exports: { getFreshAccessToken, cacheTokens: vi.fn() },
+};
+require.cache[azureBlobPath] = {
+  id: azureBlobPath,
+  filename: azureBlobPath,
+  loaded: true,
+  exports: { isConfigured: () => true, uploadFeedbackScreenshots },
 };
 
 const feedbackRoute = require("../../api/FeedbackRoute.js");
@@ -46,6 +55,7 @@ describe("Feedback API", () => {
 
   beforeEach(() => {
     getFreshAccessToken.mockReset();
+    uploadFeedbackScreenshots.mockReset();
     vi.unstubAllGlobals();
     app = buildApp();
   });
@@ -55,6 +65,8 @@ describe("Feedback API", () => {
     else delete require.cache[verifyTokenPath];
     if (originalTokenStore) require.cache[tokenStorePath] = originalTokenStore;
     else delete require.cache[tokenStorePath];
+    if (originalAzureBlob) require.cache[azureBlobPath] = originalAzureBlob;
+    else delete require.cache[azureBlobPath];
   });
 
   it("rejects an invalid category with 400", async () => {
@@ -140,6 +152,71 @@ describe("Feedback API", () => {
       pageUrl: "https://app/x",
       module: "charts",
     });
+  });
+
+  it("uploads attached screenshots and references their URLs in the entry", async () => {
+    getFreshAccessToken.mockResolvedValue("kc-access-token");
+    uploadFeedbackScreenshots.mockResolvedValue([
+      "https://blob/feedback/a.png?sas",
+      "https://blob/feedback/b.png?sas",
+    ]);
+    const fetchMock = vi.fn(async () => ({
+      status: 201,
+      text: async () => JSON.stringify({ id: "fb_456" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/feedback")
+      .field("category", "bug")
+      .field("message", "see attached")
+      .field("pageUrl", "https://app/x")
+      .attach("screenshots", Buffer.from("fake-png-1"), { filename: "one.png", contentType: "image/png" })
+      .attach("screenshots", Buffer.from("fake-png-2"), { filename: "two.png", contentType: "image/png" })
+      .expect(201);
+
+    expect(res.body).toEqual({ id: "fb_456" });
+
+    // Both files reached the uploader.
+    expect(uploadFeedbackScreenshots).toHaveBeenCalledTimes(1);
+    expect(uploadFeedbackScreenshots.mock.calls[0][0]).toHaveLength(2);
+
+    const forwarded = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(forwarded.screenshots).toEqual([
+      "https://blob/feedback/a.png?sas",
+      "https://blob/feedback/b.png?sas",
+    ]);
+  });
+
+  it("rejects a non-image attachment with 400", async () => {
+    getFreshAccessToken.mockResolvedValue("kc-access-token");
+
+    await request(app)
+      .post("/api/feedback")
+      .field("category", "bug")
+      .field("message", "bad file")
+      .attach("screenshots", Buffer.from("not-an-image"), { filename: "evil.txt", contentType: "text/plain" })
+      .expect(400);
+
+    expect(uploadFeedbackScreenshots).not.toHaveBeenCalled();
+  });
+
+  it("forwards an empty screenshots array for JSON (no attachment) requests", async () => {
+    getFreshAccessToken.mockResolvedValue("kc-access-token");
+    const fetchMock = vi.fn(async () => ({
+      status: 201,
+      text: async () => JSON.stringify({ id: "fb_789" }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await request(app)
+      .post("/api/feedback")
+      .send({ category: "idea", message: "no images here" })
+      .expect(201);
+
+    expect(uploadFeedbackScreenshots).not.toHaveBeenCalled();
+    const forwarded = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(forwarded.screenshots).toEqual([]);
   });
 
   it("relays a platform error status", async () => {

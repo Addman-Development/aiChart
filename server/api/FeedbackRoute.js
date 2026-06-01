@@ -1,7 +1,9 @@
 const rateLimit = require("express-rate-limit");
+const multer = require("multer");
 
 const verifyToken = require("../modules/verifyToken");
 const keycloakTokenStore = require("../modules/keycloakTokenStore");
+const azureBlob = require("../modules/azureBlob");
 const logger = require("../modules/logger").child({ module: "api:FeedbackRoute" });
 
 // The ADDMAN platform endpoint that ultimately stores the feedback. Overridable
@@ -11,6 +13,28 @@ const PLATFORM_FEEDBACK_URL = process.env.PLATFORM_FEEDBACK_URL
 
 const VALID_CATEGORIES = ["bug", "idea", "other"];
 const MAX_MESSAGE_LENGTH = 4000;
+
+// Screenshot upload limits. Mirrored in the client so users get instant feedback,
+// but enforced here as the source of truth.
+const MAX_SCREENSHOTS = 3;
+const MAX_SCREENSHOT_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+
+// Screenshots are held in memory just long enough to forward them to Azure Blob
+// Storage; nothing touches the local disk.
+const uploadScreenshots = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: MAX_SCREENSHOT_BYTES,
+    files: MAX_SCREENSHOTS,
+  },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Only PNG, JPEG, WebP, or GIF images are allowed."));
+  },
+}).array("screenshots", MAX_SCREENSHOTS);
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -25,7 +49,27 @@ module.exports = (app) => {
   // caller is an authenticated app user; we then forward a fresh Keycloak access
   // token (cached at login, refreshed on demand) — the platform validates that
   // token, not our self-signed app JWT.
-  app.post("/api/feedback", verifyToken, apiLimiter(20), async (req, res) => {
+  //
+  // Requests may arrive as JSON (no attachments) or multipart/form-data (with
+  // screenshots). multer parses the latter, leaving text fields on req.body and
+  // image files on req.files; it passes JSON requests through untouched.
+  app.post("/api/feedback", verifyToken, apiLimiter(20), (req, res, next) => {
+    uploadScreenshots(req, res, (err) => {
+      if (err instanceof multer.MulterError) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ error: "Each screenshot must be 5MB or smaller." });
+        }
+        if (err.code === "LIMIT_FILE_COUNT" || err.code === "LIMIT_UNEXPECTED_FILE") {
+          return res.status(400).json({ error: `You can attach at most ${MAX_SCREENSHOTS} screenshots.` });
+        }
+        return res.status(400).json({ error: "Could not process the attached screenshots." });
+      }
+      if (err) {
+        return res.status(400).json({ error: err.message || "Could not process the attached screenshots." });
+      }
+      return next();
+    });
+  }, async (req, res) => {
     const { category, message } = req.body || {};
 
     if (!VALID_CATEGORIES.includes(category)) {
@@ -46,6 +90,18 @@ module.exports = (app) => {
       });
     }
 
+    // Push any attached screenshots to the feedback container and reference the
+    // resulting links in the entry forwarded to the platform.
+    let screenshots = [];
+    if (Array.isArray(req.files) && req.files.length > 0) {
+      try {
+        screenshots = await azureBlob.uploadFeedbackScreenshots(req.files);
+      } catch (error) {
+        logger.error({ err: error }, "failed to upload feedback screenshots");
+        return res.status(502).json({ error: "Failed to upload screenshots. Please try again." });
+      }
+    }
+
     try {
       const response = await fetch(PLATFORM_FEEDBACK_URL, {
         method: "POST",
@@ -58,6 +114,7 @@ module.exports = (app) => {
           message: message.trim(),
           pageUrl: req.body.pageUrl,
           module: req.body.module,
+          screenshots,
         }),
       });
 

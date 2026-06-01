@@ -277,7 +277,7 @@ function Main(props) {
                 exact
                 path="/feedback"
                 element={(
-                  <div className={"container mx-auto pt-unit-lg max-w-[600px]"}>
+                  <div className={"container mx-auto pt-unit-lg max-w-[760px]"}>
                     <FeedbackForm />
                   </div>
                 )}
@@ -318,6 +318,8 @@ function Main(props) {
       <Modal
         isOpen={feedbackModal}
         onClose={() => dispatch(hideFeedbackModal())}
+        size="3xl"
+        scrollBehavior="inside"
       >
         <ModalContent>
           <ModalBody>

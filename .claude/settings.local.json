@@ -50,7 +50,11 @@
       "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run)",
       "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run tests/integration/user.emailUpdate.test.js tests/integration/user.passwordReset.test.js)",
       "Bash(CB_DB_DIALECT=sqlite FORCE_CONTAINERS=false npx vitest run tests/unit/keycloakTokenStore.test.js tests/integration/feedbackRoute.test.js)",
-      "Bash(docker info *)"
+      "Bash(docker info *)",
+      "Bash(bunx vitest *)",
+      "Bash(rm -f deadscan.mjs)",
+      "Bash(bunx vite *)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }
