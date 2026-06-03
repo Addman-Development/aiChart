@@ -15,7 +15,7 @@ import { getTeams, saveActiveTeam, selectTeam, selectTeamMembers } from "../../s
 import canAccess from "../../config/canAccess";
 import { pinDashboard, selectUser, unpinDashboard } from "../../slices/user";
 import { getTemplates } from "../../slices/template";
-import { removeProject, selectProjects, updateProject } from "../../slices/project";
+import { getProjects, removeProject, selectProjects, updateProject } from "../../slices/project";
 import ProjectForm from "../../components/ProjectForm";
 import { Link } from "react-router";
 
@@ -40,6 +40,16 @@ function DashboardList() {
     const storageViewMode = window.localStorage.getItem("__cb_view_mode");
     if (storageViewMode) setViewMode(storageViewMode);
   }, []);
+
+  // Refresh the project list whenever the list is shown. The parent
+  // UserDashboard only fetches once per team (guarded by a ref) and stays
+  // mounted while viewing a dashboard, so without this a newly created
+  // dashboard wouldn't appear here until a full page refresh.
+  useEffect(() => {
+    if (team?.id) {
+      dispatch(getProjects({ team_id: team.id }));
+    }
+  }, [team?.id]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

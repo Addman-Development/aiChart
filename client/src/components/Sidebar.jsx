@@ -293,9 +293,18 @@ function Sidebar() {
                 <Avatar
                   name={user?.data?.name}
                   size="sm"
+                  radius="full"
                   isBordered
-                  showFallback={<LuUser />}
-                  className="cursor-pointer"
+                  showFallback
+                  // Initials render whenever a name exists; only fall back to the
+                  // silhouette when there's no name to derive initials from. A
+                  // custom `fallback` always overrides initials, so we pass it
+                  // conditionally. The icon fills the avatar minus p-1 padding.
+                  fallback={user?.data?.name
+                    ? undefined
+                    : <LuUser className="w-full h-full p-1 text-default-500" />}
+                  className="cursor-pointer shrink-0 aspect-square"
+                  classNames={{ base: "shrink-0 aspect-square" }}
                 />
                 {collapsed ? null : (
                   <div className="flex flex-col items-start pl-2">

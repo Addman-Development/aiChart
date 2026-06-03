@@ -17,6 +17,7 @@ const socketManager = require("../../socketManager");
 const { emitProgressEvent, parseProgressEvents } = require("./responseParser");
 const { ENTITY_CREATION_RULES } = require("./entityCreationRules");
 const { isCapabilityQuestion, generateCapabilityResponse } = require("./capabilityHandler");
+const { accessibleConnectionIds } = require("./tools/connectionScope");
 const { aiClient, aiModel } = require("../aiClient");
 const baseLogger = require("../../logger").child({ module: "orchestrator" });
 
@@ -871,12 +872,15 @@ async function buildSemanticLayer(teamId) {
     throw new Error("Team not found");
   }
 
-  const connections = await db.Connection.findAll({
-    where: {
-      team_id: teamId,
-    },
-    attributes: ["id", "type", "subType", "name", "schema"],
-  });
+  // Owned connections + shared connections the team has opted into, matching the
+  // connections page and the list_connections tool (see connectionScope).
+  const connectionIds = await accessibleConnectionIds(teamId);
+  const connections = connectionIds.length > 0
+    ? await db.Connection.findAll({
+      where: { id: connectionIds },
+      attributes: ["id", "type", "subType", "name", "schema"],
+    })
+    : [];
 
   const projects = await db.Project.findAll({
     where: {
@@ -1129,8 +1133,10 @@ async function orchestrate(
         const toolName = toolCall.function.name;
         const toolArgs = JSON.parse(toolCall.function.arguments);
 
-        // Inject team_id into tools that need it
-        if (toolName === "create_dataset" || toolName === "run_query" || toolName === "create_chart" || toolName === "update_dataset" || toolName === "update_chart" || toolName === "create_temporary_chart" || toolName === "move_chart_to_dashboard") {
+        // Inject team_id into tools that need it. This includes the read tools
+        // (list_connections, get_schema) so connection access stays scoped to
+        // the active team — see assertConnectionInTeam.
+        if (toolName === "list_connections" || toolName === "get_schema" || toolName === "create_dataset" || toolName === "run_query" || toolName === "create_chart" || toolName === "update_dataset" || toolName === "update_chart" || toolName === "create_temporary_chart" || toolName === "move_chart_to_dashboard") {
           toolArgs.team_id = teamId;
         }
 

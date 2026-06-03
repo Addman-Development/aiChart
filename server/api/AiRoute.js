@@ -28,6 +28,12 @@ const checkAccess = async (req, res, next) => {
     return res.status(400).json({ error: "teamId is required" });
   }
 
+  // Global (master) admins bypass per-team role checks, matching the client's
+  // canAccess convention which defers the real enforcement to the backend.
+  if (req.user?.admin) {
+    return next();
+  }
+
   const teamController = new TeamController();
   const teamRole = await teamController.getTeamRole(teamId, req.user.id);
 

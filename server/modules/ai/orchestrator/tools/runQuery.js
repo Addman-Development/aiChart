@@ -3,6 +3,7 @@ const moment = require("moment");
 const db = require("../../../../models/models");
 const ConnectionController = require("../../../../controllers/ConnectionController");
 const { applyMongoVariables, applyPostgresVariables } = require("../../../applyVariables");
+const assertConnectionInTeam = require("./assertConnectionInTeam");
 const logger = require("../../../logger").child({ module: "tool:runQuery" });
 
 const connectionController = new ConnectionController();
@@ -45,6 +46,9 @@ async function runQuery(payload) {
   if (!team_id) {
     throw new Error("team_id is required to run queries");
   }
+
+  // Enforce that the connection belongs to the active team before querying it.
+  await assertConnectionInTeam(connection_id, team_id);
 
   try {
     const startTime = Date.now();
