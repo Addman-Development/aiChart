@@ -3,6 +3,7 @@ const cron = require("node-cron");
 const fs = require("fs");
 
 const db = require("../models/models");
+const logger = require("./logger").child({ module: "CleanChartCache" });
 
 function clean() {
   return db.ChartCache.findAll()
@@ -24,8 +25,8 @@ function clean() {
 
       return [];
     })
-    .catch(() => {
-      console.log("Error while cleaning the chart caches. You might want to delete them manually"); // eslint-disable-line
+    .catch((err) => {
+      logger.warn({ err }, "Error while cleaning chart caches; manual cleanup may be required");
     });
 }
 

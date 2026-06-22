@@ -6,6 +6,7 @@ import { createSelector } from "@reduxjs/toolkit";
 
 const initialState = {
   loading: false,
+  fetched: false,
   error: false,
   isTeamOwner: false,
   data: [],
@@ -48,12 +49,13 @@ export const deleteTeam = createAsyncThunk(
 
     const response = await fetch(`${API_HOST}/team/${teamId}`, { method: "DELETE", headers });
     if (!response.ok) {
-      throw new Error("Error deleting team");
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Error deleting team");
     }
 
     const responseJson = await response.json();
 
-    return responseJson;
+    return { ...responseJson, teamId };
   }
 );
 
@@ -151,6 +153,75 @@ export const generateInviteUrl = createAsyncThunk(
     }
 
     return data.url;
+  }
+);
+
+export const getAvailableUsers = createAsyncThunk(
+  "team/getAvailableUsers",
+  async ({ team_id }) => {
+    const token = getAuthToken();
+    const headers = new Headers({
+      "Accept": "application/json",
+      "authorization": `Bearer ${token}`,
+    });
+
+    const response = await fetch(`${API_HOST}/team/${team_id}/availableUsers`, { method: "GET", headers });
+    if (!response.ok) {
+      throw new Error("Error fetching available users");
+    }
+
+    return await response.json();
+  }
+);
+
+export const addExistingUserToTeam = createAsyncThunk(
+  "team/addExistingUserToTeam",
+  async ({ team_id, userId, role, projects, canExport }) => {
+    const token = getAuthToken();
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "authorization": `Bearer ${token}`,
+    });
+    const body = JSON.stringify({ userId, role, projects, canExport });
+
+    const response = await fetch(`${API_HOST}/team/${team_id}/addExistingUser`, { method: "POST", headers, body });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Error adding user to team");
+    }
+
+    return await response.json();
+  }
+);
+
+export const createTeamUser = createAsyncThunk(
+  "team/createTeamUser",
+  async ({ team_id, name, email, role, projects, canExport, sendEmail }) => {
+    const token = getAuthToken();
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "authorization": `Bearer ${token}`,
+    });
+    const body = JSON.stringify({
+      name,
+      email,
+      role,
+      projects,
+      canExport,
+      sendEmail,
+    });
+
+    const response = await fetch(`${API_HOST}/team/${team_id}/createUser`, { method: "POST", headers, body });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || "Error creating user");
+    }
+
+    const responseJson = await response.json();
+    return responseJson;
   }
 );
 
@@ -325,7 +396,6 @@ export const teamSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // CREATE TEAM
       .addCase(createTeam.pending, (state) => {
         state.loading = true;
       })
@@ -338,19 +408,18 @@ export const teamSlice = createSlice({
         state.loading = false;
         state.error = true;
       })
-      // GET TEAMS
       .addCase(getTeams.pending, (state) => {
         state.loading = true;
       })
       .addCase(getTeams.fulfilled, (state, action) => {
         state.loading = false;
+        state.fetched = true;
         state.data = action.payload;
       })
       .addCase(getTeams.rejected, (state) => {
         state.loading = false;
         state.error = true;
       })
-      // GET TEAM
       .addCase(getTeam.pending, (state) => {
         state.loading = true;
       })
@@ -362,7 +431,6 @@ export const teamSlice = createSlice({
         state.loading = false;
         state.error = true;
       })
-      // UPDATE TEAM
       .addCase(updateTeam.pending, (state) => {
         state.loading = true;
       })
@@ -381,7 +449,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // TRANSFER OWNERSHIP
       .addCase(transferOwnership.pending, (state) => {
         state.loading = true;
       })
@@ -393,7 +460,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // ADD TEAM MEMBER
       .addCase(addTeamMember.pending, (state) => {
         state.loading = true;
       })
@@ -412,7 +478,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // GET TEAM MEMBERS
       .addCase(getTeamMembers.pending, (state) => {
         state.loading = true;
       })
@@ -425,7 +490,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // UPDATE TEAM ROLE
       .addCase(updateTeamRole.pending, (state) => {
         state.loading = true;
       })
@@ -447,7 +511,6 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // DELETE TEAM MEMBER
       .addCase(deleteTeamMember.pending, (state) => {
         state.loading = true;
       })
@@ -460,13 +523,12 @@ export const teamSlice = createSlice({
         state.error = true;
       })
 
-      // DELETE TEAM
       .addCase(deleteTeam.pending, (state) => {
         state.loading = true;
       })
       .addCase(deleteTeam.fulfilled, (state, action) => {
         state.loading = false;
-        state.data = state.data.filter((team) => team.id !== action.payload.id);
+        state.data = state.data.filter((team) => team.id !== parseInt(action.payload.teamId, 10));
         state.active = {};
       })
       .addCase(deleteTeam.rejected, (state) => {
@@ -479,6 +541,8 @@ export const teamSlice = createSlice({
 export const { saveActiveTeam, saveTeamList, addNewTeam } = teamSlice.actions;
 export const selectTeam = (state) => state.team.active;
 export const selectTeams = (state) => state.team.data;
+export const selectTeamsLoading = (state) => state.team.loading;
+export const selectTeamsFetched = (state) => state.team.fetched;
 export const selectTeamMembers = (state) => state.team.teamMembers;
 export const selectProjectMembers = createSelector(
   (state) => state.team.teamMembers,

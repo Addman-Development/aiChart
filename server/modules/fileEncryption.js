@@ -2,6 +2,7 @@ const fs = require("fs").promises;
 const fsSync = require("fs");
 
 const { encrypt, decrypt } = require("./cbCrypto");
+const logger = require("./logger").child({ module: "fileEncryption" });
 
 /**
  * Encrypts a file and replaces the original with the encrypted version
@@ -21,7 +22,7 @@ async function encryptFile(filePath) {
 
     return filePath;
   } catch (error) {
-    console.error(`Error encrypting file ${filePath}:`, error); // eslint-disable-line no-console
+    logger.error({ err: error, filePath }, "Error encrypting file");
     throw error;
   }
 }
@@ -47,7 +48,7 @@ async function decryptFile(filePath) {
       return Buffer.from(fileContent);
     }
   } catch (error) {
-    console.error(`Error reading/decrypting file ${filePath}:`, error); // eslint-disable-line no-console
+    logger.error({ err: error, filePath }, "Error reading/decrypting file");
     throw error;
   }
 }
@@ -74,7 +75,7 @@ function decryptFileSync(filePath) {
       return Buffer.from(fileContent);
     }
   } catch (error) {
-    console.error(`Error reading/decrypting file ${filePath}:`, error); // eslint-disable-line no-console
+    logger.error({ err: error, filePath }, "Error reading/decrypting file");
     throw error;
   }
 }

@@ -9,7 +9,7 @@ import {
 } from "@heroui/react";
 import AceEditor from "react-ace";
 import toast from "react-hot-toast";
-import { LuCheck, LuChevronsRight, LuInfo, LuPlay, LuPlus, LuTrash } from "react-icons/lu";
+import { LuCheck, LuChevronsRight, LuInfo, LuPlay, LuPlus, LuTrash, LuWandSparkles } from "react-icons/lu";
 import { useParams } from "react-router";
 
 import "ace-builds/src-min-noconflict/mode-json";
@@ -30,6 +30,7 @@ import AiQuery from "../../Dataset/AiQuery";
 import QueryResultsTable from "./QueryResultsTable";
 import DataTransform from "../../Dataset/DataTransform";
 import { selectTeam } from "../../../slices/team";
+import formatSql from "../../../modules/formatSql";
 
 /*
   The query builder for Mysql and Postgres
@@ -335,7 +336,7 @@ function SqlBuilder(props) {
                 <VisualSQL
                   query={sqlRequest.query}
                   schema={connection.schema}
-                  updateQuery={(query) => _onChangeQuery(query, true)}
+                  updateQuery={(query) => _onChangeQuery(query)}
                   type={connection.type}
                   onVariableClick={_onVariableClick}
                 />
@@ -346,6 +347,20 @@ function SqlBuilder(props) {
             )}
             {activeTab === "sql" && (
               <div>
+                <div className="flex justify-end mb-1">
+                  <Tooltip content="Prettify SQL" placement="top">
+                    <Button
+                      isIconOnly
+                      variant="light"
+                      size="sm"
+                      isDisabled={!sqlRequest.query}
+                      onPress={() => _onChangeQuery(formatSql(sqlRequest.query, connection?.type))}
+                      aria-label="Prettify SQL"
+                    >
+                      <LuWandSparkles />
+                    </Button>
+                  </Tooltip>
+                </div>
                 <Row>
                   <SqlAceEditor
                     mode="pgsql"
@@ -359,6 +374,12 @@ function SqlBuilder(props) {
                     onVariableClick={_onVariableClick}
                     name="queryEditor"
                     className="sqlbuilder-query-tut"
+                    aiCompletion={{
+                      enabled: !!dataRequest?.id,
+                      teamId: team?.id,
+                      datasetId: params.datasetId,
+                      dataRequestId: dataRequest?.id,
+                    }}
                   />
                 </Row>
               </div>
@@ -387,7 +408,7 @@ function SqlBuilder(props) {
             </Checkbox>
             <Spacer x={0.5} />
             <Tooltip
-              content={"ADDMAN-SmartChart will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change any query settings."}
+              content={"Edison will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change any query settings."}
               className="max-w-[400px]"
             >
               <div><LuInfo /></div>
@@ -400,6 +421,7 @@ function SqlBuilder(props) {
                 query={sqlRequest.query}
                 dataRequest={dataRequest}
                 onChangeQuery={_onChangeQuery}
+                connectionType={connection?.type}
               />
             </div>
           )}
@@ -443,7 +465,7 @@ function SqlBuilder(props) {
               selectedQuery={savedQuery}
               onSelectQuery={(savedQuery) => {
                 setSavedQuery(savedQuery.id);
-                _onChangeQuery(savedQuery.query);
+                _onChangeQuery(formatSql(savedQuery.query, connection?.type));
               }}
               type={connection.type}
               style={styles.savedQueriesContainer}

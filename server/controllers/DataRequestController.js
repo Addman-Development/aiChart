@@ -5,7 +5,9 @@ const drCacheController = require("./DataRequestCacheController");
 const db = require("../models/models");
 const { generateSqlQuery } = require("../modules/ai/generateSqlQuery");
 const { generateMongoQuery } = require("../modules/ai/generateMongoQuery");
+const { aiClient, aiModel } = require("../modules/ai/aiClient");
 const externalDbConnection = require("../modules/externalDbConnection");
+const moment = require("moment");
 const { applyTransformation } = require("../modules/dataTransformations");
 const { applyVariables } = require("../modules/applyVariables");
 
@@ -153,10 +155,21 @@ class RequestController {
       })
       .then((dataset) => {
         gDataset = dataset;
+
+        // Inject fallback start_date/end_date (last 7 days) when the query
+        // uses these variables but no values were provided by the caller
+        const runtimeVars = { ...variables };
+        if (dataRequest.query && dataRequest.query.includes("{{start_date}}") && !runtimeVars.start_date) {
+          runtimeVars.start_date = moment().subtract(7, "days").startOf("day").toISOString();
+        }
+        if (dataRequest.query && dataRequest.query.includes("{{end_date}}") && !runtimeVars.end_date) {
+          runtimeVars.end_date = moment().endOf("day").toISOString();
+        }
+
         const {
           dataRequest: originalDataRequest,
           processedQuery,
-        } = applyVariables(dataRequest, variables);
+        } = applyVariables(dataRequest, runtimeVars);
 
         // go through all data requests
         const connection = originalDataRequest.Connection;
@@ -186,6 +199,10 @@ class RequestController {
           );
         } else if (connection.type === "postgres") {
           return this.connectionController.runPostgres(
+            connection.id, originalDataRequest, getCache, processedQuery,
+          );
+        } else if (connection.type === "mssql") {
+          return this.connectionController.runMssql(
             connection.id, originalDataRequest, getCache, processedQuery,
           );
         } else {
@@ -232,6 +249,58 @@ class RequestController {
       });
   }
 
+  async completeQuery(id, currentQuery, cursorPosition) {
+    const dataRequest = await this.findById(id);
+    const connection = await db.Connection.findByPk(dataRequest.Connection.id);
+    let schema = connection?.schema;
+
+    if (!schema) {
+      if (connection.type === "mongodb") {
+        const updatedConnection = await this.connectionController
+          .updateMongoSchema(connection.id);
+        schema = updatedConnection?.schema;
+      } else if (connection.type === "postgres" || connection.type === "mssql") {
+        const dbConnection = await externalDbConnection(connection);
+        schema = await this.connectionController.getSchema(dbConnection);
+      }
+    }
+
+    if (!schema) {
+      return { completion: "" };
+    }
+
+    const dialect = connection.type === "mongodb" ? "MongoDB" : "SQL";
+    const formattedSchema = typeof schema === "string" ? schema : JSON.stringify(schema);
+
+    const prompt = `You are an inline code completion engine for ${dialect} queries. Given the current query and cursor position, predict what the user is likely to type next.
+
+Database Schema:
+${formattedSchema}
+
+RULES:
+- Output ONLY the completion text (the code to insert at the cursor). Nothing else.
+- Do NOT repeat any code that already exists before the cursor.
+- Keep suggestions short — typically one line or a partial clause.
+- If the cursor is at the end of a complete query with no obvious next token, return an empty string.
+- Do NOT output explanations, markdown, or code fences.
+- For ${dialect === "MongoDB" ? "MongoDB, suggest collection methods, aggregation stages, field names from the schema" : "SQL, suggest clauses (SELECT, FROM, WHERE, JOIN, GROUP BY, ORDER BY), column names, table names from the schema"}.`;
+
+    const response = await aiClient.chat.completions.create({
+      model: aiModel,
+      messages: [
+        { role: "system", content: prompt },
+        { role: "user", content: `Current query (cursor marked with |):\n${currentQuery.slice(0, cursorPosition)}|${currentQuery.slice(cursorPosition)}` },
+      ],
+      max_tokens: 150,
+      temperature: 0.2,
+    });
+
+    const completion = response.choices?.[0]?.message?.content?.trim() || "";
+    // Strip any markdown fences that might slip through
+    const cleaned = completion.replace(/^```\w*\n?/, "").replace(/\n?```$/, "").trim();
+    return { completion: cleaned };
+  }
+
   askAi(id, question, conversationHistory, currentQuery) {
     return this.findById(id)
       .then(async (dataRequest) => {
@@ -242,7 +311,7 @@ class RequestController {
             const updatedConnection = await this.connectionController
               .updateMongoSchema(connection.id);
             schema = updatedConnection?.schema;
-          } else if (connection.type === "postgres") {
+          } else if (connection.type === "postgres" || connection.type === "mssql") {
             const dbConnection = await externalDbConnection(connection);
             schema = await this.connectionController.getSchema(dbConnection);
           }
@@ -259,7 +328,7 @@ class RequestController {
           );
         } else {
           aiResponse = await generateSqlQuery(
-            schema, question, conversationHistory, currentQuery
+            schema, question, conversationHistory, currentQuery, connection.type
           );
         }
 

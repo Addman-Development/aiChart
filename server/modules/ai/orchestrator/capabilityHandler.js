@@ -1,5 +1,5 @@
 /**
- * Capability Question Handler for ADDMAN-SmartChart AI
+ * Capability Question Handler for Edison AI
  *
  * Handles detection and response generation for capability/help questions
  * to avoid expensive OpenAI API calls for simple informational queries.
@@ -37,7 +37,7 @@ function generateCapabilityResponse(semanticLayer) {
   const supportedConnections = connections.filter((c) => ["mysql", "postgres", "mongodb"].includes(c.type));
   const hasConnections = supportedConnections.length > 0;
 
-  let response = `# What can ADDMAN-SmartChart AI do?
+  let response = `# What can Edison AI do?
 
 I help you query your data and create charts. Here's what I can do:
 

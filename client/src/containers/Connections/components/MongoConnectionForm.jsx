@@ -494,7 +494,7 @@ function MongoConnectionForm(props) {
                 <Text b>{"You might need to whitelist the front-end IP in the back-end"}</Text>
               </Row>
               <Row>
-                <Text>{"This is sometimes required when the database and the ADDMAN-SmartChart app are running on separate servers."}</Text>
+                <Text>{"This is sometimes required when the database and the Edison app are running on separate servers."}</Text>
               </Row>
             </Container>
           </Row>

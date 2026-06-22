@@ -100,6 +100,12 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       description: "Whether to force the start date to remain fixed"
     },
+    scopeDateToQuery: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      description: "When enabled, inject startDate/endDate as start_date/end_date variables into the query instead of filtering post-query"
+    },
     timeInterval: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -236,6 +242,21 @@ module.exports = (sequelize, DataTypes) => {
     defaultRowsPerPage: {
       type: DataTypes.INTEGER,
       defaultValue: 10,
+    },
+    tableSearchEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      description: "Whether the table search bar is shown to viewers"
+    },
+    tableFilterEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      description: "Whether per-column filters are shown to viewers"
+    },
+    tableSortEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      description: "Whether viewers can click column headers to sort"
     },
     /*
     ** LEGACY FIELDS

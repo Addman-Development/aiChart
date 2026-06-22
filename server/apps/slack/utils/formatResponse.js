@@ -1,3 +1,5 @@
+const logger = require("../../../modules/logger").child({ module: "slack:formatResponse" });
+
 /**
  * Convert markdown text to Slack mrkdwn format (for use within blocks)
  */
@@ -31,8 +33,7 @@ function extractCbActions(message) {
     const actions = JSON.parse(cbActionsMatch[1]);
     return actions;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.error("Failed to parse cb-actions:", e);
+    logger.error({ err: e }, "Failed to parse cb-actions");
     return null;
   }
 }
@@ -251,7 +252,7 @@ function parseMessageToBlocks(message) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "_Response truncated. See full response in ADDMAN-SmartChart._",
+        text: "_Response truncated. See full response in Edison._",
       },
     });
     return truncatedBlocks;

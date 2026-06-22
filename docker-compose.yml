@@ -1,12 +1,22 @@
 services:
   aichart:
-    image: dockerdude63/smart-chart:latest
+    image: addmangroup/smart-chart:latest
     container_name: smart-chart
     build: .
     restart: unless-stopped
-    env_file: .env
+    env_file: .env.prod
     ports:
-      - 4018:4018 # Frontend
+      - 4848:4018 # Frontend (external:internal)
       - 4019:4019 # API
+    # Mirrors the Dockerfile HEALTHCHECK; declared here so it's tunable in the
+    # compose file without rebuilding the image.
+    # start_period gives the UI build (~30-60s on cold start) and migrations
+    # enough time before failures count toward the unhealthy threshold.
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:4019/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
 
-# docker buildx build --push -t dockerdude63/smart-chart:latest .
+# docker buildx build --push -t addmangroup/smart-chart:latest .

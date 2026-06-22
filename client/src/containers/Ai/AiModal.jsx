@@ -1,23 +1,24 @@
 import React, { useEffect, useState, useRef } from "react"
 import PropTypes from "prop-types"
-import { Modal, ModalContent, ModalBody, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
-import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard } from "react-icons/lu"
+import { Modal, ModalContent, ModalBody, ModalHeader, ModalFooter, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
+import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX, LuThumbsUp, LuThumbsDown, LuRefreshCw, LuPlay, LuGitFork, LuShare2, LuUsers } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useParams } from "react-router";
 
-import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, getAiUsage } from "../../api/ai";
-import { selectTeam } from "../../slices/team";
+import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage, submitAiMessageFeedback, forkAiConversation } from "../../api/ai";
+import { selectTeam, selectTeamMembers, getTeamMembers } from "../../slices/team";
 import { selectUser } from "../../slices/user";
-import { getChart, moveChartToDashboard } from "../../slices/chart";
+import { getChart, moveChartToDashboard, runQuery } from "../../slices/chart";
 import Chart from "../Chart/Chart";
 import { selectProjects } from "../../slices/project";
 import { selectConnections } from "../../slices/connection";
 import { selectDatasetsNoDrafts } from "../../slices/dataset";
 import isMac from "../../modules/isMac";
 import socketClient from "../../modules/socketClient";
+import { SITE_HOST } from "../../config/settings";
 
 function formatDate(date) {
   return new Date(date).toLocaleDateString("en-US", {
@@ -65,10 +66,17 @@ function AiModal({ isOpen, onClose }) {
   const [contextSearch, setContextSearch] = useState("");
   const [isContextPopoverOpen, setIsContextPopoverOpen] = useState(false);
   const [isSecondContextPopoverOpen, setIsSecondContextPopoverOpen] = useState(false);
+  const [renamingConversationId, setRenamingConversationId] = useState(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [messageFeedback, setMessageFeedback] = useState({});
+  const [shareModalConversationId, setShareModalConversationId] = useState(null);
+  const [shareTargetUserId, setShareTargetUserId] = useState(null);
+  const [shareLoading, setShareLoading] = useState(false);
 
   const params = useParams();
   const team = useSelector(selectTeam);
   const user = useSelector(selectUser);
+  const teamMembers = useSelector(selectTeamMembers);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const dispatch = useDispatch();
@@ -111,6 +119,8 @@ function AiModal({ isOpen, onClose }) {
   };
 
   const [movingChartId, setMovingChartId] = useState(null);
+  // Track which temp charts have been added to dashboards (chartId -> targetProjectId)
+  const [addedToDashboard, setAddedToDashboard] = useState({});
 
   const _onMoveChartToDashboard = async (chartId, sourceProjectId, targetProjectId) => {
     setMovingChartId(chartId);
@@ -124,48 +134,125 @@ function AiModal({ isOpen, onClose }) {
 
       toast.success("Chart added to dashboard");
 
-      // Update the local chart data to reflect the move
-      setCreatedCharts(prev => prev.map(c =>
-        c.id === parseInt(chartId, 10)
-          ? { ...c, project_id: parseInt(targetProjectId, 10) }
-          : c
-      ));
+      // Track that this chart was added to a dashboard (original stays in ghost).
+      // Store the cloned chart ID so we can verify the clone still exists later.
+      setAddedToDashboard(prev => ({
+        ...prev,
+        [chartId]: {
+          projectId: parseInt(targetProjectId, 10),
+          clonedChartId: result.chart_id,
+        }
+      }));
     } catch (error) {
-      toast.error(error.message || "Failed to move chart");
+      toast.error(error.message || "Failed to add chart to dashboard");
     } finally {
       setMovingChartId(null);
     }
   };
 
-  // Function to fetch chart data when a chart is created
-  const fetchChartData = async (chartId, projectId) => {
-    try {
+  // When the modal opens, verify that cloned charts still exist on their
+  // target dashboards. If a clone was deleted (shelved back to ghost),
+  // its project_id will no longer match — reset to "Add to Dashboard".
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const entries = Object.entries(addedToDashboard);
+    if (entries.length === 0) return;
+
+    const verify = async () => {
+      const stale = [];
+
+      for (const [ghostChartId, info] of entries) {
+        try {
+          const result = await dispatch(getChart({
+            project_id: info.projectId,
+            chart_id: info.clonedChartId,
+          }));
+          // If the clone was removed from the dashboard it gets shelved to
+          // ghost, so its project_id no longer matches the target dashboard.
+          if (!result?.payload || result.payload.project_id !== info.projectId) {
+            stale.push(ghostChartId);
+          }
+        } catch {
+          stale.push(ghostChartId);
+        }
+      }
+
+      if (stale.length > 0) {
+        setAddedToDashboard(prev => {
+          const next = { ...prev };
+          stale.forEach(id => delete next[id]);
+          return next;
+        });
+      }
+    };
+
+    verify();
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch chart data for the AI chat.  Uses the ghost project as the
+  // project_id in the API call because ghost projects bypass the per-project
+  // access check, while findById only uses the chart ID.
+  // When isUpdate is true, runs a fresh query (no cache) so the chart
+  // preview reflects the latest config changes.
+  const fetchChartData = async (chartId, projectId, { isUpdate = false } = {}) => {
+    const ghostProject = projects.find((p) => p.ghost);
+    const fetchProjectId = ghostProject?.id ?? projectId;
+
+    let chartPayload;
+
+    if (isUpdate) {
+      // Run the query with getCache explicitly false to bypass both
+      // server-side chart cache and data-request cache.
+      const queryResult = await dispatch(runQuery({
+        project_id: fetchProjectId,
+        chart_id: chartId,
+        getCache: false,
+      }));
+      chartPayload = queryResult?.payload;
+    }
+
+    if (!chartPayload) {
+      // Fallback to a simple read (for creates, or if runQuery failed)
       const result = await dispatch(getChart({
-        project_id: projectId,
+        project_id: fetchProjectId,
         chart_id: chartId
       }));
-
-      if (result?.payload) {
-        setCreatedCharts(prevCharts => {
-          // Check if chart already exists
-          const existingIndex = prevCharts.findIndex(c => c.id === result.payload.id);
-          if (existingIndex >= 0) {
-            // Update existing chart
-            const updatedCharts = [...prevCharts];
-            updatedCharts[existingIndex] = result.payload;
-            return updatedCharts;
-          } else {
-            // Add new chart
-            return [...prevCharts, result.payload];
-          }
-        });
-        return result.payload;
-      }
-    } catch (error) {
-      console.error("Failed to fetch chart data:", error);
-      toast.error("Failed to load chart data");
+      chartPayload = result?.payload;
     }
+
+    if (chartPayload) {
+      setCreatedCharts(prevCharts => {
+        const existingIndex = prevCharts.findIndex(c => c.id === chartPayload.id);
+        if (existingIndex >= 0) {
+          const updatedCharts = [...prevCharts];
+          updatedCharts[existingIndex] = chartPayload;
+          return updatedCharts;
+        }
+        return [...prevCharts, chartPayload];
+      });
+      return chartPayload;
+    }
+
+    // Fetch failed — don't mark as deleted. The chart card will render
+    // without a preview, which is better than incorrectly claiming "removed".
     return null;
+  };
+
+  // Extract updated chart IDs from an orchestration response's conversation
+  // history so we can trigger an immediate refresh after the response arrives.
+  const _getUpdatedChartIds = (conversationHistory) => {
+    if (!conversationHistory) return [];
+    return conversationHistory
+      .filter(msg => msg.role === "tool" && msg.name === "update_chart")
+      .map(msg => {
+        try {
+          const content = typeof msg.content === "string" ? JSON.parse(msg.content) : msg.content;
+          if (content.chart_id) return { chartId: content.chart_id, projectId: content.project_id };
+        } catch { /* ignore */ }
+        return null;
+      })
+      .filter(Boolean);
   };
 
   // Auto-scroll to bottom when messages change
@@ -189,9 +276,9 @@ function AiModal({ isOpen, onClose }) {
             if ((msg.name === "create_chart" || msg.name === "update_chart" || msg.name === "create_temporary_chart") && content.chart_id) {
               return {
                 chartId: content.chart_id,
-                projectId: content.project_id,
+                projectId: content.project_id || content.ghost_project_id,
                 isUpdate: msg.name === "update_chart",
-                isTemporary: msg.name === "create_temporary_chart"
+                isTemporary: msg.name === "create_temporary_chart" || msg.name === "create_chart"
               };
             }
           } catch (e) {
@@ -201,19 +288,50 @@ function AiModal({ isOpen, onClose }) {
         })
         .filter(Boolean);
 
-      // Fetch charts that haven't been loaded yet (for both create and update, including temporary)
-      for (const { chartId, projectId } of chartMessages) {
+      // Fetch charts that haven't been loaded yet (for both create and update, including temporary).
+      // Updated charts are also refreshed directly in the response handlers
+      // (_onAskAi) for immediate feedback; this loop handles the initial load
+      // when opening a conversation that already contains chart messages.
+      for (const { chartId, projectId, isUpdate } of chartMessages) {
         if (!fetchedChartsRef.current.has(chartId)) {
           fetchedChartsRef.current.add(chartId);
-          await fetchChartData(chartId, projectId);
+          await fetchChartData(chartId, projectId, { isUpdate });
         }
       }
 
-      // Refresh charts that were updated
-      for (const { chartId, projectId, isUpdate } of chartMessages) {
-        if (isUpdate && fetchedChartsRef.current.has(chartId)) {
-          await fetchChartData(chartId, projectId);
-        }
+      // Auto-populate addedToDashboard for create_chart results that were
+      // auto-cloned to a dashboard (e.g. when the AI was told "add to Sales Dashboard").
+      // This ensures the "Added to [Dashboard]" chip shows on conversation reload.
+      const autoCloned = allMessages
+        .filter(msg => msg.role === "tool" && (msg.name === "create_chart" || msg.name === "create_temporary_chart"))
+        .map(msg => {
+          try {
+            const content = JSON.parse(msg.content);
+            if (content.chart_id && content.dashboard_project_id && content.cloned_chart_id) {
+              return {
+                ghostChartId: content.chart_id,
+                dashboardProjectId: content.dashboard_project_id,
+                clonedChartId: content.cloned_chart_id,
+              };
+            }
+          } catch { /* ignore */ }
+          return null;
+        })
+        .filter(Boolean);
+
+      if (autoCloned.length > 0) {
+        setAddedToDashboard(prev => {
+          const next = { ...prev };
+          for (const { ghostChartId, dashboardProjectId, clonedChartId } of autoCloned) {
+            if (!next[ghostChartId]) {
+              next[ghostChartId] = {
+                projectId: dashboardProjectId,
+                clonedChartId,
+              };
+            }
+          }
+          return next;
+        });
       }
     };
 
@@ -248,12 +366,26 @@ function AiModal({ isOpen, onClose }) {
       }
     };
 
+    // Set up conversation-updated listener (e.g. title generated async)
+    const handleConversationUpdated = (data) => {
+      if (data?.conversationId && data?.title) {
+        setConversations(prev => prev.map(c =>
+          c.id === data.conversationId ? { ...c, title: data.title } : c
+        ));
+        setConversation(prev =>
+          prev?.id === data.conversationId ? { ...prev, title: data.title } : prev
+        );
+      }
+    };
+
     initSocket();
     socketClient.on("conversation-created", handleConversationCreated);
+    socketClient.on("conversation-updated", handleConversationUpdated);
 
     return () => {
       isMounted = false;
       socketClient.off("conversation-created", handleConversationCreated);
+      socketClient.off("conversation-updated", handleConversationUpdated);
       // Note: We don't disconnect the socket here - it's a singleton that stays connected
       // This allows seamless reconnection when modal reopens
     };
@@ -336,15 +468,16 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
-  const _onAskAi = async (e) => {
-    e.preventDefault();
+  const _onAskAi = async (e, overrideQuestion) => {
+    if (e?.preventDefault) e.preventDefault();
+    const sourceQuestion = typeof overrideQuestion === "string" ? overrideQuestion : question;
     // Allow submission if there's either a question or a selected context
-    const hasContent = question.trim() || selectedContext.multiSelect.length > 0 || selectedContext.singleSelect;
+    const hasContent = sourceQuestion.trim() || selectedContext.multiSelect.length > 0 || selectedContext.singleSelect;
     if (!hasContent || isLoading) return;
 
     const userMessage = {
       role: "user",
-      content: question.trim()
+      content: sourceQuestion.trim()
     };
 
     // Prepare context object (only multiSelect goes to context)
@@ -355,7 +488,7 @@ function AiModal({ isOpen, onClose }) {
 
     setIsLoading(true);
     setProgressEvents([]);
-    let currentQuestion = question.trim();
+    let currentQuestion = sourceQuestion.trim();
 
     // Append singleSelect to the question text
     if (selectedContext.singleSelect) {
@@ -430,10 +563,21 @@ function AiModal({ isOpen, onClose }) {
               // Clear localMessages and progress events since they're now in full_history
               setLocalMessages([]);
               setProgressEvents([]);
+
+              // Immediately refresh any charts that were updated in this round
+              const updatedCharts = _getUpdatedChartIds(fullConversation.conversation.full_history);
+              for (const { chartId, projectId } of updatedCharts) {
+                fetchedChartsRef.current.add(chartId);
+                await fetchChartData(chartId, projectId, { isUpdate: true });
+              }
             }
           }
         }
       } else {
+        // Show the user's message in the chat immediately. It gets cleared
+        // once the server response refreshes full_history below.
+        setLocalMessages([userMessage]);
+
         // Existing conversation - get complete history from database
         const latestConversation = await getAiConversation(conversation.id, team.id);
         const conversationHistory = latestConversation?.conversation?.full_history || [];
@@ -455,8 +599,17 @@ function AiModal({ isOpen, onClose }) {
         const updatedConversation = await getAiConversation(conversation.id, team.id);
         if (updatedConversation?.conversation) {
           setConversation(updatedConversation.conversation);
+          // Local user bubble is now in full_history; clear the placeholder.
+          setLocalMessages([]);
+
+          // Immediately refresh any charts that were updated in this round
+          const updatedCharts = _getUpdatedChartIds(updatedConversation.conversation.full_history);
+          for (const { chartId, projectId } of updatedCharts) {
+            fetchedChartsRef.current.add(chartId);
+            await fetchChartData(chartId, projectId, { isUpdate: true });
+          }
         }
-        
+
         // Refresh conversations list
         await loadConversations();
       }
@@ -492,6 +645,7 @@ function AiModal({ isOpen, onClose }) {
     setLocalMessages([]);
     setProgressEvents([]);
     setCreatedCharts([]);
+    setAddedToDashboard({});
     fetchedChartsRef.current.clear();
     setSelectedContext({
       multiSelect: [],
@@ -519,9 +673,15 @@ function AiModal({ isOpen, onClose }) {
       await deleteAiConversation(conversationId, team.id);
       toast.success("Conversation deleted");
 
-      // If we deleted the current conversation, go back to welcome screen
+      // If we deleted the current conversation, reset to a fresh chat (stay in chat view)
       if (conversation?.id === conversationId) {
-        setConversation(null);
+        setConversation({
+          title: "New Conversation",
+          full_history: [],
+          createdAt: new Date().toISOString(),
+          message_count: 0,
+          isTemporary: true,
+        });
         setLocalMessages([]);
         setProgressEvents([]);
         setCreatedCharts([]);
@@ -530,6 +690,40 @@ function AiModal({ isOpen, onClose }) {
 
       // Reload conversations list
       await loadConversations();
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
+  const _onStartRename = (conv) => {
+    setRenamingConversationId(conv.id);
+    setRenameValue(conv.title);
+  };
+
+  const _onCancelRename = () => {
+    setRenamingConversationId(null);
+    setRenameValue("");
+  };
+
+  const _onConfirmRename = async (conversationId) => {
+    if (!renameValue.trim()) {
+      _onCancelRename();
+      return;
+    }
+
+    try {
+      await renameAiConversation(conversationId, team.id, renameValue.trim());
+      toast.success("Conversation renamed");
+
+      // Update local state
+      setConversations((prev) =>
+        prev.map((c) => c.id === conversationId ? { ...c, title: renameValue.trim() } : c)
+      );
+      if (conversation?.id === conversationId) {
+        setConversation((prev) => ({ ...prev, title: renameValue.trim() }));
+      }
+
+      _onCancelRename();
     } catch (error) {
       toast.error(error.message);
     }
@@ -651,6 +845,154 @@ function AiModal({ isOpen, onClose }) {
     setIsLoading(false);
   };
 
+  const _onSubmitFeedback = async (messageId, feedback) => {
+    if (!conversation?.id || !messageId) return;
+
+    const currentFeedback = messageFeedback[messageId];
+    // Toggle off if clicking the same feedback again
+    const newFeedback = currentFeedback === feedback ? null : feedback;
+
+    setMessageFeedback(prev => ({ ...prev, [messageId]: newFeedback }));
+
+    try {
+      await submitAiMessageFeedback(conversation.id, messageId, team.id, newFeedback);
+    } catch (e) {
+      // Revert on failure
+      setMessageFeedback(prev => ({ ...prev, [messageId]: currentFeedback }));
+      toast.error("Failed to submit feedback");
+    }
+  };
+
+  const _onRegenerateResponse = () => {
+    if (!conversation?.full_history || isLoading) return;
+
+    // Find the last user message
+    const lastUserMessage = [...conversation.full_history]
+      .reverse()
+      .find(msg => msg.role === "user");
+
+    if (lastUserMessage) {
+      _onAskAi(null, lastUserMessage.content);
+    }
+  };
+
+  const _onContinueResponse = () => {
+    if (isLoading) return;
+    _onAskAi(null, "Continue");
+  };
+
+  // Initialize feedback state from conversation history
+  useEffect(() => {
+    if (conversation?.full_history) {
+      const feedbackMap = {};
+      conversation.full_history.forEach((msg) => {
+        if (msg.id && msg.feedback) {
+          feedbackMap[msg.id] = msg.feedback;
+        }
+      });
+      setMessageFeedback(prev => ({ ...prev, ...feedbackMap }));
+    }
+  }, [conversation?.full_history]);
+
+  // Fetch team members when modal opens (for sharing)
+  useEffect(() => {
+    if (isOpen && team?.id && (!teamMembers || teamMembers.length === 0)) {
+      dispatch(getTeamMembers({ team_id: team.id }));
+    }
+  }, [isOpen, team?.id]);
+
+  const _onForkConversation = async (conversationId) => {
+    try {
+      const result = await forkAiConversation(conversationId, team.id);
+      toast.success("Conversation forked");
+      await loadConversations();
+      _onSelectConversation(result.id);
+    } catch (e) {
+      toast.error(e.message || "Failed to fork conversation");
+    }
+  };
+
+  const _onShareConversation = async () => {
+    if (!shareModalConversationId || !shareTargetUserId) return;
+
+    setShareLoading(true);
+    try {
+      await forkAiConversation(shareModalConversationId, team.id, shareTargetUserId);
+      const targetMember = teamMembers.find(m => m.id === shareTargetUserId);
+      toast.success(`Chat shared with ${targetMember?.name || "teammate"}`);
+      setShareModalConversationId(null);
+      setShareTargetUserId(null);
+    } catch (e) {
+      toast.error(e.message || "Failed to share conversation");
+    }
+    setShareLoading(false);
+  };
+
+  const _renderMessageActions = (message, isLastAssistantMessage) => {
+    if (!message.id && !isLastAssistantMessage) return null;
+
+    const feedback = message.id ? messageFeedback[message.id] : null;
+
+    return (
+      <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        {message.id && (
+          <>
+            <Tooltip content={feedback === "positive" ? "Remove rating" : "Good response"}>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => _onSubmitFeedback(message.id, "positive")}
+                className={feedback === "positive" ? "text-success" : "text-foreground-400"}
+              >
+                <LuThumbsUp size={14} />
+              </Button>
+            </Tooltip>
+            <Tooltip content={feedback === "negative" ? "Remove rating" : "Bad response"}>
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={() => _onSubmitFeedback(message.id, "negative")}
+                className={feedback === "negative" ? "text-danger" : "text-foreground-400"}
+              >
+                <LuThumbsDown size={14} />
+              </Button>
+            </Tooltip>
+          </>
+        )}
+        {isLastAssistantMessage && (
+          <>
+            <Tooltip content="Regenerate response">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={_onRegenerateResponse}
+                isDisabled={isLoading}
+                className="text-foreground-400"
+              >
+                <LuRefreshCw size={14} />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Continue">
+              <Button
+                isIconOnly
+                size="sm"
+                variant="light"
+                onPress={_onContinueResponse}
+                isDisabled={isLoading}
+                className="text-foreground-400"
+              >
+                <LuPlay size={14} />
+              </Button>
+            </Tooltip>
+          </>
+        )}
+      </div>
+    );
+  };
+
   const _parseMessage = (message) => {
     // Check if message is a tool call
     if (message.tool_calls && message.tool_calls.length > 0) {
@@ -669,9 +1011,10 @@ function AiModal({ isOpen, onClose }) {
 
       // Check if this is a chart creation or update result
       if ((message.name === "create_chart" || message.name === "update_chart" || message.name === "create_temporary_chart") && content.chart_id) {
-        const isTemporary = message.name === "create_temporary_chart";
+        // All AI-created charts are temporary (ghost project) — users add to dashboards interactively
+        const isTemporary = message.name !== "update_chart";
         return {
-          type: message.name === "create_chart" ? "chart_created" : message.name === "update_chart" ? "chart_updated" : "chart_temporary",
+          type: message.name === "update_chart" ? "chart_updated" : "chart_temporary",
           chartId: content.chart_id,
           chartName: content.name,
           chartType: content.type,
@@ -765,19 +1108,33 @@ function AiModal({ isOpen, onClose }) {
   const _groupMessages = (messages) => {
     const groups = [];
     let currentGroup = null;
+    // Each chartId gets at most one dedicated card. Subsequent updates to the
+    // same chart fold into the assistant's "Operations performed" block — the
+    // earlier card auto-refreshes from createdCharts, so a second card would
+    // just duplicate the same visual.
+    const shownChartIds = new Set();
+
+    const isChartCard = (parsed) => parsed.type === "chart_updated" || parsed.type === "chart_temporary";
 
     messages.forEach((message) => {
       const parsed = _parseMessage(message);
 
-      if (message.role === "user" || parsed.type === "chart_created" || parsed.type === "chart_updated" || parsed.type === "chart_temporary") {
-        // User messages and chart creation/update messages are always separate
+      if (message.role === "user") {
         groups.push({
-          type: parsed.type === "chart_created" ? "chart_created" : parsed.type === "chart_updated" ? "chart_updated" : parsed.type === "chart_temporary" ? "chart_temporary" : "user",
+          type: "user",
+          messages: [message]
+        });
+        currentGroup = null;
+      } else if (isChartCard(parsed) && !shownChartIds.has(parsed.chartId)) {
+        shownChartIds.add(parsed.chartId);
+        groups.push({
+          type: parsed.type,
           messages: [message]
         });
         currentGroup = null;
       } else if (message.role === "assistant" || message.role === "tool") {
-        // Group consecutive assistant and tool messages (except chart creation)
+        // Group consecutive assistant and tool messages, including chart tool
+        // results whose chartId was already rendered above.
         if (!currentGroup || currentGroup.type !== "assistant") {
           currentGroup = {
             type: "assistant",
@@ -792,7 +1149,7 @@ function AiModal({ isOpen, onClose }) {
     return groups;
   };
 
-  const _renderMessage = (message, index) => {
+  const _renderMessage = (message, index, { isLastAssistantMessage = false } = {}) => {
     const parsed = _parseMessage(message);
 
     // User messages - right aligned
@@ -882,37 +1239,29 @@ function AiModal({ isOpen, onClose }) {
       );
     }
 
-    // Chart created/updated messages - render the actual chart
-    if ((parsed.type === "chart_created" || parsed.type === "chart_updated") && createdCharts?.length > 0) {
+    // Chart updated messages — show the updated chart with a refresh indicator
+    if (parsed.type === "chart_updated" && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">
           <div className="w-full max-w-[90%]">
-            <div className={`px-6 py-4 rounded-lg border ${
-              parsed.type === "chart_created" ? "border-success-200" : "border-warning-200"
-            }`}>
+            <div className="px-6 py-4 rounded-lg border border-warning-200">
               <div className="flex items-start gap-3">
                 <Avatar
                   icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
-                  color={parsed.type === "chart_created" ? "success" : "warning"}
+                  color="warning"
                 />
-                <div className="w-full">
+                <div className="w-full min-w-0">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">
-                      {parsed.type === "chart_created" ? "Chart Created" : "Chart Updated"}
-                    </span>
-                    <Chip
-                      size="sm"
-                      variant="flat"
-                      color={parsed.type === "chart_created" ? "success" : "warning"}
-                    >
+                    <span className="text-sm font-medium">Chart Updated</span>
+                    <Chip size="sm" variant="flat" color="warning">
                       {parsed.chartName}
                     </Chip>
                   </div>
                   {chartData ? (
-                    <div className="overflow-hidden h-[300px]">
+                    <div className="overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
                       <Chart
                         chart={chartData}
                         isPublic={false}
@@ -920,34 +1269,11 @@ function AiModal({ isOpen, onClose }) {
                       />
                     </div>
                   ) : (
-                    <div className={`border ${
-                      parsed.type === "chart_created" ? "border-success-200" : "border-warning-200"
-                    } rounded-lg p-8`}>
+                    <div className="border border-warning-200 rounded-lg p-8">
                       <CircularProgress aria-label="Loading chart" />
                       <div className="text-sm mt-2">Loading chart...</div>
                     </div>
                   )}
-                  <div className="flex gap-2 mt-3">
-                    <a href={`/dashboard/${parsed.projectId}`} target="_blank" rel="noopener noreferrer">
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        color="primary"
-                        className="pointer-events-none"
-                      >
-                        View on Dashboard
-                      </Button>
-                    </a>
-                    <a href={`/dashboard/${parsed.projectId}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
-                      <Button
-                        size="sm"
-                        variant="flat"
-                        className="pointer-events-none"
-                      >
-                        Edit Chart
-                      </Button>
-                    </a>
-                  </div>
                 </div>
               </div>
             </div>
@@ -956,13 +1282,16 @@ function AiModal({ isOpen, onClose }) {
       );
     }
 
-    // Temporary chart messages - render the chart with temporary styling
+    // Temporary chart messages — check the chart's *live* project to determine
+    // whether it's still in the ghost project or has been placed on a dashboard.
+    // Charts removed from dashboards are shelved back to ghost, so they
+    // reappear here with the "Add to Dashboard" button.
     if (parsed.type === "chart_temporary" && createdCharts?.length > 0) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
       const nonGhostProjects = projects.filter((p) => !p.ghost);
-      const chartAlreadyMoved = chartData && nonGhostProjects.some(
-        (p) => p.id === chartData.project_id
-      );
+      const addedInfo = addedToDashboard[parsed.chartId];
+      const addedProjectId = addedInfo?.projectId;
+      const chartAlreadyMoved = !!addedProjectId;
 
       return (
         <div key={index} className="flex justify-center mb-4 px-4">
@@ -976,7 +1305,7 @@ function AiModal({ isOpen, onClose }) {
                   size="sm"
                   color={chartAlreadyMoved ? "success" : "primary"}
                 />
-                <div className="w-full">
+                <div className="w-full min-w-0">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium">
                       {chartAlreadyMoved ? "Chart Added" : "Temporary Chart Preview"}
@@ -995,7 +1324,7 @@ function AiModal({ isOpen, onClose }) {
                         color="success"
                         className="ml-auto"
                       >
-                        Added to {nonGhostProjects.find((p) => p.id === chartData.project_id)?.name}
+                        Added to {nonGhostProjects.find((p) => p.id === addedProjectId)?.name}
                       </Chip>
                     ) : (
                       <Chip
@@ -1009,7 +1338,7 @@ function AiModal({ isOpen, onClose }) {
                     )}
                   </div>
                   {chartData ? (
-                    <div className="overflow-hidden h-[300px]">
+                    <div className="overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
                       <Chart
                         chart={chartData}
                         isPublic={false}
@@ -1056,7 +1385,7 @@ function AiModal({ isOpen, onClose }) {
                       </Dropdown>
                     ) : (
                       <>
-                        <a href={`/dashboard/${chartData.project_id}`} target="_blank" rel="noopener noreferrer">
+                        <a href={`${SITE_HOST}/dashboard/${addedProjectId}`} target="_blank" rel="noopener noreferrer">
                           <Button
                             size="sm"
                             variant="flat"
@@ -1066,15 +1395,19 @@ function AiModal({ isOpen, onClose }) {
                             View on Dashboard
                           </Button>
                         </a>
-                        <a href={`/dashboard/${chartData.project_id}/chart/${parsed.chartId}/edit`} target="_blank" rel="noopener noreferrer">
-                          <Button
-                            size="sm"
-                            variant="flat"
-                            className="pointer-events-none"
-                          >
-                            Edit Chart
-                          </Button>
-                        </a>
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          onPress={() => {
+                            setAddedToDashboard(prev => {
+                              const next = { ...prev };
+                              delete next[parsed.chartId];
+                              return next;
+                            });
+                          }}
+                        >
+                          Add to Another Dashboard
+                        </Button>
                       </>
                     )}
                   </div>
@@ -1090,7 +1423,7 @@ function AiModal({ isOpen, onClose }) {
     if (message.role === "assistant" && parsed.type === "message_with_suggestions") {
       const isError = message.isError;
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
+        <div key={index} className="flex justify-center mb-4 px-4 group">
           <div className="w-full max-w-[90%]">
             <div className={`px-6 py-4 rounded-lg ${
               isError
@@ -1130,6 +1463,7 @@ function AiModal({ isOpen, onClose }) {
                       ))}
                     </div>
                   )}
+                  {_renderMessageActions(message, isLastAssistantMessage)}
                 </div>
               </div>
             </div>
@@ -1142,7 +1476,7 @@ function AiModal({ isOpen, onClose }) {
     if (message.role === "assistant" && parsed.type === "message") {
       const isError = message.isError;
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
+        <div key={index} className="flex justify-center mb-4 px-4 group">
           <div className="w-full max-w-[90%]">
             <div className={`px-6 py-4 rounded-lg ${
               isError
@@ -1166,6 +1500,7 @@ function AiModal({ isOpen, onClose }) {
                       {parsed.content}
                     </ReactMarkdown>
                   </div>
+                  {_renderMessageActions(message, isLastAssistantMessage)}
                 </div>
               </div>
             </div>
@@ -1177,13 +1512,13 @@ function AiModal({ isOpen, onClose }) {
     return null;
   };
 
-  const _renderGroupedMessages = (group, groupIndex) => {
+  const _renderGroupedMessages = (group, groupIndex, { isLastAssistantGroup = false } = {}) => {
     if (group.type === "user") {
       // Render user message
       return _renderMessage(group.messages[0], `group-${groupIndex}-user`);
     }
 
-    if (group.type === "chart_created" || group.type === "chart_updated" || group.type === "chart_temporary") {
+    if (group.type === "chart_updated" || group.type === "chart_temporary") {
       // Render chart creation/update/temporary message
       return _renderMessage(group.messages[0], `group-${groupIndex}-chart`);
     }
@@ -1224,9 +1559,12 @@ function AiModal({ isOpen, onClose }) {
       }
     });
 
+    // Find the assistant message in the group that has an ID (for feedback)
+    const assistantMsg = group.messages.find(m => m.role === "assistant" && m.id) || finalMessage || {};
+
     // Render grouped assistant messages
     return (
-      <div key={`group-${groupIndex}`} className="flex justify-center mb-4 px-4">
+      <div key={`group-${groupIndex}`} className="flex justify-center mb-4 px-4 group">
         <div className="w-full max-w-[90%]">
           <div className="px-6 py-4">
             <div className="flex items-start gap-3">
@@ -1290,6 +1628,7 @@ function AiModal({ isOpen, onClose }) {
                     ))}
                   </div>
                 )}
+                {_renderMessageActions(assistantMsg, isLastAssistantGroup)}
               </div>
             </div>
           </div>
@@ -1337,18 +1676,34 @@ function AiModal({ isOpen, onClose }) {
   };
 
   return (
+    <>
     <Modal
       classNames={{
-        wrapper: conversation ? "sm:mt-4" : "",
-        base: "border-1 border-divider",
+        wrapper: conversation ? "p-4 !overflow-hidden" : "",
+        base: conversation
+          ? "border-1 border-divider !h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !my-0 !overflow-hidden"
+          : "border-1 border-divider",
+        body: conversation ? "!p-0 !overflow-hidden !flex-1 !min-h-0" : "",
       }}
       backdrop="blur"
       isOpen={isOpen}
       onClose={onClose}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      hideCloseButton
       size={conversation ? "6xl" : "xl"}
-      scrollBehavior="outside"
+      scrollBehavior={conversation ? "normal" : "inside"}
     >
       <ModalContent>{(closeModal) => (<>
+        <button
+          type="button"
+          aria-label="Close"
+          onClick={() => onClose()}
+          className="absolute top-1 right-1 z-50 p-2 text-foreground-500 rounded-full hover:bg-default-100 active:bg-default-200 outline-none focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
+        >
+          <LuX size={18} />
+        </button>
         {!conversation && (
           <ModalBody className="pt-8">
             <div className="flex flex-col gap-2 items-center justify-center">
@@ -1359,7 +1714,7 @@ function AiModal({ isOpen, onClose }) {
               />
               <div className="flex flex-col items-center justify-center">
                 <div className="flex flex-row items-center gap-2">
-                  <div className="font-tw font-medium text-lg">ADDMAN-SmartChart AI</div>
+                  <div className="font-tw font-medium text-lg">Edison AI</div>
                   <Chip color="primary" variant="flat" size="sm" radius="sm" className="shadow-sm">
                     Beta
                   </Chip>
@@ -1549,7 +1904,29 @@ function AiModal({ isOpen, onClose }) {
                         {conv.source === "slack" ? <LuSlack size={16} /> : <LuMessageSquare size={16} />}
                       </div>
                       <div className="flex flex-col gap-1 flex-1">
-                        <div className="text-sm text-foreground font-medium">{conv.title}</div>
+                        {renamingConversationId === conv.id ? (
+                          <div className="flex flex-row items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Input
+                              size="sm"
+                              value={renameValue}
+                              onValueChange={setRenameValue}
+                              autoFocus
+                              classNames={{ inputWrapper: "h-7" }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") _onConfirmRename(conv.id);
+                                if (e.key === "Escape") _onCancelRename();
+                              }}
+                            />
+                            <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(conv.id)}>
+                              <LuCheck size={14} />
+                            </Button>
+                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
+                              <LuX size={14} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-foreground font-medium">{conv.title}</div>
+                        )}
                         <div className="flex flex-row items-center gap-3 text-xs text-foreground-500">
                           <div className="flex items-center gap-1">
                             <LuClock size={12} />
@@ -1571,7 +1948,16 @@ function AiModal({ isOpen, onClose }) {
                             </Button>
                           </DropdownTrigger>
                           <DropdownMenu>
-                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conv.id)} startContent={<LuTrash2 size={16} />}>
+                            <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conv)} startContent={<LuPencil size={16} />}>
+                              Rename conversation
+                            </DropdownItem>
+                            <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(conv.id)} startContent={<LuGitFork size={16} />}>
+                              Fork conversation
+                            </DropdownItem>
+                            <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(conv.id)} startContent={<LuShare2 size={16} />}>
+                              Share with teammate
+                            </DropdownItem>
+                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conv.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                               Delete conversation
                             </DropdownItem>
                           </DropdownMenu>
@@ -1591,8 +1977,8 @@ function AiModal({ isOpen, onClose }) {
         )}
 
         {conversation && (
-          <ModalBody className="p-0">
-            <div className="flex flex-row">
+          <ModalBody>
+            <div className="flex flex-row h-full min-h-0">
               <div className="flex-none w-60">
                 <div className="flex flex-col relative h-full bg-content2 rounded-tl-2xl rounded-bl-2xl">
                   <div className="w-full px-4 pt-4 border-r border-divider rounded-tl-2xl">
@@ -1618,7 +2004,7 @@ function AiModal({ isOpen, onClose }) {
                     <Spacer y={4} />
                     <Divider />
                   </div>
-                  <div className="flex flex-col h-full max-h-[calc(100vh-200px)] gap-2 px-2 overflow-y-auto border-r border-divider py-4">
+                  <div className="flex flex-col flex-1 min-h-0 gap-2 px-2 overflow-y-auto border-r border-divider py-4 pb-16">
                     {conversations.map((c) => (
                       <div
                         key={c.id}
@@ -1629,7 +2015,29 @@ function AiModal({ isOpen, onClose }) {
                           {c.source === "slack" ? <LuSlack size={14} /> : <LuMessageSquare size={14} />}
                         </div>
                         <div className="flex flex-col gap-1 flex-1 min-w-0">
-                          <div className="text-sm text-foreground truncate pr-6">{c.title}</div>
+                          {renamingConversationId === c.id ? (
+                            <div className="flex flex-row items-center gap-1 pr-6" onClick={(e) => e.stopPropagation()}>
+                              <Input
+                                size="sm"
+                                value={renameValue}
+                                onValueChange={setRenameValue}
+                                autoFocus
+                                classNames={{ inputWrapper: "h-7" }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") _onConfirmRename(c.id);
+                                  if (e.key === "Escape") _onCancelRename();
+                                }}
+                              />
+                              <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(c.id)}>
+                                <LuCheck size={14} />
+                              </Button>
+                              <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
+                                <LuX size={14} />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="text-sm text-foreground truncate pr-6">{c.title}</div>
+                          )}
                           <div className="flex flex-col gap-1">
                             <div className="text-xs text-foreground-500 flex items-center gap-1">
                               <LuClock size={10} />
@@ -1651,7 +2059,16 @@ function AiModal({ isOpen, onClose }) {
                               </Button>
                             </DropdownTrigger>
                             <DropdownMenu>
-                              <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(c.id)} startContent={<LuTrash2 size={16} />}>
+                              <DropdownItem key="rename_conversation" onPress={() => _onStartRename(c)} startContent={<LuPencil size={16} />}>
+                                Rename conversation
+                              </DropdownItem>
+                              <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(c.id)} startContent={<LuGitFork size={16} />}>
+                                Fork conversation
+                              </DropdownItem>
+                              <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(c.id)} startContent={<LuShare2 size={16} />}>
+                                Share with teammate
+                              </DropdownItem>
+                              <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(c.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
                                 Delete conversation
                               </DropdownItem>
                             </DropdownMenu>
@@ -1677,8 +2094,8 @@ function AiModal({ isOpen, onClose }) {
                   </div>
                 </div>
               </div>
-              <div className="relative flex-1 h-full rounded-lg">
-                <div className="py-4 border-b border-divider">
+              <div className="relative flex-1 flex flex-col min-h-0 rounded-lg">
+                <div className="flex-none py-4 border-b border-divider">
                   <div className="flex flex-row gap-3 pl-4 pr-4 items-start">
                     <Avatar
                       icon={<LuBrainCircuit size={24} className="text-background" />}
@@ -1686,19 +2103,52 @@ function AiModal({ isOpen, onClose }) {
                     />
                     <div className="flex flex-col gap-1 flex-1">
                       <div className="flex flex-row items-center gap-2">
-                        <div className="text-md text-foreground font-medium">{conversation.title}</div>
-                        <Dropdown>
-                          <DropdownTrigger>
-                            <Button isIconOnly size="sm" variant="light">
-                              <LuEllipsis size={16} />
+                        {renamingConversationId === conversation.id ? (
+                          <div className="flex flex-row items-center gap-1 flex-1">
+                            <Input
+                              size="sm"
+                              value={renameValue}
+                              onValueChange={setRenameValue}
+                              autoFocus
+                              classNames={{ inputWrapper: "h-8" }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") _onConfirmRename(conversation.id);
+                                if (e.key === "Escape") _onCancelRename();
+                              }}
+                            />
+                            <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(conversation.id)}>
+                              <LuCheck size={14} />
                             </Button>
-                          </DropdownTrigger>
-                          <DropdownMenu>
-                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conversation.id)} startContent={<LuTrash2 size={16} />}>
-                              Delete conversation
-                            </DropdownItem>
-                          </DropdownMenu>
-                        </Dropdown>
+                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
+                              <LuX size={14} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="text-md text-foreground font-medium">{conversation.title}</div>
+                            <Dropdown>
+                              <DropdownTrigger>
+                                <Button isIconOnly size="sm" variant="light">
+                                  <LuEllipsis size={16} />
+                                </Button>
+                              </DropdownTrigger>
+                              <DropdownMenu>
+                                <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conversation)} startContent={<LuPencil size={16} />}>
+                                  Rename conversation
+                                </DropdownItem>
+                                <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(conversation.id)} startContent={<LuGitFork size={16} />}>
+                                  Fork conversation
+                                </DropdownItem>
+                                <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(conversation.id)} startContent={<LuShare2 size={16} />}>
+                                  Share with teammate
+                                </DropdownItem>
+                                <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conversation.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
+                                  Delete conversation
+                                </DropdownItem>
+                              </DropdownMenu>
+                            </Dropdown>
+                          </>
+                        )}
                       </div>
                       <div className="flex flex-row items-center gap-3 text-xs text-foreground-500">
                         <div className="flex items-center gap-1">
@@ -1723,14 +2173,30 @@ function AiModal({ isOpen, onClose }) {
                     </div>
                   </div>
                 </div>
-                <div className="h-[calc(100vh-200px)] overflow-y-auto py-4 pb-24">
+                <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-4">
                   {conversation?.full_history?.length > 0 ? (
                     <>
                       {(() => {
                         // Show grouped view for all conversations
                         const groups = _groupMessages(conversation.full_history);
-                        return groups.map((group, index) => _renderGroupedMessages(group, index));
+                        // Find the last group that contains an assistant message
+                        const lastAssistantGroupIndex = groups.reduce((lastIdx, group, idx) => {
+                          if (group.type === "assistant" || group.messages?.some(m => m.role === "assistant")) {
+                            return idx;
+                          }
+                          return lastIdx;
+                        }, -1);
+                        return groups.map((group, index) => _renderGroupedMessages(group, index, {
+                          isLastAssistantGroup: index === lastAssistantGroupIndex,
+                        }));
                       })()}
+                      {localMessages.filter(m => m.role === "user").map((m, i) => (
+                        <div key={`local-user-${i}`} className="flex justify-end mb-4 px-4">
+                          <div className="max-w-[70%] bg-primary text-primary-foreground px-4 py-3 rounded-lg">
+                            <div className="text-sm whitespace-pre-wrap">{m.content}</div>
+                          </div>
+                        </div>
+                      ))}
                       {_renderProgressEvents()}
                       {isLoading && progressEvents.length === 0 && (
                         <div className="flex justify-center mb-4 px-4">
@@ -1751,7 +2217,7 @@ function AiModal({ isOpen, onClose }) {
                       )}
                       <div ref={messagesEndRef} />
                     </>
-                  ) : progressEvents.length > 0 ? (
+                  ) : (localMessages.length > 0 || progressEvents.length > 0) ? (
                     <>
                       {localMessages.length > 0 && (
                         <div className="flex justify-end mb-4 px-4">
@@ -1761,6 +2227,23 @@ function AiModal({ isOpen, onClose }) {
                         </div>
                       )}
                       {_renderProgressEvents()}
+                      {isLoading && progressEvents.length === 0 && (
+                        <div className="flex justify-center mb-4 px-4">
+                          <div className="w-full max-w-[90%]">
+                            <div className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Avatar
+                                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                                  size="sm"
+                                  color="primary"
+                                />
+                                <LuLoader size={16} className="animate-spin" />
+                                <span className="text-sm">Thinking...</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                       <div ref={messagesEndRef} />
                     </>
                   ) : isLoading ? (
@@ -1776,7 +2259,7 @@ function AiModal({ isOpen, onClose }) {
                     </div>
                   )}
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-divider bg-background z-10 rounded-b-2xl">
+                <div className="flex-none p-4 border-t border-divider bg-background z-10 rounded-b-2xl">
                   <form onSubmit={_onAskAi} id="ai-conversation-form">
                     {(selectedContext.multiSelect.length > 0 || selectedContext.singleSelect) && (
                       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -1926,6 +2409,81 @@ function AiModal({ isOpen, onClose }) {
         )}
       </>)}</ModalContent>
     </Modal>
+
+    <Modal
+      isOpen={!!shareModalConversationId}
+      onClose={() => {
+        setShareModalConversationId(null);
+        setShareTargetUserId(null);
+      }}
+      size="md"
+    >
+      <ModalContent>
+        <ModalHeader>
+          <div className="font-bold">Share conversation with a teammate</div>
+        </ModalHeader>
+        <ModalBody>
+          <div className="text-sm text-foreground-500 mb-2">
+            This will create an independent copy of the conversation for your teammate. They can continue the chat on their own without affecting your original.
+          </div>
+          <div className="flex flex-col gap-1 max-h-[300px] overflow-y-auto">
+            {teamMembers
+              .filter(m => m.id !== user.id)
+              .map((member) => (
+                <div
+                  key={member.id}
+                  className={`flex flex-row items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                    shareTargetUserId === member.id
+                      ? "bg-primary-50 border border-primary-200"
+                      : "hover:bg-content2"
+                  }`}
+                  onClick={() => setShareTargetUserId(member.id)}
+                >
+                  <Avatar
+                    name={member.name}
+                    size="sm"
+                    showFallback
+                    fallback={<LuUsers size={14} />}
+                  />
+                  <div className="flex flex-col flex-1">
+                    <span className="text-sm font-medium">{member.name}</span>
+                    <span className="text-xs text-foreground-500">{member.email}</span>
+                  </div>
+                  {shareTargetUserId === member.id && (
+                    <LuCheck size={16} className="text-primary" />
+                  )}
+                </div>
+              ))}
+            {teamMembers.filter(m => m.id !== user.id).length === 0 && (
+              <div className="text-sm text-foreground-500 py-4 text-center">
+                No other team members found.
+              </div>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button
+            variant="bordered"
+            onPress={() => {
+              setShareModalConversationId(null);
+              setShareTargetUserId(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            color="primary"
+            onPress={_onShareConversation}
+            isLoading={shareLoading}
+            isDisabled={!shareTargetUserId}
+            endContent={<LuShare2 size={14} />}
+          >
+            Share
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+    </>
   )
 }
 

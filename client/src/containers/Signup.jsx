@@ -72,7 +72,7 @@ function Signup() {
     dispatch(createInvitedUser(values))
       .then((data) => {
         const userData = data.payload;
-        dispatch(addTeamMember({ userId: userData.id, inviteToken }))
+        return dispatch(addTeamMember({ userId: userData.id, inviteToken }))
           .then(() => {
             setLoading(false);
             setAddedToTeam(true);
@@ -81,8 +81,9 @@ function Signup() {
             }, 3000);
           });
       })
-      .catch(() => {
+      .catch((err) => {
         setLoading(false);
+        setSignupError(err.message || "There was an error creating your account. Please try again.");
       });
   };
 
@@ -92,10 +93,10 @@ function Signup() {
       <div className="flex flex-col pt-[20px] sm:pt-[50px] w-full">
         <div className="mx-auto max-w-[400px] sm:max-w-[500px] px-4 sm:px-10">
           <div className="flex flex-col gap-2 items-center">
-            <img src={logo} alt="ADDMAN-SmartChart" width={60} />
+            <img src={logo} alt="Edison" width={60} />
             <div className="flex flex-col items-center text-center">
               <h1 className={"text-3xl font-bold font-tw"}>
-                {"Create your ADDMAN-SmartChart account"}
+                {"Create your Edison account"}
               </h1>
               <div className="text-gray-500">
                 {"Enter your new sign in details"}
@@ -210,7 +211,7 @@ function Signup() {
 
           <Spacer y={4} />
           <Text size="sm">
-            {"By signing up for an ADDMAN-SmartChart account, you agree to our "}
+            {"By signing up for an Edison account, you agree to our "}
             <a href="#" rel="noopener noreferrer" target="_blank">Terms of Service</a>
             {" and "}
             <a href="#" rel="noopener noreferrer" target="_blank">Privacy Policy</a>

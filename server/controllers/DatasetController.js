@@ -1,5 +1,6 @@
 const _ = require("lodash");
 const Sequelize = require("sequelize");
+const moment = require("moment");
 
 const db = require("../models/models");
 const ConnectionController = require("./ConnectionController");
@@ -320,13 +321,33 @@ class DatasetController {
 
         if (!mainDr) throw new Error("There is no main data request for this dataset.");
 
+        // Inject fallback start_date/end_date (last 7 days) when the query
+        // uses these variables but no values were provided by the caller
+        const runtimeVars = { ...variables };
+        if (!runtimeVars.start_date) {
+          const needsStartDate = dataRequests.some(
+            (dr) => dr.query && dr.query.includes("{{start_date}}")
+          );
+          if (needsStartDate) {
+            runtimeVars.start_date = moment().subtract(7, "days").startOf("day").toISOString();
+          }
+        }
+        if (!runtimeVars.end_date) {
+          const needsEndDate = dataRequests.some(
+            (dr) => dr.query && dr.query.includes("{{end_date}}")
+          );
+          if (needsEndDate) {
+            runtimeVars.end_date = moment().endOf("day").toISOString();
+          }
+        }
+
         // go through all data requests
         dataRequests.forEach((dataRequest) => {
           // Apply variables before processing the request
           const {
             dataRequest: originalDataRequest,
             processedQuery,
-          } = applyVariables(dataRequest, variables);
+          } = applyVariables(dataRequest, runtimeVars);
           const connection = originalDataRequest.Connection;
 
           if (!originalDataRequest
@@ -371,6 +392,15 @@ class DatasetController {
           } else if (connection.type === "postgres") {
             drPromises.push(
               this.connectionController.runPostgres(
+                connection.id,
+                originalDataRequest,
+                getCache,
+                processedQuery,
+              )
+            );
+          } else if (connection.type === "mssql") {
+            drPromises.push(
+              this.connectionController.runMssql(
                 connection.id,
                 originalDataRequest,
                 getCache,

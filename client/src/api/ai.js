@@ -64,6 +64,28 @@ export async function orchestrateAi(teamId, question, conversationHistory = [], 
   return response.json();
 }
 
+export async function renameAiConversation(conversationId, teamId, title) {
+  const token = getAuthToken();
+  const url = `${API_HOST}/ai/conversations/${conversationId}`;
+  const headers = new Headers({
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  });
+
+  const response = await fetch(url, {
+    headers,
+    method: "PATCH",
+    body: JSON.stringify({ teamId, title })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to rename conversation");
+  }
+
+  return response.json();
+}
+
 export async function deleteAiConversation(conversationId, teamId) {
   const token = getAuthToken();
   const url = `${API_HOST}/ai/conversations/${conversationId}?teamId=${teamId}`;
@@ -79,6 +101,56 @@ export async function deleteAiConversation(conversationId, teamId) {
 
   if (!response.ok) {
     throw new Error("Failed to delete conversation");
+  }
+
+  return response.json();
+}
+
+export async function submitAiMessageFeedback(conversationId, messageId, teamId, feedback) {
+  const token = getAuthToken();
+  const url = `${API_HOST}/ai/conversations/${conversationId}/messages/${messageId}/feedback`;
+  const headers = new Headers({
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  });
+
+  const response = await fetch(url, {
+    headers,
+    method: "PATCH",
+    body: JSON.stringify({ teamId, feedback })
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to submit feedback");
+  }
+
+  return response.json();
+}
+
+export async function forkAiConversation(conversationId, teamId, targetUserId = null) {
+  const token = getAuthToken();
+  const url = `${API_HOST}/ai/conversations/${conversationId}/fork`;
+  const headers = new Headers({
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${token}`,
+  });
+
+  const body = { teamId };
+  if (targetUserId) {
+    body.targetUserId = targetUserId;
+  }
+
+  const response = await fetch(url, {
+    headers,
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Failed to fork conversation");
   }
 
   return response.json();

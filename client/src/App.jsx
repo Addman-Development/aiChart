@@ -10,15 +10,29 @@ import { HelmetProvider } from "react-helmet-async";
 import Main from "./containers/Main";
 import reducer from "./reducers";
 import { ThemeProvider } from "./modules/ThemeContext";
+import ErrorBoundary from "./components/ErrorBoundary";
+import ErrorPage from "./components/ErrorPage";
 
 const store = configureStore({
   reducer,
 });
 
+let basename = "/";
+try {
+  const clientHost = import.meta.env.VITE_APP_CLIENT_HOST;
+  if (clientHost) {
+    const { pathname } = new URL(clientHost);
+    if (pathname && pathname !== "/") {
+      basename = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+    }
+  }
+} catch (e) { basename = "/"; }
+
 const router = createBrowserRouter([
   {
     path: "/",
     element: <Main />,
+    errorElement: <ErrorPage />,
     children: [
       {
         path: "user",
@@ -114,7 +128,10 @@ const router = createBrowserRouter([
         path: "google-auth",
       },
       {
-        path: "azure-callback",
+        path: "keycloak-callback",
+      },
+      {
+        path: "onboarding",
       },
       {
         path: "passwordReset"
@@ -124,7 +141,7 @@ const router = createBrowserRouter([
       },
     ],
   },
-]);
+], { basename });
 
 export default function App() {
   return (
@@ -132,7 +149,9 @@ export default function App() {
       <HelmetProvider>
         <ThemeProvider>
           <HeroUIProvider locale="en-GB">
-            <RouterProvider router={router} />
+            <ErrorBoundary>
+              <RouterProvider router={router} />
+            </ErrorBoundary>
           </HeroUIProvider>
         </ThemeProvider>
       </HelmetProvider>

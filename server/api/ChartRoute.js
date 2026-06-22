@@ -10,6 +10,7 @@ const spreadsheetExport = require("../modules/spreadsheetExport");
 const alertController = require("../controllers/AlertController");
 const getEmbeddedChartData = require("../modules/getEmbeddedChartData");
 const db = require("../models/models");
+const logger = require("../modules/logger").child({ module: "api:ChartRoute" });
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -51,6 +52,11 @@ module.exports = (app) => {
       const project = await projectController.findById(projectId);
       if (!project) {
         return res.status(404).json({ message: "Project not found" });
+      }
+
+      if (req.user.admin) {
+        req.user.isEditor = true;
+        return next();
       }
 
       const teamRole = await teamController.getTeamRole(project.team_id, req.user.id);
@@ -144,6 +150,9 @@ module.exports = (app) => {
   app.get("/project/:project_id/chart/:id", verifyToken, checkPermissions("readAny"), (req, res) => {
     return chartController.findById(req.params.id)
       .then((chart) => {
+        if (!chart) {
+          return res.status(404).json({ message: "Chart not found" });
+        }
         return res.status(200).send(chart);
       })
       .catch((error) => {
@@ -332,7 +341,7 @@ module.exports = (app) => {
         return res.status(200).send(chart);
       })
       .catch((error) => {
-        console.error((error && error.message) || error); // eslint-disable-line
+        logger.error({ err: error }, "ChartRoute embedded chart data failed");
         if (`${error}` === "401" || error.message === "401") {
           return res.status(401).send({ error: "Not authorized" });
         }

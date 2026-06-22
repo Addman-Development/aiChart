@@ -53,7 +53,7 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    azureId: {
+    keycloakId: {
       type: DataTypes.STRING,
       allowNull: true,
     },
@@ -62,7 +62,7 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: true,
       defaultValue: "local",
     },
-    azureLinkedAt: {
+    keycloakLinkedAt: {
       type: DataTypes.DATE,
       allowNull: true,
     },
@@ -71,6 +71,11 @@ module.exports = (sequelize, DataTypes) => {
     },
     passwordResetToken: {
       type: DataTypes.STRING,
+    },
+    mustChangePassword: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false,
+      allowNull: false,
     },
     tutorials: {
       type: DataTypes.TEXT,
@@ -110,16 +115,19 @@ module.exports = (sequelize, DataTypes) => {
   };
 
   User.beforeValidate((user) => {
-    // Only validate Azure-specific constraints when explicitly creating Azure users
-    const azureEnabled = settings.azure && settings.azure.clientId;
+    // Normalize email to lowercase — emails are case-insensitive per RFC 5321
+    if (user.email && user.changed("email")) {
+      user.email = user.email.toLowerCase().trim();
+    }
 
-    if (azureEnabled && user.changed("azureId")) {
-      // Only validate when Azure fields are being actively set
-      if (user.authProvider === "azure" && !user.azureId) {
-        throw new Error("Azure users must have an azureId");
+    const keycloakEnabled = settings.keycloak && settings.keycloak.issuer;
+
+    if (keycloakEnabled && user.changed("keycloakId")) {
+      if (user.authProvider === "keycloak" && !user.keycloakId) {
+        throw new Error("Keycloak users must have a keycloakId");
       }
-      if (user.authProvider === "hybrid" && !user.password && !user.azureId) {
-        throw new Error("Hybrid users must have at least a password or azureId");
+      if (user.authProvider === "hybrid" && !user.password && !user.keycloakId) {
+        throw new Error("Hybrid users must have at least a password or keycloakId");
       }
     }
 

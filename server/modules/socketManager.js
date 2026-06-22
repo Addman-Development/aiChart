@@ -2,9 +2,10 @@ const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const Redis = require("ioredis");
 const { getRedisOptions } = require("../redisConnection");
+const logger = require("./logger").child({ module: "socketManager" });
 
 /**
- * Socket.IO Manager for ADDMAN-SmartChart
+ * Socket.IO Manager for Edison
  *
  * Handles real-time communication for AI orchestrations and other features.
  * Provides room-based isolation for teams/users and progress tracking.
@@ -23,6 +24,10 @@ class SocketManager {
   }
 
   async initialize(server) {
+    // Engine.IO listens on the raw HTTP server's upgrade event, so the
+    // Express prefix-strip middleware does not apply. Bake the public-facing
+    // base path into the socket path so wss://host/<base>/socket.io matches.
+    const apiBasePath = (process.env.CB_API_BASE_PATH || "").replace(/\/$/, "");
     this.io = new Server(server, {
       cors: {
         origin: process.env.VITE_APP_CLIENT_HOST || false,
@@ -37,7 +42,7 @@ class SocketManager {
         maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
         skipMiddlewares: true,
       },
-      path: "/socket.io"
+      path: `${apiBasePath}/socket.io`
     });
 
     // Try to set up Redis adapter for cross-process communication
@@ -52,7 +57,7 @@ class SocketManager {
 
       // Check if Redis is configured (host is set)
       if (!redisConfig.host) {
-        console.log("Redis not configured, using in-memory adapter"); // eslint-disable-line
+        logger.info("Redis not configured, using in-memory adapter for Socket.IO");
         return;
       }
 
@@ -72,30 +77,28 @@ class SocketManager {
 
       // Set up error handlers before connecting
       this.pubClient.on("error", (err) => {
-        console.error("Socket.IO Redis Pub Client Error:", err.message); // eslint-disable-line
+        logger.error({ err, client: "pub" }, "Socket.IO Redis client error");
       });
 
       this.subClient.on("error", (err) => {
-        console.error("Socket.IO Redis Sub Client Error:", err.message); // eslint-disable-line
+        logger.error({ err, client: "sub" }, "Socket.IO Redis client error");
       });
 
-      // Set up reconnection handlers
-      this.pubClient.on("reconnecting", () => {
-        console.log("Socket.IO Redis Pub Client reconnecting..."); // eslint-disable-line
-      });
-
-      this.subClient.on("reconnecting", () => {
-        console.log("Socket.IO Redis Sub Client reconnecting..."); // eslint-disable-line
-      });
-
-      // Set up ready handlers
-      this.pubClient.on("ready", () => {
-        console.log("Socket.IO Redis Pub Client ready"); // eslint-disable-line
-      });
-
-      this.subClient.on("ready", () => {
-        console.log("Socket.IO Redis Sub Client ready"); // eslint-disable-line
-      });
+      // Only log reconnection/ready events at debug level to avoid log spam
+      if (process.env.DEBUG_REDIS) {
+        this.pubClient.on("reconnecting", () => {
+          logger.debug({ client: "pub" }, "Socket.IO Redis client reconnecting");
+        });
+        this.subClient.on("reconnecting", () => {
+          logger.debug({ client: "sub" }, "Socket.IO Redis client reconnecting");
+        });
+        this.pubClient.on("ready", () => {
+          logger.debug({ client: "pub" }, "Socket.IO Redis client ready");
+        });
+        this.subClient.on("ready", () => {
+          logger.debug({ client: "sub" }, "Socket.IO Redis client ready");
+        });
+      }
 
       // Connect both clients and wait for them to be ready
       await Promise.all([
@@ -109,9 +112,9 @@ class SocketManager {
         publishOnSpecificResponseChannel: true, // More efficient for multi-server setups
       }));
 
-      console.log("✓ Socket.IO Redis adapter enabled for cross-process communication"); // eslint-disable-line
+      logger.info("Socket.IO Redis adapter enabled for cross-process communication");
     } catch (error) {
-      console.warn("Failed to set up Redis adapter, using in-memory adapter:", error.message); // eslint-disable-line
+      logger.warn({ err: error }, "Failed to set up Socket.IO Redis adapter, falling back to in-memory adapter");
 
       // Clean up clients if setup failed
       if (this.pubClient) {

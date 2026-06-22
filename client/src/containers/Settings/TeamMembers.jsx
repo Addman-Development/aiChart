@@ -5,11 +5,12 @@ import {
   Chip, Button, Checkbox, Divider, Dropdown, Modal, Spacer, Table, Tooltip, CircularProgress,
   TableHeader, TableColumn, TableBody, TableRow, TableCell, DropdownMenu, DropdownItem,
   DropdownTrigger, ModalHeader, ModalBody, ModalFooter, ModalContent, Code,
-  Input,
+  Input, Tabs, Tab,
 } from "@heroui/react";
 import _ from "lodash";
 import toast from "react-hot-toast";
-import { LuFolderKey, LuInfo, LuStar, LuUser, LuX, LuCircleX, LuKeyRound, LuIdCard, LuCircleCheck } from "react-icons/lu";
+import { useSearchParams } from "react-router";
+import { LuFolderKey, LuInfo, LuStar, LuUser, LuX, LuCircleX, LuKeyRound, LuIdCard, LuCircleCheck, LuLock } from "react-icons/lu";
 
 import {
   getTeam, getTeamMembers, updateTeamRole, deleteTeamMember, selectTeam, selectTeamMembers,
@@ -17,17 +18,18 @@ import {
   selectTeams,
 } from "../../slices/team";
 import InviteMembersForm from "../../components/InviteMembersForm";
+import CreateUserForm from "../../components/CreateUserForm";
+import PendingAccessRequestCard from "../../components/PendingAccessRequestCard";
 import canAccess from "../../config/canAccess";
 import { selectProjects } from "../../slices/project";
 import { selectUser } from "../../slices/user";
+import { getAuthToken } from "../../modules/auth";
+import { API_HOST } from "../../config/settings";
 
-/*
-  Contains Pending Invites and All team members with functionality to delete/change role
-*/
 function TeamMembers(props) {
   const { style = {} } = props;
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [changedMember, setChangedMember] = useState(null);
   const [deleteMember, setDeleteMember] = useState("");
   const [projectModal, setProjectModal] = useState(false);
@@ -36,6 +38,9 @@ function TeamMembers(props) {
   const [transferOwnershipMember, setTransferOwnershipMember] = useState(null);
   const [transfering, setTransfering] = useState(false);
   const [transferConfirmation, setTransferConfirmation] = useState("");
+  const [resetPasswordMember, setResetPasswordMember] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [resetPasswordLoading, setResetPasswordLoading] = useState(false);
 
   const team = useSelector(selectTeam);
   const teamMembers = useSelector(selectTeamMembers);
@@ -44,6 +49,8 @@ function TeamMembers(props) {
   const teams = useSelector(selectTeams);
 
   const dispatch = useDispatch();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const accessRequestId = searchParams.get("access_request_id");
 
   useEffect(() => {
     if (projects && projects.length > 0 && team && team.TeamRoles) {
@@ -145,7 +152,6 @@ function TeamMembers(props) {
   };
 
   const _onDeleteTeamMember = (memberId) => {
-    // deleting from teamRole
     setLoading(true);
     dispatch(deleteTeamMember({ memberId: memberId, team_id: team.id }))
       .then(() => {
@@ -160,12 +166,47 @@ function TeamMembers(props) {
       });
   };
 
+  const _onAdminResetPassword = async () => {
+    if (!resetPasswordMember || !resetPasswordValue || resetPasswordValue.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+
+    setResetPasswordLoading(true);
+    try {
+      const token = getAuthToken();
+      const response = await fetch(
+        `${API_HOST}/team/${team.id}/member/${resetPasswordMember.id}/password-reset`,
+        {
+          method: "PUT",
+          headers: {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`,
+          },
+          body: JSON.stringify({ newPassword: resetPasswordValue }),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Failed to reset password");
+      }
+
+      toast.success(`Password reset for ${resetPasswordMember.name}. They will be asked to change it on next login.`);
+      setResetPasswordMember(null);
+      setResetPasswordValue("");
+    } catch (e) {
+      toast.error(e.message || "Failed to reset password");
+    }
+    setResetPasswordLoading(false);
+  };
+
   const _canAccess = (role) => {
     return canAccess(role, user.id, team.TeamRoles, user);
   };
 
   const _teamsOwned = () => {
-    // go through all the teams and get all the teams that the user is a teamOwner of
     const teamsOwned = teams.filter((t) => t.TeamRoles.some((tr) => tr.user_id === user.id && tr.role === "teamOwner"));
     return teamsOwned;
   };
@@ -194,9 +235,30 @@ function TeamMembers(props) {
 
   return (
     <div style={style}>
+      {accessRequestId && _canAccess("teamAdmin") && (
+        <PendingAccessRequestCard
+          requestId={accessRequestId}
+          onResolved={() => {
+            if (team?.id) dispatch(getTeamMembers({ team_id: team.id }));
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("access_request_id");
+              return next;
+            }, { replace: true });
+          }}
+        />
+      )}
+
       {_canAccess("teamAdmin") && (
         <div className="bg-content1 p-4 rounded-lg border border-divider">
-          <InviteMembersForm />
+          <Tabs aria-label="Invite options" variant="underlined" color="primary">
+            <Tab key="add" title="Add Member">
+              <CreateUserForm />
+            </Tab>
+            <Tab key="invite" title="Invite Link">
+              <InviteMembersForm />
+            </Tab>
+          </Tabs>
         </div>
       )}
 
@@ -357,6 +419,20 @@ function TeamMembers(props) {
                         {user.id !== member.id
                           && (_canAccess("teamOwner") || (_canAccess("teamAdmin") && memberRole.role !== "teamOwner"))
                           && (
+                            <Tooltip content="Reset password">
+                              <Button
+                                variant="light"
+                                onPress={() => setResetPasswordMember(member)}
+                                isIconOnly
+                                size="sm"
+                              >
+                                <LuLock />
+                              </Button>
+                            </Tooltip>
+                          )}
+                        {user.id !== member.id
+                          && (_canAccess("teamOwner") || (_canAccess("teamAdmin") && memberRole.role !== "teamOwner"))
+                          && (
                             <Tooltip content="Remove user from the team">
                               <Button
                                 variant="light"
@@ -379,7 +455,6 @@ function TeamMembers(props) {
         )}
       </div>
 
-      {/* Remove user modal */}
       <Modal isOpen={!!deleteMember} backdrop="blur" onClose={() => setDeleteMember(false)}>
         <ModalContent>
           <ModalHeader>
@@ -407,7 +482,56 @@ function TeamMembers(props) {
         </ModalContent>
       </Modal>
 
-      {/* Project access modal */}
+      <Modal
+        isOpen={!!resetPasswordMember}
+        backdrop="blur"
+        onClose={() => {
+          setResetPasswordMember(null);
+          setResetPasswordValue("");
+        }}
+      >
+        <ModalContent>
+          <ModalHeader>
+            Reset password for {resetPasswordMember?.name}
+          </ModalHeader>
+          <ModalBody>
+            <p className="text-sm text-foreground-500">
+              Set a temporary password for this user. They will be required to change it on their next login.
+            </p>
+            <Input
+              label="New temporary password"
+              type="password"
+              placeholder="Minimum 6 characters"
+              value={resetPasswordValue}
+              onChange={(e) => setResetPasswordValue(e.target.value)}
+              variant="bordered"
+              isInvalid={resetPasswordValue.length > 0 && resetPasswordValue.length < 6}
+              errorMessage={resetPasswordValue.length > 0 && resetPasswordValue.length < 6 ? "Minimum 6 characters" : ""}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button
+              variant="bordered"
+              onPress={() => {
+                setResetPasswordMember(null);
+                setResetPasswordValue("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="primary"
+              onPress={_onAdminResetPassword}
+              isLoading={resetPasswordLoading}
+              isDisabled={!resetPasswordValue || resetPasswordValue.length < 6}
+              endContent={<LuLock />}
+            >
+              Reset password
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
       <Modal isOpen={projectModal} onClose={() => setProjectModal(false)} size="4xl">
         <ModalContent>
           <ModalHeader>
@@ -474,7 +598,6 @@ function TeamMembers(props) {
         </ModalContent>
       </Modal>
 
-      {/* Transfer ownership modal */}
       <Modal isOpen={!!transferOwnershipMember} onClose={() => setTransferOwnershipMember(null)} size="lg">
         <ModalContent>
           <ModalHeader className="font-bold">

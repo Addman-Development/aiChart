@@ -311,6 +311,11 @@ module.exports = (sequelize, DataTypes) => {
     sshJumpPort: {
       type: DataTypes.INTEGER,
     },
+    shared: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
   }, {
     freezeTableName: true,
   });
@@ -318,6 +323,12 @@ module.exports = (sequelize, DataTypes) => {
   Connection.associate = (models) => {
     models.Connection.hasMany(models.Dataset, { foreignKey: "connection_id" });
     models.Connection.belongsTo(models.OAuth, { foreignKey: "oauth_id" });
+    models.Connection.belongsToMany(models.Team, {
+      through: models.TeamConnection,
+      foreignKey: "connection_id",
+      otherKey: "team_id",
+      as: "OptedInTeams",
+    });
   };
 
   Connection.prototype.decryptField = (val) => {

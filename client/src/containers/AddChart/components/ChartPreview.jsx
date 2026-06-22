@@ -122,22 +122,25 @@ function ChartPreview(props) {
   };
 
   const _onChangeMode = () => {
-    setRedraw(true);
-
     return onChange({ mode: chart.mode === "chart" ? "kpichart" : "chart" });
   };
 
   const _onChangeGrowth = () => {
-    setRedraw(true);
-
     return onChange({ showGrowth: !chart.showGrowth });
   };
 
   const _onChangeInvertGrowth = () => {
-    setRedraw(true);
-
     return onChange({ invertGrowth: !chart.invertGrowth });
   };
+
+  // Default to enabled when the flag is undefined (legacy charts pre-migration)
+  const _tableSearchEnabled = chart.tableSearchEnabled !== false;
+  const _tableFilterEnabled = chart.tableFilterEnabled !== false;
+  const _tableSortEnabled = chart.tableSortEnabled !== false;
+
+  const _onToggleTableSearch = () => onChange({ tableSearchEnabled: !_tableSearchEnabled });
+  const _onToggleTableFilter = () => onChange({ tableFilterEnabled: !_tableFilterEnabled });
+  const _onToggleTableSort = () => onChange({ tableSortEnabled: !_tableSortEnabled });
 
   const _redrawComplete = () => {
     setRedraw(false);
@@ -255,7 +258,7 @@ function ChartPreview(props) {
                   {"Use cached data"}
                 </Checkbox>
                 <Tooltip
-                  content="ADDMAN-SmartChart will use cached data for extra editing speed ⚡️"
+                  content="Edison will use cached data for extra editing speed ⚡️"
                 >
                   <div><LuInfo /></div>
                 </Tooltip>
@@ -379,6 +382,9 @@ function ChartPreview(props) {
                       height={400}
                       editMode
                       defaultRowsPerPage={chart.defaultRowsPerPage}
+                      searchEnabled={_tableSearchEnabled}
+                      filterEnabled={_tableFilterEnabled}
+                      sortEnabled={_tableSortEnabled}
                     />
                   </div>
                 )}
@@ -568,7 +574,7 @@ function ChartPreview(props) {
       </div>
 
       {chart && chart.type && chart.ChartDatasetConfigs && chart.ChartDatasetConfigs.length > 0
-        && chart.type !== "gauge" && chart.type !== "matrix" && (
+        && chart.type !== "gauge" && chart.type !== "matrix" && chart.type !== "table" && (
         <div style={styles.topBuffer} className="chart-preview-growth">
           <div className="flex flex-row items-center gap-4">
             <Checkbox
@@ -593,6 +599,35 @@ function ChartPreview(props) {
               size="sm"
             >
               Invert growth
+            </Checkbox>
+          </div>
+          <Spacer y={2} />
+        </div>
+      )}
+
+      {chart && chart.type === "table" && chart.ChartDatasetConfigs && chart.ChartDatasetConfigs.length > 0 && (
+        <div style={styles.topBuffer} className="chart-preview-table-controls">
+          <div className="flex flex-row items-center gap-4">
+            <Checkbox
+              isSelected={_tableSearchEnabled}
+              onChange={_onToggleTableSearch}
+              size="sm"
+            >
+              Search bar
+            </Checkbox>
+            <Checkbox
+              isSelected={_tableFilterEnabled}
+              onChange={_onToggleTableFilter}
+              size="sm"
+            >
+              Column filters
+            </Checkbox>
+            <Checkbox
+              isSelected={_tableSortEnabled}
+              onChange={_onToggleTableSort}
+              size="sm"
+            >
+              Sort columns
             </Checkbox>
           </div>
           <Spacer y={2} />

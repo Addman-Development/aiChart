@@ -7,13 +7,13 @@ function QuickStartVideo({ isOpen, onClose }) {
     <Modal isOpen={isOpen} size="2xl" onClose={onClose}>
       <ModalContent>
         <ModalHeader>
-          <span className="font-bold">ADDMAN-SmartChart quick start guide</span>
+          <span className="font-bold">Edison quick start guide</span>
         </ModalHeader>
         <ModalBody>
           <div className="relative pb-[56.25%] h-0 mt-4">
             <iframe
               src="https://www.youtube.com/embed/15nAw318Vo4?si=DpQFhQ2CyYl2nEU5"
-              title="ADDMAN-SmartChart quick start video"
+              title="Edison quick start video"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
               allowfullscreen

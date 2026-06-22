@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { nanoid } = require("nanoid");
+const busboy = require("connect-busboy");
 const _ = require("lodash");
 const jwt = require("jsonwebtoken");
 
@@ -12,6 +13,7 @@ const SharePolicyController = require("../controllers/SharePolicyController");
 const verifyToken = require("../modules/verifyToken");
 const accessControl = require("../modules/accessControl");
 const getUserFromToken = require("../modules/getUserFromToken");
+const logger = require("../modules/logger").child({ module: "api:ProjectRoute" });
 const db = require("../models/models");
 
 module.exports = (app) => {
@@ -29,6 +31,11 @@ module.exports = (app) => {
       if (projectId) {
         project = await projectController.findById(projectId);
         if (!project) return res.status(404).json({ message: "Project not found" });
+      }
+
+      if (req.user.admin) {
+        req.user.isEditor = true;
+        return next();
       }
 
       if (teamId) {
@@ -147,7 +154,7 @@ module.exports = (app) => {
   /*
   ** Route to update a project's Logo
   */
-  app.post("/project/:id/logo", verifyToken, checkPermissions("updateOwn"), (req, res) => {
+  app.post("/project/:id/logo", verifyToken, checkPermissions("updateOwn"), busboy(), (req, res) => {
     let logoPath;
 
     req.pipe(req.busboy);
@@ -242,8 +249,7 @@ module.exports = (app) => {
                 return res.status(200).send(updatedProject);
               } catch (error) {
                 // If variable application fails, return the project without variables
-                // eslint-disable-next-line no-console
-                console.error("Failed to apply variables to dashboard:", error);
+                logger.error({ err: error }, "Failed to apply variables to dashboard");
               }
             }
 
@@ -317,8 +323,7 @@ module.exports = (app) => {
                 return res.status(200).send(updatedProject);
               } catch (error) {
                 // If variable application fails, return the project without variables
-                // eslint-disable-next-line no-console
-                console.error("Failed to apply variables to dashboard:", error);
+                logger.error({ err: error }, "Failed to apply variables to dashboard");
                 return res.status(200).send(processedProject);
               }
             }
@@ -348,8 +353,7 @@ module.exports = (app) => {
             return res.status(200).send(updatedProject);
           } catch (error) {
             // If variable application fails, return the project without variables
-            // eslint-disable-next-line no-console
-            console.error("Failed to apply variables to dashboard:", error);
+            logger.error({ err: error }, "Failed to apply variables to dashboard");
           }
         }
       }

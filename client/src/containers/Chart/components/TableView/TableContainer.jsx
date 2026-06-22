@@ -12,6 +12,9 @@ function TableContainer(props) {
   const {
     tabularData, embedded = false, datasets,
     defaultRowsPerPage = 10,
+    searchEnabled = true,
+    filterEnabled = true,
+    sortEnabled = true,
   } = props;
 
   const [activeDatasetIndex, setActiveDatasetIndex] = useState(0);
@@ -48,8 +51,8 @@ function TableContainer(props) {
   const dataKey = Object.keys(tabularData)[activeDatasetIndex];
 
   return (
-    <div className="h-full overflow-y-auto">
-      <Row align="center" wrap="wrap" className={"gap-1"}>
+    <div className="h-full flex flex-col min-h-0">
+      <Row align="center" wrap="wrap" className={"gap-1 flex-none"}>
         {datasets.length > 1 && (
           <Tabs
             selectedKey={`${activeDatasetIndex}`}
@@ -71,13 +74,18 @@ function TableContainer(props) {
         )}
       </Row>
       {dataKey && tabularData[dataKey] && tabularData[dataKey].columns && (
-        <TableComponent
-          columns={tabularData[dataKey].columns}
-          data={tabularData[dataKey].data}
-          embedded={embedded}
-          dataset={activeDataset}
-          defaultRowsPerPage={defaultRowsPerPage}
-        />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <TableComponent
+            columns={tabularData[dataKey].columns}
+            data={tabularData[dataKey].data}
+            embedded={embedded}
+            dataset={activeDataset}
+            defaultRowsPerPage={defaultRowsPerPage}
+            searchEnabled={searchEnabled}
+            filterEnabled={filterEnabled}
+            sortEnabled={sortEnabled}
+          />
+        </div>
       )}
     </div>
   );
@@ -88,6 +96,9 @@ TableContainer.propTypes = {
   datasets: PropTypes.array.isRequired,
   embedded: PropTypes.bool,
   defaultRowsPerPage: PropTypes.number,
+  searchEnabled: PropTypes.bool,
+  filterEnabled: PropTypes.bool,
+  sortEnabled: PropTypes.bool,
 };
 
 export default TableContainer;

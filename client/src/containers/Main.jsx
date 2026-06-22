@@ -14,6 +14,7 @@ import {
 } from "../slices/user";
 import { getTeams, saveActiveTeam, selectTeam, selectTeams } from "../slices/team";
 import { selectFeedbackModalOpen, hideFeedbackModal, selectAiModalOpen, hideAiModal, toggleAiModal } from "../slices/ui";
+import { getProjectCharts } from "../slices/chart";
 import { cleanErrors as cleanErrorsAction } from "../actions/error";
 import { useTheme } from "../modules/ThemeContext";
 import { IconContext } from "react-icons";
@@ -22,7 +23,6 @@ import AddChart from "./AddChart/AddChart";
 import ProjectSettings from "./ProjectSettings";
 import Integrations from "./Integrations/Integrations";
 import Dataset from "./Dataset/Dataset";
-// import { getProjects } from "../slices/project";
 import ConnectionWizard from "./Connections/ConnectionWizard";
 import { Toaster } from "react-hot-toast";
 import ConnectionList from "./UserDashboard/ConnectionList";
@@ -43,46 +43,59 @@ const ManageUser = lazy(() => import("./Settings/ManageUser"));
 const PublicDashboard = lazy(() => import("./PublicDashboard/PublicDashboard"));
 const PasswordReset = lazy(() => import("./PasswordReset"));
 const EmbeddedChart = lazy(() => import("./EmbeddedChart"));
-const AzureCallback = lazy(() => import("./AzureCallback"));
+const KeycloakCallback = lazy(() => import("./KeycloakCallback"));
+const Onboarding = lazy(() => import("./Onboarding"));
 const ProjectRedirect = lazy(() => import("./ProjectRedirect"));
 import FeedbackForm from "../components/FeedbackForm";
+import ForcePasswordChange from "../components/ForcePasswordChange";
 import canAccess from "../config/canAccess";
 import AiModal from "./Ai/AiModal";
 import Auth from "./Integrations/Auth/Auth";
 import SlackCallback from "./Integrations/Auth/SlackCallback";
 import Integration from "./Integrations/Integration/Integration";
 import NoAccessPage from "../components/NoAccessPage";
+import { SITE_HOST } from "../config/settings";
+
+let _basePath = "/";
+try {
+  const { pathname } = new URL(SITE_HOST);
+  if (pathname && pathname !== "/") {
+    _basePath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  }
+} catch (e) { _basePath = "/"; }
 
 function authenticatePage() {
-  if (window.location.pathname === "/login") {
+  let path = window.location.pathname;
+  if (_basePath !== "/" && path.startsWith(_basePath)) {
+    path = path.slice(_basePath.length) || "/";
+  }
+
+  if (path === "/login") {
     return false;
-  } else if (window.location.pathname === "/signup") {
+  } else if (path === "/signup") {
     return false;
-  } else if (window.location.pathname.indexOf("/b/") > -1) {
+  } else if (path.indexOf("/b/") > -1) {
     return false;
-  } else if (window.location.pathname.indexOf("/report/") > -1) {
+  } else if (path.indexOf("/report/") > -1) {
     return false;
-  } else if (window.location.pathname === "/passwordReset") {
+  } else if (path === "/passwordReset") {
     return false;
-  } else if (window.location.pathname === "/invite") {
+  } else if (path === "/invite") {
     return false;
-  } else if (window.location.pathname === "/feedback") {
+  } else if (path === "/feedback") {
     return false;
-  } else if (window.location.pathname === "/azure-callback") {
+  } else if (path === "/keycloak-callback") {
     return false;
-  } else if (window.location.pathname.indexOf("embedded") > -1) {
+  } else if (path.indexOf("embedded") > -1) {
     return false;
-  } else if (window.location.pathname.indexOf("/share") > -1) {
+  } else if (path.indexOf("/share") > -1) {
     return false;
   }
 
-  window.location.pathname = "/login";
+  window.location.pathname = `${_basePath === "/" ? "" : _basePath}/login`;
   return true;
 }
 
-/*
-  The main component where the entire app routing resides
-*/
 function Main(props) {
   const { cleanErrors } = props;
 
@@ -119,32 +132,27 @@ function Main(props) {
             return dispatch(getTeams());
           }
 
-          if (authenticatePage()) {
-            window.location.pathname = "/login";
-          }
+          authenticatePage();
 
           return null;
         })
-        .then(() => {
-          // return dispatch(getProjects({ team_id: data.payload?.[0]?.id }));
-        });
+        .then(() => {});
 
       dispatch(areThereAnyUsers())
         .then((anyUsers) => {
           const hasUsers = anyUsers?.payload?.areThereAnyUsers;
           const restricted = anyUsers?.payload?.signupRestricted;
+          const params = new URLSearchParams(window.location.search);
+          const hasInviteToken = params.has("inviteToken") || params.has("token");
 
           if (!hasUsers) {
-            // No users yet — allow first signup
             setSignupAllowed(true);
             if (pathname === "/login" || pathname === "/") {
               navigate("/signup");
             }
-          } else if (!restricted) {
-            // Users exist but signups are open
+          } else if (!restricted || hasInviteToken) {
             setSignupAllowed(true);
           } else {
-            // Users exist and signups are restricted
             setSignupAllowed(false);
             if (pathname === "/signup") {
               navigate("/login");
@@ -153,20 +161,15 @@ function Main(props) {
         });
     }
 
-    // Keyboard shortcut for AI modal (Cmd+K on Mac, Ctrl+K on Windows)
     const handleKeyDown = (event) => {
-      // Check for Cmd+K (Mac) or Ctrl+K (Windows/Linux)
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
-        // Prevent default browser behavior (usually search)
         event.preventDefault();
         dispatch(toggleAiModal());
       }
     };
 
-    // Add event listener
     window.addEventListener("keydown", handleKeyDown);
 
-    // Cleanup event listener
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
@@ -178,10 +181,15 @@ function Main(props) {
       teamsRef.current = true;
 
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
-      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.id));
+      let selectedTeam;
       if (storageActiveTeam) {
-        const storageTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
-        if (storageTeam) selectedTeam = storageTeam;
+        selectedTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
+      }
+      if (!selectedTeam) {
+        selectedTeam = teams.find((t) => (
+          Array.isArray(t.TeamRoles)
+            && t.TeamRoles.some((tr) => tr && tr.role === "teamOwner" && tr.user_id === user.id)
+        )) || teams[0];
       }
 
       if (selectedTeam) {
@@ -269,7 +277,7 @@ function Main(props) {
                 exact
                 path="/feedback"
                 element={(
-                  <div className={"container mx-auto pt-unit-lg max-w-[600px]"}>
+                  <div className={"container mx-auto pt-unit-lg max-w-[760px]"}>
                     <FeedbackForm />
                   </div>
                 )}
@@ -277,7 +285,8 @@ function Main(props) {
               {signupAllowed && (
                 <Route exact path="/signup" element={<Signup />} />
               )}
-              <Route exact path="/azure-callback" element={<AzureCallback />} />
+              <Route exact path="/keycloak-callback" element={<KeycloakCallback />} />
+              <Route exact path="/onboarding" element={<Onboarding />} />
               <Route exact path="/login" element={<Login />} />
               <Route exact path="/user" element={<UserDashboard />} />
               <Route exact path="/user/profile" element={<ManageUser />} />
@@ -309,6 +318,8 @@ function Main(props) {
       <Modal
         isOpen={feedbackModal}
         onClose={() => dispatch(hideFeedbackModal())}
+        size="3xl"
+        scrollBehavior="inside"
       >
         <ModalContent>
           <ModalBody>
@@ -327,8 +338,16 @@ function Main(props) {
       </Modal>
 
       {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
-        <AiModal isOpen={aiModalOpen} onClose={() => dispatch(hideAiModal())} />
+        <AiModal isOpen={aiModalOpen} onClose={() => {
+          dispatch(hideAiModal());
+          const dashboardMatch = pathname.match(/\/dashboard\/(\d+)/);
+          if (dashboardMatch) {
+            dispatch(getProjectCharts({ project_id: dashboardMatch[1] }));
+          }
+        }} />
       )}
+
+      <ForcePasswordChange />
 
       <Toaster
         position="top-center"

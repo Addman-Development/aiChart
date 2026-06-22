@@ -6,7 +6,10 @@ const {
   getConversations,
   getConversation,
   deleteConversation,
-  getAiUsage
+  renameConversation,
+  getAiUsage,
+  submitMessageFeedback,
+  forkConversation
 } = require("../controllers/AiController");
 const verifyToken = require("../modules/verifyToken");
 const TeamController = require("../controllers/TeamController");
@@ -22,14 +25,20 @@ const checkAccess = async (req, res, next) => {
   const teamId = req.body?.teamId || req.query?.teamId || req.params?.teamId;
 
   if (!teamId) {
-    res.status(400).json({ error: "teamId is required" });
+    return res.status(400).json({ error: "teamId is required" });
+  }
+
+  // Global (master) admins bypass per-team role checks, matching the client's
+  // canAccess convention which defers the real enforcement to the backend.
+  if (req.user?.admin) {
+    return next();
   }
 
   const teamController = new TeamController();
   const teamRole = await teamController.getTeamRole(teamId, req.user.id);
 
   if (!teamRole?.role || !["teamOwner", "teamAdmin"].includes(teamRole.role)) {
-    res.status(403).json({ error: "Access denied" });
+    return res.status(403).json({ error: "Access denied" });
   }
 
   next();
@@ -126,6 +135,70 @@ module.exports = (app) => {
 
     try {
       const result = await deleteConversation(conversationId, teamId);
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Rename a conversation
+  app.patch("/ai/conversations/:conversationId", apiLimiter(10), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId } = req.params;
+    const { teamId, title } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "title is required" });
+    }
+
+    try {
+      const result = await renameConversation(conversationId, teamId, title.trim());
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Fork a conversation (optionally share to a teammate)
+  app.post("/ai/conversations/:conversationId/fork", apiLimiter(10), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId } = req.params;
+    const { teamId, targetUserId } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    // If sharing to another user, verify they belong to the team
+    if (targetUserId) {
+      const teamController = new TeamController();
+      const targetRole = await teamController.getTeamRole(teamId, targetUserId);
+      if (!targetRole) {
+        return res.status(400).json({ error: "Target user is not a member of this team" });
+      }
+    }
+
+    try {
+      const result = await forkConversation(conversationId, teamId, req.user.id, targetUserId);
+      return res.json(result);
+    } catch (error) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Submit feedback on a message (thumbs up/down)
+  app.patch("/ai/conversations/:conversationId/messages/:messageId/feedback", apiLimiter(20), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId, messageId } = req.params;
+    const { teamId, feedback } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    try {
+      const result = await submitMessageFeedback(conversationId, messageId, teamId, feedback);
       return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: error.message });

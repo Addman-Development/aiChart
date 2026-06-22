@@ -559,7 +559,7 @@ function DatarequestSettings(props) {
               </Checkbox>
               <Spacer x={0.5} />
               <Tooltip
-                content="If checked, ADDMAN-SmartChart will use cached data instead of making requests to your data source. The cache gets automatically invalidated when you change the collections and/or filters."
+                content="If checked, Edison will use cached data instead of making requests to your data source. The cache gets automatically invalidated when you change the collections and/or filters."
                 placement="leftStart"
                 className="max-w-[500px]"
               >

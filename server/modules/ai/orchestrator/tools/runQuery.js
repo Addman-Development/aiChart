@@ -1,7 +1,42 @@
+const moment = require("moment");
+
 const db = require("../../../../models/models");
 const ConnectionController = require("../../../../controllers/ConnectionController");
+const { applyMongoVariables, applyPostgresVariables } = require("../../../applyVariables");
+const assertConnectionInTeam = require("./assertConnectionInTeam");
+const logger = require("../../../logger").child({ module: "tool:runQuery" });
 
 const connectionController = new ConnectionController();
+
+const DEFAULT_PROBE_WINDOW_DAYS = 30;
+const DATE_PLACEHOLDER_RE = /\{\{(?:start_date|end_date)\}\}/;
+
+// Templated queries (e.g. with `{{start_date}}` / `{{end_date}}`) are stored
+// on charts and substituted at render time from the user's date picker. When
+// the AI calls run_query during a chat, we need real dates so the query is
+// executable — substitute with a default window and log what we used. The
+// stored chart query keeps its placeholders intact (we only mutate the local
+// copy used for this execution).
+function substituteDatePlaceholders(query, dialect, contextLogger) {
+  if (!DATE_PLACEHOLDER_RE.test(query)) return query;
+
+  const variables = {
+    start_date: moment().subtract(DEFAULT_PROBE_WINDOW_DAYS, "days").startOf("day").toISOString(),
+    end_date: moment().endOf("day").toISOString(),
+  };
+
+  const apply = dialect === "mongodb" ? applyMongoVariables : applyPostgresVariables;
+  const { processedQuery } = apply({ query, VariableBindings: [] }, variables);
+
+  contextLogger.debug({
+    dialect,
+    defaultStartDate: variables.start_date,
+    defaultEndDate: variables.end_date,
+    windowDays: DEFAULT_PROBE_WINDOW_DAYS,
+  }, "run_query: substituted date placeholders with defaults");
+
+  return processedQuery;
+}
 
 async function runQuery(payload) {
   const {
@@ -12,26 +47,44 @@ async function runQuery(payload) {
     throw new Error("team_id is required to run queries");
   }
 
-  // Validate that the query is read-only (whole words only)
-  const forbiddenKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "TRUNCATE", "ALTER", "CREATE"];
-  const upperQuery = query.toUpperCase();
-  const hasForbiddenKeyword = forbiddenKeywords.some((keyword) => {
-    // Use word boundaries to avoid false positives
-    const regex = new RegExp(`\\b${keyword}\\b`, "i");
-    return regex.test(upperQuery);
-  });
-
-  if (hasForbiddenKeyword) {
-    throw new Error("Only read-only queries (SELECT) are allowed");
-  }
+  // Enforce that the connection belongs to the active team before querying it.
+  await assertConnectionInTeam(connection_id, team_id);
 
   try {
     const startTime = Date.now();
 
-    // Add LIMIT clause if not present to respect row_limit
     let limitedQuery = query.trim();
-    if (!upperQuery.includes("LIMIT") && dialect === "postgres") {
-      limitedQuery = `${limitedQuery.replace(/;$/, "")} LIMIT ${row_limit}`;
+    limitedQuery = substituteDatePlaceholders(limitedQuery, dialect, logger);
+
+    if (dialect === "mongodb") {
+      // For MongoDB, validate no destructive operations
+      const mongoForbidden = ["deleteMany", "deleteOne", "drop", "remove", "insertOne", "insertMany", "updateOne", "updateMany", "replaceOne"];
+      const hasForbidden = mongoForbidden.some((op) => limitedQuery.includes(`.${op}(`));
+      if (hasForbidden) {
+        throw new Error("Only read-only queries (find, aggregate) are allowed for MongoDB");
+      }
+
+      // Add .limit() if not already present (skip for aggregate queries)
+      if (!limitedQuery.includes(".limit(") && !limitedQuery.includes(".aggregate(")) {
+        limitedQuery = `${limitedQuery}.limit(${row_limit})`;
+      }
+    } else {
+      // SQL validation - read-only check
+      const forbiddenKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "TRUNCATE", "ALTER", "CREATE"];
+      const upperQuery = query.toUpperCase();
+      const hasForbiddenKeyword = forbiddenKeywords.some((keyword) => {
+        const regex = new RegExp(`\\b${keyword}\\b`, "i");
+        return regex.test(upperQuery);
+      });
+
+      if (hasForbiddenKeyword) {
+        throw new Error("Only read-only queries (SELECT) are allowed");
+      }
+
+      // Add LIMIT clause for SQL if not present
+      if (!upperQuery.includes("LIMIT")) {
+        limitedQuery = `${limitedQuery.replace(/;$/, "")} LIMIT ${row_limit}`;
+      }
     }
 
     // Create a temporary Dataset and DataRequest for proper database relationships
@@ -61,6 +114,13 @@ async function runQuery(payload) {
     try {
       if (dialect === "postgres") {
         result = await connectionController.runPostgres(
+          connection_id,
+          tempDataRequest,
+          false, // don't use cache
+          limitedQuery
+        );
+      } else if (dialect === "mssql") {
+        result = await connectionController.runMssql(
           connection_id,
           tempDataRequest,
           false, // don't use cache

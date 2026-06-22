@@ -32,7 +32,7 @@ function BarChart(props) {
     if (redraw) {
       setTimeout(() => {
         redrawComplete();
-      }, 1000);
+      }, editMode ? 100 : 1000);
     }
   }, [redraw]);
 
@@ -120,6 +120,12 @@ function BarChart(props) {
       };
 
       newOptions.plugins.datalabels = chart?.dataLabels ? _getDatalabelsOptions() : { formatter: () => "" };
+
+      // Disable animation in edit mode for smoother config changes
+      if (editMode) {
+        newOptions.animation = { duration: 0 };
+        newOptions.transitions = { active: { animation: { duration: 0 } } };
+      }
 
       return newOptions;
     }

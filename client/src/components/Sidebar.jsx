@@ -1,8 +1,8 @@
 import React, { useState } from "react"
-import { Avatar, Button, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer } from "@heroui/react"
+import { Avatar, Button, ButtonGroup, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Tooltip } from "@heroui/react"
 import { Link, useNavigate } from "react-router"
 import { useDispatch, useSelector } from "react-redux"
-import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
+import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMessageSquare, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
 
 import { cn } from "../modules/utils"
 import { useTheme } from "../modules/ThemeContext"
@@ -14,7 +14,7 @@ import canAccess from "../config/canAccess"
 import { createTeam, getTeamMembers, saveActiveTeam, selectTeam, selectTeams } from "../slices/team"
 import { clearConnections } from "../slices/connection"
 import { clearDatasets, getDatasets } from "../slices/dataset"
-import { selectSidebarCollapsed } from "../slices/ui"
+import { selectSidebarCollapsed, showFeedbackModal } from "../slices/ui"
 import toast from "react-hot-toast"
 import { logout } from "../slices/user"
 
@@ -44,7 +44,9 @@ function Sidebar() {
 
   const _getTeamRole = (teamRoles) => {
     if (!teamRoles) return "";
-    return teamRoles.filter((o) => o.user_id === user.data.id)[0].role;
+    const match = teamRoles.find((o) => o.user_id === user.data?.id);
+    if (match) return match.role;
+    return user.data?.admin ? "admin" : "";
   };
 
   const _onChangeTeam = (teamId) => {
@@ -58,35 +60,6 @@ function Sidebar() {
     dispatch(getDatasets({ team_id: team.id }));
 
     navigate("/");
-  };
-
-  const _getTheme = () => {
-    if (theme === "system") {
-      return {
-        name: "System",
-        icon: <LuMonitor size={18} />,
-      };
-    } else if (theme === "light") {
-      return {
-        name: "Light",
-        icon: <LuSun size={18} />,
-      };
-    } else if (theme === "dark") {
-      return {
-        name: "Dark",
-        icon: <LuMoon size={18} />,
-      };
-    }
-  }
-
-  const _onCycleTheme = () => {
-    if (theme === "system") {
-      setTheme("light");
-    } else if (theme === "light") {
-      setTheme("dark");
-    } else if (theme === "dark") {
-      setTheme("system");
-    }
   };
 
   const _onCreateTeam = async () => {
@@ -111,13 +84,13 @@ function Sidebar() {
     >
       <div className="flex flex-col h-full justify-between">
         <div className="flex flex-col">
-          <Link to="/" className="flex items-center justify-start h-16 px-4">
+          <a href="https://aos.addmangroup.com/home" className="flex items-center justify-start h-16 px-4">
             {collapsed ? (
-              <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="ADDMAN-SmartChart Logo" width={40} radius="none" />
+              <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="Edison Logo" width={40} radius="none" />
             ) : (
-              <Image src={isDark ? cbLogoDark : cbLogoLight} alt="ADDMAN-SmartChart Logo" width={120} radius="none" />
+              <Image src={isDark ? cbLogoDark : cbLogoLight} alt="Edison Logo" width={120} radius="none" />
             )}
-          </Link>
+          </a>
 
           {collapsed && <Divider className="mb-4" />}
 
@@ -312,19 +285,6 @@ function Sidebar() {
         </div>
         
         <div className="flex flex-col">
-          <div className={cn(collapsed ? "px-0 flex flex-col items-center" : "px-2")}>
-            <Button
-              variant="light"
-              startContent={collapsed? null : _getTheme().icon}
-              onPress={() => _onCycleTheme()}
-              fullWidth
-              className={cn(collapsed ? "justify-center" : "justify-start")}
-              isIconOnly={collapsed}
-            >
-              {collapsed ? _getTheme().icon : _getTheme().name}
-            </Button>
-          </div>
-          <Spacer y={2} />
           <Divider />
           <Spacer y={2} />
           <Dropdown aria-label="Select a user option">
@@ -333,9 +293,18 @@ function Sidebar() {
                 <Avatar
                   name={user?.data?.name}
                   size="sm"
+                  radius="full"
                   isBordered
-                  showFallback={<LuUser />}
-                  className="cursor-pointer"
+                  showFallback
+                  // Initials render whenever a name exists; only fall back to the
+                  // silhouette when there's no name to derive initials from. A
+                  // custom `fallback` always overrides initials, so we pass it
+                  // conditionally. The icon fills the avatar minus p-1 padding.
+                  fallback={user?.data?.name
+                    ? undefined
+                    : <LuUser className="w-full h-full p-1 text-default-500" />}
+                  className="cursor-pointer shrink-0 aspect-square"
+                  classNames={{ base: "shrink-0 aspect-square" }}
                 />
                 {collapsed ? null : (
                   <div className="flex flex-col items-start pl-2">
@@ -356,6 +325,63 @@ function Sidebar() {
                     Profile
                   </div>
                 </Link>
+              </DropdownItem>
+
+              <DropdownItem
+                startContent={<LuMessageSquare />}
+                key="feedback"
+                showDivider
+                onClick={() => dispatch(showFeedbackModal())}
+                textValue="Send feedback"
+              >
+                <div className="w-full text-foreground">
+                  Send feedback
+                </div>
+              </DropdownItem>
+
+              <DropdownItem
+                isReadOnly
+                key="theme"
+                showDivider
+                closeOnSelect={false}
+                className="cursor-default data-[hover=true]:bg-transparent"
+                textValue="Theme"
+              >
+                <div className="flex flex-row items-center justify-between gap-2 w-full">
+                  <span className="text-foreground">Theme</span>
+                  <ButtonGroup size="sm" variant="flat">
+                    <Tooltip content="Light">
+                      <Button
+                        isIconOnly
+                        aria-label="Light theme"
+                        color={theme === "light" ? "secondary" : "default"}
+                        onPress={() => setTheme("light")}
+                      >
+                        <LuSun size={16} />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="Dark">
+                      <Button
+                        isIconOnly
+                        aria-label="Dark theme"
+                        color={theme === "dark" ? "secondary" : "default"}
+                        onPress={() => setTheme("dark")}
+                      >
+                        <LuMoon size={16} />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="System">
+                      <Button
+                        isIconOnly
+                        aria-label="System theme"
+                        color={theme === "system" ? "secondary" : "default"}
+                        onPress={() => setTheme("system")}
+                      >
+                        <LuMonitor size={16} />
+                      </Button>
+                    </Tooltip>
+                  </ButtonGroup>
+                </div>
               </DropdownItem>
 
               <DropdownItem startContent={<LuLogOut />} onClick={() => dispatch(logout())} textValue="Sign out">

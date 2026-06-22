@@ -470,7 +470,7 @@ function DatasetList() {
                     <AvatarGroup max={3} isBordered size="sm">
                       {dataset?.DataRequests?.map((dr) => (
                         <Avatar
-                          src={dr.Connection ? connectionImages(isDark)[dr?.Connection?.subType] : null}
+                          src={dr.Connection ? connectionImages(isDark)[dr?.Connection?.subType || dr?.Connection?.type] : null}
                           showFallback={<LuPlug />}
                           size="sm"
                           isBordered

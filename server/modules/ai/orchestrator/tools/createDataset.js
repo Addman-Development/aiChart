@@ -1,5 +1,6 @@
 const db = require("../../../../models/models");
 const DatasetController = require("../../../../controllers/DatasetController");
+const assertConnectionInTeam = require("./assertConnectionInTeam");
 
 const datasetController = new DatasetController();
 
@@ -16,6 +17,9 @@ async function createDataset(payload) {
   if (!team_id) {
     throw new Error("team_id is required to create a dataset");
   }
+
+  // Enforce that the dataset is built against a connection from the active team.
+  await assertConnectionInTeam(connection_id, team_id);
 
   try {
     // Check if the project is a ghost project - ghost projects should not be in project_ids

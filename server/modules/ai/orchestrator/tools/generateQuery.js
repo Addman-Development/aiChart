@@ -1,12 +1,13 @@
 const { generateSqlQuery } = require("../../generateSqlQuery");
+const { generateMongoQuery } = require("../../generateMongoQuery");
+const { detectBestDateColumn } = require("../../dateColumnDetector");
 
 async function generateQuery(payload) {
   const {
-    question, schema, preferred_dialect
+    question, schema, preferred_dialect, current_query
   } = payload;
-  // hints could be used for entity-level hints in the future
 
-  if (!global.openaiClient) {
+  if (!global.aiClient) {
     return {
       status: "unsupported",
       message: "Query generation requires OpenAI to be configured",
@@ -14,13 +15,54 @@ async function generateQuery(payload) {
   }
 
   try {
-    // For database connections, use SQL generation
-    // Validate schema input (make optional for robustness)
     if (schema && typeof schema !== "object") {
       throw new Error("Schema must be a valid object if provided");
     }
 
-    // If no schema provided, create a minimal one (AI should provide schema)
+    // Detect the best date column from the schema to guide the AI
+    const detected = detectBestDateColumn({
+      schema,
+      query: current_query || "",
+      dialect: preferred_dialect,
+    });
+
+    // Append a date-column hint so the AI picks the right column for date scoping
+    let enrichedQuestion = question;
+    if (detected.column && detected.score >= 50) {
+      const candidates = detected.candidates?.slice(0, 3).map((c) => c.column).join(", ") || detected.column;
+      enrichedQuestion += `\n\n[System hint: The best date column for {{start_date}}/{{end_date}} scoping is "${detected.column}". Other candidates: ${candidates}. Use this column when adding date filters.]`;
+    }
+
+    if (preferred_dialect === "mongodb") {
+      const result = await generateMongoQuery(schema, enrichedQuestion, [], current_query || "");
+
+      if (!result || !result.query || result.query.trim() === "") {
+        throw new Error("Query generation failed - no query returned");
+      }
+
+      // Validate no destructive operations
+      const mongoForbidden = ["deleteMany", "deleteOne", "drop", "remove", "insertOne", "insertMany", "updateOne", "updateMany", "replaceOne"];
+      const hasForbidden = mongoForbidden.some((op) => result.query.includes(`.${op}(`));
+      if (hasForbidden) {
+        return {
+          status: "unsupported",
+          message: "Generated query contains forbidden operations (only read queries are allowed)",
+          query: result.query,
+        };
+      }
+
+      return {
+        status: "ok",
+        dialect: preferred_dialect,
+        query: result.query,
+        dateColumn: detected.column,
+        rationale: {
+          message: "MongoDB query generated successfully",
+        },
+      };
+    }
+
+    // SQL path (postgres)
     const effectiveSchema = schema || {
       tables: ["User"],
       description: {
@@ -33,19 +75,15 @@ async function generateQuery(payload) {
       }
     };
 
-    // Use the existing SQL generation module
-    const result = await generateSqlQuery(effectiveSchema, question, []);
+    const result = await generateSqlQuery(effectiveSchema, enrichedQuestion, [], current_query || "");
 
-    // Check if query generation succeeded
     if (!result || !result.query || result.query.trim() === "") {
       throw new Error("Query generation failed - no query returned");
     }
 
-    // Basic validation: check for forbidden keywords (whole words only)
     const forbiddenKeywords = ["DROP", "DELETE", "UPDATE", "INSERT", "TRUNCATE", "ALTER", "CREATE"];
     const upperQuery = result.query.toUpperCase();
     const hasForbiddenKeyword = forbiddenKeywords.some((keyword) => {
-      // Use word boundaries to avoid false positives
       const regex = new RegExp(`\\b${keyword}\\b`, "i");
       return regex.test(upperQuery);
     });
@@ -62,6 +100,7 @@ async function generateQuery(payload) {
       status: "ok",
       dialect: preferred_dialect,
       query: result.query,
+      dateColumn: detected.column,
       rationale: {
         message: "Query generated successfully",
       },

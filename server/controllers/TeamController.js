@@ -1,11 +1,14 @@
 const { v4: uuidv4 } = require("uuid");
 const _ = require("lodash");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 const { nanoid } = require("nanoid");
 const { Op } = require("sequelize");
 
 const db = require("../models/models");
 const UserController = require("./UserController");
+const mail = require("../modules/mail");
+const logger = require("../modules/logger").child({ module: "TeamController" });
 
 const settings = require("../settings");
 
@@ -61,9 +64,9 @@ class TeamController {
     // create a default dashboard for the team
     await db.Project.create({
       team_id: team.id,
-      name: "First Dashboard",
-      brewName: `first-dashboard-${nanoid(8)}`,
-      description: `First dashboard for ${team.name}`,
+      name: "Your First Dash",
+      brewName: `your-first-dash-${nanoid(8)}`,
+      dashboardTitle: "Your First Dash",
       public: false,
     });
 
@@ -77,13 +80,17 @@ class TeamController {
   }
 
   async deleteTeam(teamId, userId) {
-    // first check if the user owns other teams
-    const otherTeams = await db.TeamRole
-      .findAll({ where: { user_id: userId, role: "teamOwner", team_id: { [Op.ne]: teamId } } });
-
-    if (otherTeams.length < 1) {
-      return new Promise((resolve, reject) => reject(new Error("You cannot delete a team that you own if you have no other teams")));
+    // Check if team has other members besides the requesting user
+    const allTeamRoles = await db.TeamRole.findAll({ where: { team_id: teamId } });
+    const otherMembers = allTeamRoles.filter((r) => r.user_id !== parseInt(userId, 10));
+    if (otherMembers.length > 0) {
+      throw new Error("You must remove or transfer all team members before deleting this team.");
     }
+
+    // Check if the user belongs to any other teams
+    const userOtherTeams = await db.TeamRole
+      .findAll({ where: { user_id: userId, team_id: { [Op.ne]: teamId } } });
+    const willDeleteAccount = userOtherTeams.length === 0;
 
     // Use a transaction to ensure data consistency
     const transaction = await db.sequelize.transaction();
@@ -100,18 +107,19 @@ class TeamController {
       await db.Dataset.destroy({ where: { team_id: teamId }, transaction });
       await db.Project.destroy({ where: { team_id: teamId }, transaction });
       await db.TeamRole.destroy({ where: { team_id: teamId }, transaction });
-
-      // Finally delete the team (this will cascade delete TeamRole and TeamInvitation)
       await db.Team.destroy({ where: { id: teamId }, transaction });
 
-      // Commit the transaction
+      // If user has no other teams, delete their account too
+      if (willDeleteAccount) {
+        await db.User.destroy({ where: { id: userId }, transaction });
+      }
+
       await transaction.commit();
 
-      return true;
+      return { deleted: true, accountDeleted: willDeleteAccount };
     } catch (error) {
-      // Rollback the transaction on error
       await transaction.rollback();
-      return new Promise((resolve, reject) => reject(error));
+      throw error;
     }
   }
 
@@ -468,6 +476,130 @@ class TeamController {
       .catch((error) => {
         return new Promise((resolve, reject) => reject(error));
       });
+  }
+
+  async getAvailableUsers(teamId) {
+    const teamRoles = await db.TeamRole.findAll({ where: { team_id: teamId } });
+    const existingUserIds = teamRoles.map((r) => r.user_id);
+
+    const users = await db.User.findAll({
+      where: existingUserIds.length > 0
+        ? { id: { [Op.notIn]: existingUserIds } }
+        : {},
+      attributes: ["id", "name", "email", "icon", "active"],
+    });
+
+    return users;
+  }
+
+  async addExistingUserToTeam(teamId, userId, { role, projects, canExport }) {
+    const existingRole = await db.TeamRole.findOne({
+      where: { team_id: teamId, user_id: userId }
+    });
+    if (existingRole) {
+      throw new Error("User is already a member of this team");
+    }
+
+    const user = await db.User.findByPk(userId, {
+      attributes: ["id", "name", "email", "icon"],
+    });
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    await this.addTeamRole(teamId, userId, role || "projectViewer", projects, canExport);
+
+    return { user, addedToTeam: true };
+  }
+
+  async createUserForTeam(teamId, { name, email, role, projects, canExport, sendEmail }) {
+    // Check if user already exists
+    const existingUser = await db.User.findOne({ where: { email } });
+    if (existingUser) {
+      // If user exists, just add them to the team
+      const existingRole = await db.TeamRole.findOne({
+        where: { team_id: teamId, user_id: existingUser.id }
+      });
+      if (existingRole) {
+        throw new Error("User is already a member of this team");
+      }
+
+      await this.addTeamRole(teamId, existingUser.id, role || "projectViewer", projects, canExport);
+      return { user: existingUser, created: false, addedToTeam: true };
+    }
+
+    // Generate a temporary password
+    const temporaryPassword = nanoid(12);
+    const bcryptHash = await bcrypt.hash(temporaryPassword, 10);
+
+    const icon = name.substring(0, 2).toUpperCase();
+
+    // Create the user with mustChangePassword flag
+    const newUser = await db.User.create({
+      name,
+      email,
+      password: bcryptHash,
+      icon,
+      active: true,
+      mustChangePassword: true,
+    });
+
+    // Add team role
+    await this.addTeamRole(teamId, newUser.id, role || "projectViewer", projects, canExport);
+
+    // Send invite email if requested
+    let emailSent = false;
+    let emailError = null;
+    if (sendEmail) {
+      try {
+        const team = await db.Team.findByPk(teamId);
+        const teamName = team ? team.name : "Edison";
+
+        // Create a signed token with the credentials for a prepopulated login link
+        let loginUrl = `${settings.client}/login`;
+        try {
+          const welcomeToken = jwt.sign(
+            { email, temporaryPassword },
+            settings.encryptionKey,
+            { expiresIn: 172800 } // 48 hours
+          );
+          loginUrl = `${settings.client}/login?welcomeToken=${welcomeToken}`;
+        } catch (tokenErr) {
+          logger.error(
+            { err: tokenErr, email },
+            "Failed to generate welcome token, using plain login URL"
+          );
+        }
+
+        await mail.sendUserCreatedInvite({
+          email,
+          name,
+          teamName,
+          loginUrl,
+          temporaryPassword,
+        });
+        emailSent = true;
+      } catch (emailErr) {
+        logger.error({ err: emailErr, email }, "Failed to send invite email");
+        emailError = emailErr.message || "Failed to send invite email";
+        // Don't fail the user creation if email fails
+      }
+    }
+
+    return {
+      user: {
+        id: newUser.id,
+        name: newUser.name,
+        email: newUser.email,
+        icon: newUser.icon,
+        active: newUser.active,
+      },
+      temporaryPassword: (!sendEmail || !emailSent) ? temporaryPassword : undefined,
+      created: true,
+      addedToTeam: true,
+      emailSent,
+      emailError,
+    };
   }
 
   async createApiKey(teamId, userData, body) {

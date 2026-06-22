@@ -46,7 +46,7 @@ function SlackIntegrations() {
         </Button>
       </div>
       <div className="text-sm text-foreground-500">
-        {"Add ADDMAN-SmartChart's AI assistant to your Slack workspaces"}
+        {"Add Edison's AI assistant to your Slack workspaces"}
       </div>
       <Spacer y={2} />
       <Divider />
@@ -102,24 +102,24 @@ function SlackIntegrations() {
       <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} size="xl">
         <ModalContent>
           <ModalHeader className="font-bold">
-            {"Install ADDMAN-SmartChart in your Slack workspace"}
+            {"Install Edison in your Slack workspace"}
           </ModalHeader>
           {SLACK_CLIENT_ID && (
             <ModalBody>
               <div>
-                1. Click the install button below to install ADDMAN-SmartChart in your Slack workspace.
+                1. Click the install button below to install Edison in your Slack workspace.
               </div>
               <div>
                 <a href={`${API_HOST}/apps/slack/oauth/start`}><img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcSet="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x" /></a>
               </div>
               <div>
-                2. Once installed, you can use the <Code size="sm">/chartbrew</Code> command in your Slack workspace to start using ADDMAN-SmartChart.
+                2. Once installed, you can use the <Code size="sm">/chartbrew</Code> command in your Slack workspace to start using Edison.
               </div>
               <div>
-                3. Use <Code size="sm">/chartbrew connect</Code> to connect your Slack workspace to an ADDMAN-SmartChart team.
+                3. Use <Code size="sm">/chartbrew connect</Code> to connect your Slack workspace to an Edison team.
               </div>
               <div>
-                4. Mention <Code size="sm">@ADDMAN-SmartChart</Code> in a channel and ask any question about your data.
+                4. Mention <Code size="sm">@Edison</Code> in a channel and ask any question about your data.
               </div>
             </ModalBody>
           )}

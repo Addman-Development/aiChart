@@ -1,7 +1,7 @@
 export const createTooltipElement = () => {
   const tooltipEl = document.createElement("div");
   tooltipEl.id = "chartjs-tooltip";
-  tooltipEl.className = "absolute pointer-events-none opacity-0 min-w-[120px] bg-white dark:bg-gray-800 rounded-lg shadow-md px-1 transition-all duration-150 ease-out z-[9999]";
+  tooltipEl.className = "fixed pointer-events-none opacity-0 min-w-[120px] bg-white dark:bg-gray-800 rounded-lg shadow-md px-1 transition-all duration-150 ease-out z-[9999]";
   document.body.appendChild(tooltipEl);
   return tooltipEl;
 };
@@ -89,17 +89,17 @@ export const tooltipPlugin = {
       tooltipEl.innerHTML = generateTooltipContent(titleLines, bodyLines, tooltipModel.labelColors, isCategoryChart);
     }
 
-    // Get window dimensions
+    // Get viewport dimensions (fixed positioning is relative to viewport)
     const windowWidth = window.innerWidth;
     const windowHeight = window.innerHeight;
-    
-    // Get positions
+
+    // Get positions relative to viewport (no pageXOffset/pageYOffset needed for fixed)
     const position = context.chart.canvas.getBoundingClientRect();
     const tooltipWidth = tooltipEl.offsetWidth;
     const tooltipHeight = tooltipEl.offsetHeight;
-    
-    const cursorX = position.left + window.pageXOffset + tooltipModel.caretX;
-    const cursorY = position.top + window.pageYOffset + tooltipModel.caretY;
+
+    const cursorX = position.left + tooltipModel.caretX;
+    const cursorY = position.top + tooltipModel.caretY;
 
     // Position tooltip with transition
     tooltipEl.style.transition = "all 150ms ease-out";
@@ -161,6 +161,44 @@ export const tooltipPlugin = {
       tooltipEl.style.top = cursorY + "px";
     }
     
+    // Clamp tooltip position to stay within viewport
+    const margin = 4;
+    let finalLeft = parseFloat(tooltipEl.style.left);
+    let finalTop = parseFloat(tooltipEl.style.top);
+
+    // Account for transforms that shift the element
+    const transform = tooltipEl.style.transform || "";
+    let effectiveWidth = tooltipWidth;
+    let effectiveHeight = tooltipHeight;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (transform.includes("translateX(-50%)")) {
+      offsetX = -tooltipWidth / 2;
+    }
+    if (transform.includes("translateY(-50%)")) {
+      offsetY = -tooltipHeight / 2;
+    }
+
+    // Clamp so the rendered tooltip stays within the viewport
+    const renderedLeft = finalLeft + offsetX;
+    const renderedTop = finalTop + offsetY;
+
+    if (renderedLeft < margin) {
+      finalLeft = margin - offsetX;
+    } else if (renderedLeft + effectiveWidth > windowWidth - margin) {
+      finalLeft = windowWidth - margin - effectiveWidth - offsetX;
+    }
+
+    if (renderedTop < margin) {
+      finalTop = margin - offsetY;
+    } else if (renderedTop + effectiveHeight > windowHeight - margin) {
+      finalTop = windowHeight - margin - effectiveHeight - offsetY;
+    }
+
+    tooltipEl.style.left = finalLeft + "px";
+    tooltipEl.style.top = finalTop + "px";
+
     // Add a small delay before showing the tooltip
     requestAnimationFrame(() => {
       tooltipEl.style.opacity = "1";

@@ -10,5 +10,6 @@ module.exports = (user) => {
     createdAt: user.createdAt,
     User2fas: user.User2fas,
     PinnedDashboards: user.PinnedDashboards,
+    mustChangePassword: user.mustChangePassword || false,
   };
 };

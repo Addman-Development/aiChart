@@ -536,12 +536,12 @@ function PublicDashboard() {
       <div>
         <Helmet>
           <title>
-            {newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"}
+            {newChanges.dashboardTitle || project.dashboardTitle || project.name || "Edison dashboard"}
           </title>
-          <meta name="description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
+          <meta name="description" content={project.description || newChanges.description || "Edison dashboard"} />
           <meta name="robots" content="noindex" />
-          <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"} />
-          <meta name="og:description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
+          <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "Edison dashboard"} />
+          <meta name="og:description" content={project.description || newChanges.description || "Edison dashboard"} />
 
           {(newChanges?.headerCode || project?.headerCode) && !removeStyling && (
             <style type="text/css">{newChanges.headerCode || project.headerCode}</style>
@@ -649,16 +649,16 @@ function PublicDashboard() {
     <div className="dashboard-container">
       <Helmet>
         <title>
-          {newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"}
+          {newChanges.dashboardTitle || project.dashboardTitle || project.name || "Edison dashboard"}
         </title>
-        <meta name="description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
+        <meta name="description" content={project.description || newChanges.description || "Edison dashboard"} />
         <meta name="robots" content="noindex" />
-        <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "ADDMAN-SmartChart dashboard"} />
-        <meta name="og:description" content={project.description || newChanges.description || "ADDMAN-SmartChart dashboard"} />
+        <meta name="og:title" content={newChanges.dashboardTitle || project.dashboardTitle || project.name || "Edison dashboard"} />
+        <meta name="og:description" content={project.description || newChanges.description || "Edison dashboard"} />
         <meta name="og:image" content={project.logo ? `${API_HOST}/${project.logo}` : logo} />
         <meta name="og:url" content={window.location.href} />
         <meta name="og:type" content="website" />
-        <meta name="og:site_name" content={project.name || "ADDMAN-SmartChart dashboard"} />
+        <meta name="og:site_name" content={project.name || "Edison dashboard"} />
         <meta name="og:locale" content="en_US" />
         {(newChanges?.headerCode || project?.headerCode) && !removeStyling && (
           <style type="text/css">{newChanges.headerCode || project.headerCode}</style>
@@ -980,7 +980,7 @@ function PublicDashboard() {
                   </span>
                   <Spacer x={1} />
                   <span className="text-sm" style={{ color: removeStyling ? "#000000" : (newChanges.titleColor || project.titleColor || "#000000") }}>
-                    <strong>{"ADDMAN-SmartChart"}</strong>
+                    <strong>{"Edison"}</strong>
                   </span>
                 </Link>
               </div>

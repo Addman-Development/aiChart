@@ -156,6 +156,7 @@ class AxisChart {
           && ((this.chart.startDate && this.chart.endDate) || dateDashboardFilter)
           && canDateFilter
           && !alreadyDateFiltered
+          && !this.chart.scopeDateToQuery
         ) {
           if (filters?.length > 0) {
             if (dateDashboardFilter) {
@@ -633,11 +634,33 @@ class AxisChart {
       for (let i = 0; i < this.chart.ChartDatasetConfigs.length; i++) {
         if (this.chart.ChartDatasetConfigs[i]?.formula) {
           const { formula } = this.chart.ChartDatasetConfigs[i];
-          this.axisData.y[i] = this.axisData.y[i].map((val) => {
+          const allValues = this.axisData.y[i];
+
+          // Pre-compute aggregate values available to all formula expressions
+          const numericValues = allValues.filter((v) => typeof v === "number" && !Number.isNaN(v));
+          const aggregates = {
+            sum: numericValues.reduce((a, b) => a + b, 0),
+            count: allValues.length,
+            avg: numericValues.length > 0
+              ? numericValues.reduce((a, b) => a + b, 0) / numericValues.length : 0,
+            min: numericValues.length > 0 ? Math.min(...numericValues) : 0,
+            max: numericValues.length > 0 ? Math.max(...numericValues) : 0,
+          };
+
+          this.axisData.y[i] = allValues.map((val, idx) => {
             const before = formula.substring(0, formula.indexOf("{"));
             const after = formula.substring(formula.indexOf("}") + 1);
             const expressionString = formula.substring(formula.indexOf("{") + 1, formula.indexOf("}"));
-            const expression = expressionString.replace(/val/g, val);
+
+            // Replace all supported variables in the expression
+            const expression = expressionString
+              .replace(/\bval\b/g, val)
+              .replace(/\bindex\b/g, idx)
+              .replace(/\bcount\b/g, aggregates.count)
+              .replace(/\bsum\b/g, aggregates.sum)
+              .replace(/\bavg\b/g, aggregates.avg)
+              .replace(/\bmin\b/g, aggregates.min)
+              .replace(/\bmax\b/g, aggregates.max);
 
             const newVal = parser.parse(expression);
 

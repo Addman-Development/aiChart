@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router";
 import {
   Input, Spacer, Button, CircularProgress,
   Divider, Switch, Tooltip,
@@ -10,11 +11,11 @@ import {
   ModalFooter,
 } from "@heroui/react";
 import toast from "react-hot-toast";
-import { LuCircleCheck, LuInfo, LuTrash } from "react-icons/lu";
+import { LuCircleCheck, LuInfo, LuTrash, LuTriangleAlert } from "react-icons/lu";
 
-import { deleteTeam, selectTeam, selectTeams, updateTeam } from "../../slices/team";
+import { deleteTeam, saveActiveTeam, selectTeam, selectTeams, updateTeam } from "../../slices/team";
 import canAccess from "../../config/canAccess";
-import { selectUser } from "../../slices/user";
+import { logout, selectUser } from "../../slices/user";
 
 /*
   Contains team update functionality
@@ -29,6 +30,7 @@ function TeamSettings() {
   const [deleteConfirmChecked, setDeleteConfirmChecked] = useState("");
 
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const team = useSelector(selectTeam);
   const user = useSelector(selectUser);
   const teams = useSelector(selectTeams);
@@ -76,20 +78,40 @@ function TeamSettings() {
     }
   };
 
-  const _teamsOwned = () => {
-    // go through all the teams and get all the teams that the user is a teamOwner of
-    const teamsOwned = teams.filter((t) => t.TeamRoles.some((tr) => tr.user_id === user.id && tr.role === "teamOwner"));
-    return teamsOwned;
+  const _hasOtherMembers = () => {
+    return team.TeamRoles?.filter((tr) => tr.user_id !== user.id).length > 0;
+  };
+
+  const _willDeleteAccount = () => {
+    // User is the only member of this team and belongs to no other teams
+    return !_hasOtherMembers() && teams.length <= 1;
   };
 
   const _onDeleteTeam = async () => {
     setDeleting(true);
     const response = await dispatch(deleteTeam(team.id));
     if (response?.error) {
-      toast.error("Error deleting team. Please try again.");
+      const errorMsg = response.error?.message || "Error deleting team. Please try again.";
+      toast.error(errorMsg);
+      setDeleting(false);
+      return;
+    }
+
+    const { accountDeleted } = response.payload;
+    if (accountDeleted) {
+      toast.success("Team and account deleted.");
+      dispatch(logout());
+      return;
+    }
+
+    // Route to the next available team
+    const remainingTeams = teams.filter((t) => t.id !== team.id);
+    if (remainingTeams.length > 0) {
+      dispatch(saveActiveTeam(remainingTeams[0]));
+      toast.success("Team deleted. Switched to another team.");
+      navigate(`/${remainingTeams[0].id}/dashboard`);
     } else {
-      toast.success("Team deleted. Redirecting to home...");
-      window.location.href = "/";
+      navigate("/");
     }
 
     setDeleting(false);
@@ -176,9 +198,9 @@ function TeamSettings() {
             onValueChange={(selected) => _onToggleBranding(selected)}
             size="sm"
           >
-            Show ADDMAN-SmartChart branding
+            Show Edison branding
           </Switch>
-          <Tooltip content="ADDMAN-SmartChart branding is shown in the footer of the dashboard reports">
+          <Tooltip content="Edison branding is shown in the footer of the dashboard reports">
             <div><LuInfo size={18} className="text-foreground" /></div>
           </Tooltip>
         </div>
@@ -195,12 +217,12 @@ function TeamSettings() {
               onPress={() => setDeleteConfirm(true)}
               startContent={<LuTrash size={18} />}
               size="sm"
-              isDisabled={_teamsOwned()?.length < 2}
+              isDisabled={_hasOtherMembers()}
             >
               Delete team
             </Button>
-            {_teamsOwned()?.length < 2 && (
-              <Tooltip content="You cannot delete your last owned team">
+            {_hasOtherMembers() && (
+              <Tooltip content="You must remove or transfer all team members before deleting this team">
                 <div><LuInfo size={18} className="text-foreground" /></div>
               </Tooltip>
             )}
@@ -217,6 +239,14 @@ function TeamSettings() {
             <div>
               This action is irreversible. All data associated with this team will be deleted and we will not be able to restore it.
             </div>
+            {_willDeleteAccount() && (
+              <div className="flex flex-row items-start gap-2 p-3 bg-warning-50 border border-warning-200 rounded-lg">
+                <LuTriangleAlert size={20} className="text-warning-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-warning-800">
+                  <span className="font-semibold">Warning:</span> This is your only team. Deleting it will also delete your account permanently. If you wish to preserve your account, join another team first.
+                </div>
+              </div>
+            )}
             <div>
               <Input
                 label="Type the team name to confirm"
@@ -242,7 +272,7 @@ function TeamSettings() {
               size="sm"
               isDisabled={deleteConfirmChecked !== team.name}
             >
-              Delete team
+              {_willDeleteAccount() ? "Delete team and account" : "Delete team"}
             </Button>
           </ModalFooter>
         </ModalContent>

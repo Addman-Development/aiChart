@@ -2,6 +2,7 @@ const cron = require("node-cron");
 const { DateTime } = require("luxon");
 
 const db = require("../models/models");
+const logger = require("../modules/logger").child({ module: "cron:updateSnapshots" });
 
 async function addSnapshotToQueue(queue, project) {
   const jobId = `update_snapshot_${project.id}`;
@@ -40,7 +41,7 @@ async function updateSnapshots(queue) {
     });
     await Promise.all(promises);
   } catch (error) {
-    console.error(`Error updating snapshots: ${error.message}`); // eslint-disable-line
+    logger.error({ err: error }, "Error updating snapshots");
   }
 }
 

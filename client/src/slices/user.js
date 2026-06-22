@@ -2,7 +2,7 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import cookie from "react-cookies";
 import moment from "moment";
 
-import { API_HOST } from "../config/settings";
+import { API_HOST, SITE_HOST } from "../config/settings";
 import { getAuthToken, tokenKey } from "../modules/auth";
 
 const expires = moment().add(1, "month").toDate();
@@ -75,6 +75,25 @@ export const deleteUser = createAsyncThunk(
 
     const userData = await response.json();
     return userData;
+  }
+);
+
+export const verifyWelcomeToken = createAsyncThunk(
+  "user/verifyWelcomeToken",
+  async (token) => {
+    const url = `${API_HOST}/user/welcome/verify`;
+    const body = JSON.stringify({ token });
+    const headers = new Headers({
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+    });
+
+    const response = await fetch(url, { body, headers, method: "POST" });
+    if (!response.ok) {
+      throw new Error("Invalid or expired welcome token");
+    }
+
+    return response.json();
   }
 );
 
@@ -165,21 +184,50 @@ export const relog = createAsyncThunk(
 
 export const sendFeedback = createAsyncThunk(
   "user/sendFeedback",
-  async ({ name, feedback, email }) => {
-    const url = `${API_HOST}/user/feedback`;
-    const body = JSON.stringify({
-      "from": name,
-      "email": email,
-      "data": feedback,
-    });
+  async ({
+    category, message, pageUrl, module, screenshots,
+  }, { rejectWithValue }) => {
+    const url = `${API_HOST}/api/feedback`;
+
     const headers = new Headers({
       "Accept": "application/json",
-      "Content-Type": "application/json",
+      "Authorization": `Bearer ${getAuthToken()}`,
     });
+
+    // Send multipart when screenshots are attached so the files ride along; fall
+    // back to JSON otherwise. Don't set Content-Type for FormData — the browser
+    // adds the multipart boundary itself.
+    let body;
+    if (Array.isArray(screenshots) && screenshots.length > 0) {
+      const form = new FormData();
+      form.append("category", category);
+      form.append("message", message);
+      if (pageUrl) form.append("pageUrl", pageUrl);
+      if (module) form.append("module", module);
+      screenshots.forEach((file) => form.append("screenshots", file));
+      body = form;
+    } else {
+      headers.set("Content-Type", "application/json");
+      body = JSON.stringify({
+        category,
+        message,
+        pageUrl,
+        module,
+      });
+    }
 
     const response = await fetch(url, { body, headers, method: "POST" });
     if (!response.ok) {
-      throw new Error("Error sending feedback");
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (e) { /* non-JSON error body */ }
+      // Surface the server's reauth signal so the caller can re-authenticate and retry.
+      return rejectWithValue({
+        status: response.status,
+        reauthRequired: Boolean(payload.reauthRequired),
+        error: payload.error || "Error sending feedback",
+      });
     }
 
     const data = await response.json();
@@ -501,7 +549,7 @@ export const userSlice = createSlice({
     logout: (state) => {
       cookie.remove(tokenKey, { path: "/" });
       state.data = {};
-      window.location.href = "/";
+      window.location.href = SITE_HOST;
     },
     clearUser: (state) => {
       state.data = {};
@@ -648,7 +696,7 @@ export const userSlice = createSlice({
     builder.addCase(pinDashboard.fulfilled, (state, action) => {
       state.loading = false;
       state.data.PinnedDashboards = [
-        ...state.data.PinnedDashboards,
+        ...(state.data.PinnedDashboards || []),
         action.payload,
       ];
     });
@@ -663,7 +711,7 @@ export const userSlice = createSlice({
     });
     builder.addCase(unpinDashboard.fulfilled, (state, action) => {
       state.loading = false;
-      state.data.PinnedDashboards = state.data.PinnedDashboards.filter((p) => p.id !== action.meta.arg.pin_id);
+      state.data.PinnedDashboards = (state.data.PinnedDashboards || []).filter((p) => p.id !== action.meta.arg.pin_id);
     });
     builder.addCase(unpinDashboard.rejected, (state) => {
       state.loading = false;

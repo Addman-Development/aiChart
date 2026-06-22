@@ -138,10 +138,44 @@ function ProjectDashboard() {
   }, [filters, charts]);
 
   useEffect(() => {
-    if (charts && charts.filter((c) => c.project_id === parseInt(params.projectId, 10)).length > 0 && !initLayoutRef.current) {
+    const projectCharts = charts.filter((c) => c.project_id === parseInt(params.projectId, 10));
+
+    if (projectCharts.length > 0 && !initLayoutRef.current) {
       initLayoutRef.current = true;
       // set the grid layout
       _prepareLayout();
+    } else if (initLayoutRef.current && layouts) {
+      // Detect newly added charts that aren't in the current layout
+      const bp = gridBreakpoint || _getUserBreakpoint();
+      const currentBpLayout = layouts[bp] || [];
+      const layoutIds = new Set(currentBpLayout.map((item) => item.i));
+      const newCharts = projectCharts.filter((c) => !c.staged && !layoutIds.has(`${c.id}`));
+
+      if (newCharts.length > 0) {
+        // Place new charts and run auto-layout for balanced grid
+        const newLayouts = _.cloneDeep(layouts);
+
+        Object.keys(newLayouts).forEach((bpKey) => {
+          newCharts.forEach((chart) => {
+            // Use existing layout data if available, otherwise default size
+            const w = chart.layout?.[bpKey]?.[2] || 4;
+            const h = chart.layout?.[bpKey]?.[3] || 2;
+            const pos = placeNewWidget(newLayouts[bpKey], { w, h }, bpKey);
+            newLayouts[bpKey].push({
+              i: `${chart.id}`,
+              x: pos.x,
+              y: pos.y,
+              w: pos.w,
+              h: pos.h,
+              minW: 2,
+            });
+          });
+          newLayouts[bpKey] = tidyLayout(newLayouts[bpKey], projectCharts, bpKey);
+        });
+
+        setLayouts(newLayouts);
+        _onChangeLayout(null, newLayouts, true);
+      }
     }
 
     charts.forEach((chart) => {

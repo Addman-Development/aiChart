@@ -287,10 +287,10 @@ function SharedChart() {
     <div style={styles.container} id="chart-container">
       <Helmet>
         <title>
-          {chart.name || "ADDMAN-SmartChart chart"}
+          {chart.name || "Edison chart"}
         </title>
         <meta name="robots" content="noindex" />
-        <meta name="og:title" content={chart.name || "ADDMAN-SmartChart chart"} />
+        <meta name="og:title" content={chart.name || "Edison chart"} />
         <style type="text/css">
           {`
             body, html {
@@ -423,6 +423,9 @@ function SharedChart() {
               embedded
               datasets={chart.ChartDatasetConfigs}
               defaultRowsPerPage={chart.defaultRowsPerPage}
+              searchEnabled={chart.tableSearchEnabled !== false}
+              filterEnabled={chart.tableFilterEnabled !== false}
+              sortEnabled={chart.tableSortEnabled !== false}
             />
           )}
           {(chart.type === "kpi" || chart.type === "avg") && (

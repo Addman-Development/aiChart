@@ -3,6 +3,7 @@ const { DateTime } = require("luxon");
 const { Op } = require("sequelize");
 
 const db = require("../models/models");
+const logger = require("../modules/logger").child({ module: "cron:sendSnapshots" });
 
 async function addSnapshotToQueue(queue, projectId) {
   const jobId = `snapshot_${projectId}`;
@@ -101,7 +102,7 @@ async function checkSnapshots(queue) {
       }
     });
   } catch (error) {
-    console.error(`Error checking and sending snapshots: ${error.message}`); // eslint-disable-line
+    logger.error({ err: error }, "Error checking and sending snapshots");
   }
 }
 

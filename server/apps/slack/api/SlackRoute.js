@@ -3,6 +3,7 @@ const verifyToken = require("../../../modules/verifyToken");
 const SlackController = require("../controllers/SlackController");
 
 const { verifySignature } = require("../utils/slackClient");
+const logger = require("../../../modules/logger").child({ module: "slack:SlackRoute" });
 
 module.exports = (app) => {
   const slackController = new SlackController();
@@ -57,10 +58,10 @@ module.exports = (app) => {
           }
         }
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Slack command error:", error);
-        // eslint-disable-next-line no-console
-        console.error("Error stack:", error.stack);
+        logger.error(
+          { err: error, slackTeamId: team_id, slackUserId: user_id, slackChannelId: channel_id },
+          "Slack command error"
+        );
 
         // Only send error if it wasn't already sent by the handler
         await slackController.sendErrorMessage(error, team_id, user_id, channel_id, response_url);
@@ -95,7 +96,7 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
-  ** Auth Complete - Link Slack workspace to ADDMAN-SmartChart team
+  ** Auth Complete - Link Slack workspace to Edison team
   */
   app.post("/apps/slack/auth/complete", verifyToken, async (req, res) => {
     const { state_token, team_id, default_project_id } = req.body;
@@ -192,10 +193,7 @@ module.exports = (app) => {
       try {
         await slackController.handleMention(event);
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error("Slack app_mention event error:", error);
-        // eslint-disable-next-line no-console
-        console.error("Error stack:", error.stack);
+        logger.error({ err: error }, "Slack app_mention event error");
         // Error handling is done in the controller
       }
       return true;

@@ -13,6 +13,7 @@ const ProjectController = require("./ProjectController");
 const externalDbConnection = require("../modules/externalDbConnection");
 const assembleMongoUrl = require("../modules/assembleMongoUrl");
 const paginateRequests = require("../modules/paginateRequests");
+const logger = require("../modules/logger").child({ module: "ConnectionController" });
 const determineType = require("../modules/determineType");
 const drCacheController = require("./DataRequestCacheController");
 const { getQueueOptions } = require("../redisConnection");
@@ -209,19 +210,74 @@ class ConnectionController {
       });
   }
 
-  findByTeam(teamId) {
-    return db.Connection.findAll({
+  async findByTeam(teamId) {
+    const owned = await db.Connection.findAll({
       where: { team_id: teamId },
       attributes: { exclude: ["password", "schema"] },
       include: [{ model: db.OAuth, attributes: { exclude: ["refreshToken"] } }],
       order: [["createdAt", "DESC"]],
-    })
-      .then((connections) => {
-        return connections;
-      })
-      .catch((error) => {
-        return new Promise((resolve, reject) => reject(error));
-      });
+    });
+
+    const optedInIds = (await db.TeamConnection.findAll({
+      where: { team_id: teamId },
+      attributes: ["connection_id"],
+    })).map((tc) => tc.connection_id);
+
+    const ownedIds = new Set(owned.map((c) => c.id));
+    const sharedIds = optedInIds.filter((id) => !ownedIds.has(id));
+    if (sharedIds.length === 0) return owned;
+
+    const shared = await db.Connection.findAll({
+      where: { id: sharedIds, shared: true },
+      attributes: { exclude: ["password", "schema"] },
+      include: [{ model: db.OAuth, attributes: { exclude: ["refreshToken"] } }],
+      order: [["createdAt", "DESC"]],
+    });
+
+    return [...owned, ...shared];
+  }
+
+  async findShared() {
+    return db.Connection.findAll({
+      where: { shared: true },
+      attributes: { exclude: ["password", "schema"] },
+      include: [{ model: db.OAuth, attributes: { exclude: ["refreshToken"] } }],
+      order: [["createdAt", "DESC"]],
+    });
+  }
+
+  async getOptedInTeamIds(connectionId) {
+    const rows = await db.TeamConnection.findAll({
+      where: { connection_id: connectionId },
+      attributes: ["team_id"],
+    });
+    return rows.map((r) => r.team_id);
+  }
+
+  async isTeamOptedIn(teamId, connectionId) {
+    const row = await db.TeamConnection.findOne({
+      where: { team_id: teamId, connection_id: connectionId },
+    });
+    return !!row;
+  }
+
+  async optInTeam(teamId, connectionId) {
+    const connection = await db.Connection.findByPk(connectionId);
+    if (!connection) throw new Error("Connection not found");
+    if (!connection.shared) throw new Error("Connection is not shared");
+    if (`${connection.team_id}` === `${teamId}`) return null;
+
+    const [row] = await db.TeamConnection.findOrCreate({
+      where: { team_id: teamId, connection_id: connectionId },
+      defaults: { team_id: teamId, connection_id: connectionId },
+    });
+    return row;
+  }
+
+  async optOutTeam(teamId, connectionId) {
+    return db.TeamConnection.destroy({
+      where: { team_id: teamId, connection_id: connectionId },
+    });
   }
 
   findByProject(projectId) {
@@ -264,9 +320,11 @@ class ConnectionController {
     const dataToSave = { ...data };
 
     if (!data.type) data.type = "mongodb"; // eslint-disable-line
-    if (data.type === "postgres") {
+    if (data.type === "postgres" || data.type === "mssql") {
       try {
-        const testData = await this.testPostgres(data);
+        const testData = data.type === "mssql"
+          ? await this.testMssql(data)
+          : await this.testPostgres(data);
         dataToSave.schema = testData.schema;
       } catch (e) {
         //
@@ -421,6 +479,8 @@ class ConnectionController {
       return this.testMongo(connectionParams);
     } else if (data.type === "postgres") {
       return this.testPostgres(connectionParams);
+    } else if (data.type === "mssql") {
+      return this.testMssql(connectionParams);
     }
 
     return new Promise((resolve, reject) => reject(new Error("No request type specified")));
@@ -457,6 +517,13 @@ class ConnectionController {
   }
 
   async getSchema(dbConnection) {
+    const dialect = dbConnection.getDialect();
+
+    // For MSSQL, use a single INFORMATION_SCHEMA query instead of N+1 describeTable calls
+    if (dialect === "mssql") {
+      return this._getMssqlSchema(dbConnection);
+    }
+
     const tables = await dbConnection.getQueryInterface().showAllTables();
     const schemaPromises = tables.map((table) => {
       return dbConnection.getQueryInterface().describeTable(table)
@@ -469,21 +536,84 @@ class ConnectionController {
       return acc;
     }, {});
 
-    // Format schema for postgres to be more terse
+    // Format schema: include column names with their types for better AI date-column detection
+    // Format: { tableName: { colName: "TYPE", ... } }
     let formattedSchema = {};
     if (schema) {
       try {
-        const schemaObj = schema;
-        if (schemaObj) {
-          formattedSchema = {};
-          Object.keys(schemaObj).forEach((tableName) => {
-            formattedSchema[tableName] = Object.keys(schemaObj[tableName]);
-          });
-        }
+        Object.keys(schema).forEach((tableName) => {
+          const columns = schema[tableName];
+          if (columns && typeof columns === "object") {
+            formattedSchema[tableName] = {};
+            Object.keys(columns).forEach((colName) => {
+              formattedSchema[tableName][colName] = columns[colName]?.type || "UNKNOWN";
+            });
+          }
+        });
       } catch (e) {
-        // Fallback to original schema if parsing fails
-        formattedSchema = schema;
+        // Fallback to column-names-only if type extraction fails
+        formattedSchema = {};
+        Object.keys(schema).forEach((tableName) => {
+          formattedSchema[tableName] = Object.keys(schema[tableName] || {});
+        });
       }
+    }
+
+    return {
+      tables,
+      description: formattedSchema,
+    };
+  }
+
+  async _getMssqlSchema(dbConnection) {
+    let results;
+
+    try {
+      // Try filtering out empty tables using sys.dm_db_partition_stats
+      // Include DATA_TYPE for date-column detection
+      results = await dbConnection.query(
+        `SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE
+         FROM INFORMATION_SCHEMA.COLUMNS c
+         INNER JOIN (
+           SELECT s.name AS TABLE_SCHEMA, t.name AS TABLE_NAME
+           FROM sys.tables t
+           INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+           INNER JOIN sys.dm_db_partition_stats ps
+             ON t.object_id = ps.object_id AND ps.index_id IN (0, 1)
+           GROUP BY s.name, t.name
+           HAVING SUM(ps.row_count) > 0
+         ) populated ON c.TABLE_SCHEMA = populated.TABLE_SCHEMA
+                     AND c.TABLE_NAME = populated.TABLE_NAME
+         ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION`,
+        { type: Sequelize.QueryTypes.SELECT }
+      );
+    } catch (err) {
+      logger.warn(
+        { err },
+        "_getMssqlSchema filtered query failed, falling back to INFORMATION_SCHEMA only"
+      );
+      // Fallback: just use INFORMATION_SCHEMA (no empty-table filtering)
+      results = await dbConnection.query(
+        `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
+         FROM INFORMATION_SCHEMA.COLUMNS
+         WHERE TABLE_NAME NOT LIKE 'sys%'
+         ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
+        { type: Sequelize.QueryTypes.SELECT }
+      );
+    }
+
+    const tables = [];
+    const formattedSchema = {};
+    const seen = new Set();
+
+    for (const row of results) {
+      const fullName = `${row.TABLE_SCHEMA}.${row.TABLE_NAME}`;
+      if (!seen.has(fullName)) {
+        seen.add(fullName);
+        tables.push(fullName);
+        formattedSchema[fullName] = {};
+      }
+      formattedSchema[fullName][row.COLUMN_NAME] = row.DATA_TYPE || "UNKNOWN";
     }
 
     return {
@@ -512,6 +642,26 @@ class ConnectionController {
     }
   }
 
+  async testMssql(data) {
+    let sqlDb;
+    try {
+      sqlDb = await externalDbConnection(data);
+      const schema = await this.getSchema(sqlDb);
+
+      return { success: true, schema };
+    } catch (err) {
+      logger.error(
+        { err, original: err.original?.message },
+        "testMssql failed"
+      );
+      throw new Error(err.message || err);
+    } finally {
+      if (sqlDb) {
+        try { await sqlDb.close(); } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
   testConnection(id) {
     let gConnection;
     let mongoConnection;
@@ -524,6 +674,7 @@ class ConnectionController {
           case "api":
             return _fetchRequest(this.getApiTestOptions(connection));
           case "postgres":
+          case "mssql":
             return externalDbConnection(connection);
           default:
             return new Promise((resolve, reject) => reject(new Error(400)));
@@ -541,6 +692,7 @@ class ConnectionController {
             }
             return new Promise((resolve, reject) => reject(new Error(400)));
           case "postgres":
+          case "mssql":
             return new Promise((resolve) => resolve({ success: true }));
           default:
             return new Promise((resolve, reject) => reject(new Error(400)));
@@ -672,20 +824,21 @@ class ConnectionController {
       mongoConnection = mongoose.createConnection(url, { connectTimeoutMS: 100000 });
       await mongoConnection.asPromise();
 
-      // Build the query function - try with .toArray() first, then without
+      // Execute the query once, then materialize the result.
+      // Avoid the older try-`.toArray()`/fallback-without pattern: terminal
+      // operations like .findOne() return a Promise, so calling .toArray() on
+      // it throws synchronously while the findOne is already in flight. The
+      // finally block then closes the session before the orphaned operation
+      // completes -> MongoExpiredSessionError.
       let data;
       try {
-        data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}.toArray()`)()(mongoConnection, ObjectId); // eslint-disable-line
-      } catch (toArrayErr) {
-        try {
-          data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
-        } catch (queryErr) {
-          throw new Error(`Invalid MongoDB query: ${queryErr.message}`);
-        }
+        data = await Function(`'use strict';return (mongoConnection, ObjectId) => mongoConnection.${formattedQuery}`)()(mongoConnection, ObjectId); // eslint-disable-line
+      } catch (queryErr) {
+        throw new Error(`Invalid MongoDB query: ${queryErr.message}`);
       }
 
       let finalData = data;
-      if (data && typeof data?.next === "function") {
+      if (data && typeof data?.toArray === "function" && typeof data?.next === "function") {
         finalData = await data.toArray();
       }
       // MongoDB returns a plain number when count() is used, transform this into an object
@@ -714,7 +867,10 @@ class ConnectionController {
 
       return dataToCache;
     } catch (error) {
-      console.error("[runMongo] Error:", error.message);
+      logger.error(
+        { err: error, connectionId: id, query: formattedQuery },
+        "runMongo failed"
+      );
       throw error;
     } finally {
       if (mongoConnection) {
@@ -768,6 +924,54 @@ class ConnectionController {
       // Close SSH tunnel if it exists
       if (dbConnection && dbConnection.sshTunnel) {
         dbConnection.sshTunnel.close();
+      }
+    }
+  }
+
+  async runMssql(id, dataRequest, getCache, queryOverride = null) {
+    if (getCache) {
+      const drCache = await checkAndGetCache(id, dataRequest);
+      if (drCache) return drCache;
+    }
+
+    const queryToExecute = queryOverride || dataRequest.query;
+    if (!queryToExecute) {
+      throw new Error("No query provided");
+    }
+
+    let dbConnection = null;
+
+    try {
+      const connection = await this.findById(id);
+      dbConnection = await externalDbConnection(connection);
+
+      // Update schema in the background
+      this.getSchema(dbConnection)
+        .then((schema) => {
+          db.Connection.update({ schema }, { where: { id } });
+        })
+        .catch(() => {});
+
+      const results = await dbConnection
+        .query(queryToExecute, { type: Sequelize.QueryTypes.SELECT });
+
+      // cache the data for later use - use ORIGINAL dataRequest to preserve variable placeholders
+      const dataToCache = {
+        dataRequest,
+        responseData: {
+          data: results,
+        },
+        connection_id: id,
+      };
+
+      await drCacheController.create(dataRequest.id, dataToCache);
+
+      return dataToCache;
+    } catch (error) {
+      throw error;
+    } finally {
+      if (dbConnection) {
+        try { await dbConnection.close(); } catch (e) { /* ignore */ }
       }
     }
   }
@@ -1158,6 +1362,35 @@ class ConnectionController {
 
     const newConnection = await db.Connection.create(connectionToSave);
     return newConnection;
+  }
+
+  async importConnections(connectionIds, sourceTeamId, targetTeamId) {
+    // Verify all requested connections belong to the source team
+    const connections = await db.Connection.findAll({
+      where: {
+        id: connectionIds,
+        team_id: sourceTeamId,
+      },
+    });
+
+    if (connections.length === 0) {
+      return Promise.reject(new Error("No valid connections found in the source team"));
+    }
+
+    const imported = [];
+    for (const connection of connections) {
+      const data = connection.toJSON();
+      delete data.id;
+      delete data.createdAt;
+      delete data.updatedAt;
+      data.team_id = targetTeamId;
+      data.project_ids = [];
+
+      const newConnection = await db.Connection.create(data);
+      imported.push(newConnection);
+    }
+
+    return imported;
   }
 
   async addMongoSchemaUpdateJob(connectionId) {

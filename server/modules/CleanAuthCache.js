@@ -5,6 +5,7 @@ const moment = require("moment");
 const cron = require("node-cron");
 
 const db = require("../models/models");
+const logger = require("./logger").child({ module: "CleanAuthCache" });
 
 function clean() {
   return db.AuthCache.findAll()
@@ -22,8 +23,8 @@ function clean() {
 
       return [];
     })
-    .catch(() => {
-      console.log("Error while cleaning the chart caches. You might want to delete them manually"); // eslint-disable-line
+    .catch((err) => {
+      logger.warn({ err }, "Error while cleaning auth caches; manual cleanup may be required");
     });
 }
 

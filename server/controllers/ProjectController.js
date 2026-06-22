@@ -6,6 +6,7 @@ const db = require("../models/models");
 const TeamController = require("./TeamController");
 const templateModels = require("../templates");
 const { snapDashboard } = require("../modules/snapshots");
+const logger = require("../modules/logger").child({ module: "ProjectController" });
 
 const settings = require("../settings");
 
@@ -543,8 +544,10 @@ class ProjectController {
         return updatedProject;
       } catch (error) {
         // If variable application fails, return the project without variables
-        // eslint-disable-next-line no-console
-        console.error("Failed to apply variables to dashboard:", error);
+        logger.error(
+          { err: error, projectId: processedProject?.id },
+          "Failed to apply variables to dashboard"
+        );
         return processedProject;
       }
     }

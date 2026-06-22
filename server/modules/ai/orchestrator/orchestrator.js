@@ -17,7 +17,9 @@ const socketManager = require("../../socketManager");
 const { emitProgressEvent, parseProgressEvents } = require("./responseParser");
 const { ENTITY_CREATION_RULES } = require("./entityCreationRules");
 const { isCapabilityQuestion, generateCapabilityResponse } = require("./capabilityHandler");
+const { accessibleConnectionIds } = require("./tools/connectionScope");
 const { aiClient, aiModel } = require("../aiClient");
+const baseLogger = require("../../logger").child({ module: "orchestrator" });
 
 // Set globals for tool modules (summarize, suggestChart) that use global.aiClient
 global.aiClient = aiClient;
@@ -51,7 +53,7 @@ async function availableTools() {
   return [
     {
       name: "list_connections",
-      description: "List supported database connections (MySQL, PostgreSQL, MongoDB) available to the project/user context.",
+      description: "List supported database connections (MySQL, PostgreSQL, SQL Server, MongoDB) available to the project/user context.",
       parameters: {
         type: "object",
         properties: {
@@ -64,7 +66,7 @@ async function availableTools() {
     },
     {
       name: "get_schema",
-      description: "Get database schema information for supported connections (MySQL, PostgreSQL, MongoDB).",
+      description: "Get database schema information for supported connections (MySQL, PostgreSQL, SQL Server, MongoDB).",
       parameters: {
         type: "object",
         properties: {
@@ -82,20 +84,22 @@ async function availableTools() {
     },
     {
       name: "generate_query",
-      description: "Generate SQL queries from natural language for supported database connections (MySQL, PostgreSQL, MongoDB).",
+      description: "Generate queries from natural language for supported database connections (PostgreSQL, MongoDB). For PostgreSQL generates SQL. For MongoDB generates Mongoose method chains like collection('name').find({}).sort({}) — never raw aggregation arrays. When modifying an existing query, ALWAYS pass the current_query parameter so the generator preserves existing structure.",
       parameters: {
         type: "object",
         properties: {
           question: { type: "string" },
           schema: { type: "object" }, // database schema from get_schema
           hints: { type: "object" }, // optional project-level entity hints
-          preferred_dialect: { type: "string", enum: ["postgres", "mysql", "mongodb"] } // supported database types
+          preferred_dialect: { type: "string", enum: ["postgres", "mongodb"] }, // supported database types
+          current_query: { type: "string", description: "The existing query to use as base when making modifications. The generator will preserve all existing structure and only apply the requested change." }
         },
         required: ["question"]
       }
       // returns: {
       //  status: "ok"|"needs_disambiguation"|"unsupported",
-      //  dialect, query, rationale:{table, cols, filters}
+      //  dialect, query, dateColumn (best date column detected from schema),
+      //  rationale:{table, cols, filters}
       //  disambiguation?: { entityType:"table|column", options:[{label,value}] }
       // }
     },
@@ -116,12 +120,12 @@ async function availableTools() {
     },
     {
       name: "run_query",
-      description: "Execute SQL queries on supported database connections (MySQL, PostgreSQL, MongoDB) with guardrails.",
+      description: "Execute queries on supported database connections (PostgreSQL, MongoDB) with guardrails. For PostgreSQL use standard SQL. For MongoDB the query must be a Mongoose method chain WITHOUT 'db.' prefix — e.g. collection('myCollection').find({}).sort({createdAt:-1}) or collection('myCollection').aggregate([{$group:{_id:'$status',count:{$sum:1}}}]). Do NOT use raw arrays like [{$match:...}].",
       parameters: {
         type: "object",
         properties: {
           connection_id: { type: "string" },
-          dialect: { type: "string", enum: ["mysql", "postgres", "mongodb"] },
+          dialect: { type: "string", enum: ["postgres", "mongodb"] },
           query: { type: "string" },
           params: { type: "object" },
           row_limit: { type: "integer", default: 1000 },
@@ -162,7 +166,7 @@ async function availableTools() {
     },
     {
       name: "create_dataset",
-      description: "Persist an SQL query as an ADDMAN-SmartChart dataset (before making a chart).",
+      description: "Persist an SQL query as an Edison dataset (before making a chart).",
       parameters: {
         type: "object",
         properties: {
@@ -196,12 +200,11 @@ async function availableTools() {
     },
     {
       name: "create_chart",
-      description: "Create a chart and place it on a visible project/dashboard. CRITICAL: ONLY use this when the user EXPLICITLY requests placing a chart in a specific dashboard (e.g., 'add to Sales Dashboard', 'place in Marketing dashboard'). DEFAULT to create_temporary_chart instead. Use the EXACT project_id specified by the user.",
+      description: "Create a temporary preview chart from an existing dataset. The chart is NOT placed on any dashboard — use move_chart_to_dashboard afterwards if the user explicitly asks to add it to a dashboard. DEFAULT to create_temporary_chart instead (which creates dataset + chart in one step). Only use create_chart when you already have a dataset_id from a previous create_dataset call.",
       parameters: {
         type: "object",
         properties: {
-          project_id: { type: "string", description: "The EXACT project/dashboard ID specified by the user where the chart will be placed. Use this exact ID - never create charts in other projects for testing or validation." },
-          dataset_id: { type: "string" },
+          dataset_id: { type: "string", description: "ID of an existing dataset (from a previous create_dataset call)" },
           name: { type: "string", description: "Chart name/title" },
           legend: { type: "string", description: "Short legend text for data points (max 20-30 chars, appears on hover)" },
           type: { type: "string", enum: ["line", "bar", "pie", "doughnut", "radar", "polar", "table", "kpi", "avg", "gauge", "matrix"] },
@@ -234,9 +237,9 @@ async function availableTools() {
           },
           spec: { type: "object", description: "Alternative: Chart specification object (backward compatibility)" }
         },
-        required: ["project_id", "dataset_id", "name"]
+        required: ["dataset_id", "name"]
       }
-      // returns: { chart_id, name, type, project_id, dashboard_url, chart_url }
+      // returns: { chart_id, name, type, project_id, ghost_project_id, is_temporary }
     },
     {
       name: "update_dataset",
@@ -455,30 +458,46 @@ async function callTool(name, payload) {
   }
 }
 
-function buildSystemPrompt(semanticLayer, conversation = null) {
+function buildSystemPrompt(semanticLayer, conversation = null, context = null) {
   const { connections, projects, chartCatalog } = semanticLayer;
 
   const isNewConversation = !conversation || conversation.message_count === 0;
 
   const conversationContext = isNewConversation
     ? `\n## New Conversation
-This is the start of a new conversation. Introduce yourself and be helpful.
-
-IMPORTANT: For your FIRST response in this new conversation, start with a markdown header (like # Title) that describes the conversation. This will be used as the conversation title.
-
-The title should be actionable and descriptive based on the user's question.`
+This is the start of a new conversation. Introduce yourself and be helpful.`
     : `\n## Current Conversation
 This is a continuing conversation. Be aware of previous interactions and maintain context.`;
 
-  return `You are an AI assistant for ADDMAN-SmartChart, a data visualization platform. Your role is to help users query their data and create charts.${conversationContext}
+  // Filter connections to only those selected in context (if any connection entities are provided)
+  const supportedTypes = ["mysql", "postgres", "mongodb", "mssql"];
+  const contextConnectionIds = context?.filter((e) => e.entity_type === "connection").map((e) => e.id) || [];
+  let availableConnections = connections.filter((c) => supportedTypes.includes(c.type));
+  if (contextConnectionIds.length > 0) {
+    availableConnections = availableConnections.filter((c) => contextConnectionIds.includes(c.id));
+  }
+
+  const connectionScopeNote = contextConnectionIds.length > 0
+    ? "\nNote: The user has scoped this conversation to the connections listed above. Only use these connections."
+    : "";
+
+  const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+
+  return `You are an AI assistant for Edison, a data visualization platform. Your role is to help users query their data and create charts.
+
+## Current Date
+Today is ${today}. Use this when interpreting relative date references (e.g. "YTD", "last month", "this quarter").
+${conversationContext}
 
 ## Available Connections
-${connections.filter((c) => ["mysql", "postgres", "mongodb"].includes(c.type)).map((c) => `- ${c.name} (${c.type}${c.subType ? `/${c.subType}` : ""}) [ID: ${c.id}]`).join("\n")}
+${availableConnections.map((c) => `- ${c.name} (${c.type}${c.subType ? `/${c.subType}` : ""}) [ID: ${c.id}]`).join("\n")}
+${connectionScopeNote}
 
 Note: Currently only the following database connections are supported:
 - MySQL: Standard MySQL and Amazon RDS MySQL
 - PostgreSQL: Standard PostgreSQL, TimescaleDB, Supabase, and Amazon RDS PostgreSQL
 - MongoDB: Standard MongoDB
+- SQL Server: Microsoft SQL Server (MSSQL)
 
 API connections and other sources will be available in future updates.
 
@@ -488,10 +507,11 @@ ${projects.map((p) => `- ${p.name} [ID: ${p.id}] - ${p.Charts?.length || 0} char
 ## Chart Types Available
 ${chartCatalog.map((catalog) => Object.entries(catalog).map(([type, info]) => `- ${type}: ${info.description}`).join("\n")).join("\n")}
 
-## How ADDMAN-SmartChart Works
+## How Edison Works
 1. **Connections**: Store database credentials and schemas. Currently supported:
    - **MySQL connections**: SQL databases with tables/columns
    - **PostgreSQL connections**: SQL databases with tables/columns
+   - **SQL Server (MSSQL) connections**: SQL databases with tables/columns
    - **MongoDB connections**: NoSQL databases with collections/documents
    - *API connections and other sources will be available in future updates*
 2. **DataRequests**: Define how to fetch data using SQL queries
@@ -502,7 +522,7 @@ ${chartCatalog.map((catalog) => Object.entries(catalog).map(([type, info]) => `-
 ${ENTITY_CREATION_RULES}
 
 ## Your Capabilities
-- List and identify appropriate database connections (MySQL, PostgreSQL, MongoDB only)
+- List and identify appropriate database connections (MySQL, PostgreSQL, SQL Server, MongoDB only)
 - Retrieve database schemas with tables, columns, and sample data
 - Generate SQL queries from natural language for supported databases
 - Execute database queries and summarize results
@@ -522,13 +542,13 @@ ${ENTITY_CREATION_RULES}
 - **Only ask questions when**: Context is truly ambiguous, multiple valid options exist with no clear preference, or you need clarification on user intent.
 
 ## Limitations
-**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. ADDMAN-SmartChart visualizes data from connected databases. Connect MySQL, PostgreSQL, or MongoDB via the Connections page."
+**Cannot generate or create data.** If asked to generate fake data, manually input data, add unsupported sources (Firebase, APIs), or create databases, respond tersely: "I can't generate data. Edison visualizes data from connected databases. Connect MySQL, PostgreSQL, SQL Server, or MongoDB via the Connections page."
 
 ## Workflow Guidelines
 1. When a user asks a data question:
    - If they request data generation, fake data, manual input, or unsupported sources: Use the Limitations response above. Do not proceed.
-   - Check if they have supported database connections (MySQL, PostgreSQL, MongoDB)
-   - If they request unsupported sources (APIs, Firebase, etc.): Briefly state only MySQL, PostgreSQL, and MongoDB are supported. API/other sources coming soon.
+   - Check if they have supported database connections (MySQL, PostgreSQL, SQL Server, MongoDB)
+   - If they request unsupported sources (APIs, Firebase, etc.): Briefly state only MySQL, PostgreSQL, SQL Server, and MongoDB are supported. API/other sources coming soon.
    - For supported database connections:
      * Call get_schema to get database schema information
      * Call generate_query with the schema to generate SQL queries
@@ -581,7 +601,11 @@ ${ENTITY_CREATION_RULES}
    - When answering data questions, give the direct answer first, then show the chart
    - **REMEMBER: Temporary charts give users control over what gets saved to their dashboards. Users can always edit charts and datasets afterwards**
 
-3. Best practices:
+3. Date-scoped queries — DEFAULT BEHAVIOR:
+   By default, use {{start_date}} and {{end_date}} variables in WHERE clauses when the queried tables have date/timestamp columns. The generate_query tool returns a "dateColumn" hint — use it. Set the dataset's dateField to that column (root[].columnName syntax). The system auto-enables "Scope dates to query" on the chart.
+   Skip date scoping only when: no date columns exist, user asks for ALL data, or it's a simple total count.
+
+4. Best practices:
    - **CRITICAL: Default to temporary charts.** Only place in dashboards when explicitly requested.
    - **CRITICAL: Respect user instructions exactly.** If the user specifies a dashboard, use that exact dashboard. Never create charts in other dashboards for any reason.
    - **CRITICAL: No validation or test runs.** Create charts once, as temporary previews by default.
@@ -781,9 +805,13 @@ function sanitizeConversationHistory(history) {
       }
 
       // Filter tool responses to only include those with valid tool_call_ids
+      // and deduplicate (keep first response per tool_call_id)
+      const seenCallIds = new Set();
       const validToolResponses = toolResponses.filter((tr) => {
         const callId = tr.tool_call_id;
-        return callId && toolCallIds.has(callId);
+        if (!callId || !toolCallIds.has(callId) || seenCallIds.has(callId)) return false;
+        seenCallIds.add(callId);
+        return true;
       });
 
       // Check for orphaned tool responses (responses without matching tool_call_ids)
@@ -793,9 +821,11 @@ function sanitizeConversationHistory(history) {
       });
 
       if (orphanedResponses.length > 0) {
-        const orphanedIds = orphanedResponses.map((tr) => tr.tool_call_id).join(", ");
-        // eslint-disable-next-line no-console
-        console.warn(`Removing orphaned tool responses with tool_call_ids: ${orphanedIds}`);
+        const orphanedIds = orphanedResponses.map((tr) => tr.tool_call_id);
+        baseLogger.warn(
+          { orphanedToolCallIds: orphanedIds },
+          "Removing orphaned tool responses from conversation history"
+        );
       }
 
       // Check if all tool_call_ids have valid responses
@@ -811,18 +841,20 @@ function sanitizeConversationHistory(history) {
       } else {
         // Incomplete or invalid tool calls - remove the assistant message and tool responses
         // This prevents OpenAI API errors
-        const missingIds = Array.from(toolCallIds)
-          .filter((id) => !respondedIds.has(id))
-          .join(", ");
-        // eslint-disable-next-line no-console
-        console.warn(`Removing incomplete assistant message with tool_calls. Missing responses for tool_call_ids: ${missingIds}`);
+        const missingIds = Array.from(toolCallIds).filter((id) => !respondedIds.has(id));
+        baseLogger.warn(
+          { missingToolCallIds: missingIds },
+          "Removing incomplete assistant message with tool_calls"
+        );
         i = j; // Skip past the incomplete sequence
       }
     } else if (message.role === "tool") {
       // Orphaned tool response (no preceding assistant message with tool_calls)
       // Remove it to prevent OpenAI API errors
-      // eslint-disable-next-line no-console
-      console.warn(`Removing orphaned tool response with tool_call_id: ${message.tool_call_id || "unknown"}`);
+      baseLogger.warn(
+        { toolCallId: message.tool_call_id || null },
+        "Removing orphaned tool response from conversation history"
+      );
       i++;
     } else {
       // Regular message - include it
@@ -840,12 +872,15 @@ async function buildSemanticLayer(teamId) {
     throw new Error("Team not found");
   }
 
-  const connections = await db.Connection.findAll({
-    where: {
-      team_id: teamId,
-    },
-    attributes: ["id", "type", "subType", "name", "schema"],
-  });
+  // Owned connections + shared connections the team has opted into, matching the
+  // connections page and the list_connections tool (see connectionScope).
+  const connectionIds = await accessibleConnectionIds(teamId);
+  const connections = connectionIds.length > 0
+    ? await db.Connection.findAll({
+      where: { id: connectionIds },
+      attributes: ["id", "type", "subType", "name", "schema"],
+    })
+    : [];
 
   const projects = await db.Project.findAll({
     where: {
@@ -933,6 +968,12 @@ async function orchestrate(
     throw new Error("OpenAI client is not initialized. Please check your environment variables.");
   }
 
+  const log = baseLogger.child({
+    conversationId: conversation?.id || null,
+    teamId,
+  });
+  const orchestrateStartedAt = Date.now();
+
   // Sanitize conversation history to ensure OpenAI API compliance
   // This removes any assistant messages with tool_calls that don't have complete tool responses
   const sanitizedHistory = sanitizeConversationHistory(conversationHistory);
@@ -963,9 +1004,11 @@ async function orchestrate(
     }
 
     // Return with 0 token usage
+    // newMessageStartIndex: skip system + history, new messages are user question + response
     return {
       message: capabilityResponse,
       conversationHistory: messages,
+      newMessageStartIndex: 1 + sanitizedHistory.length,
       usage: {
         prompt_tokens: 0,
         completion_tokens: 0,
@@ -982,7 +1025,7 @@ async function orchestrate(
     };
   }
 
-  const systemPrompt = buildSystemPrompt(semanticLayer, conversation);
+  const systemPrompt = buildSystemPrompt(semanticLayer, conversation, context);
 
   // Prepare messages
   const messages = [
@@ -990,7 +1033,9 @@ async function orchestrate(
     ...sanitizedHistory
   ];
 
-  // Inject context as separate assistant message if provided
+  // Inject context as separate assistant message if provided. Context is
+  // per-turn metadata and should NOT be persisted, so we mark the
+  // newMessageStartIndex AFTER pushing it but BEFORE the user message.
   if (context && Array.isArray(context) && context.length > 0) {
     const contextInfo = context.map((entity) => `${entity.label}`).join("\n");
     messages.push({
@@ -998,6 +1043,11 @@ async function orchestrate(
       content: `CONTEXT:\n${contextInfo}`
     });
   }
+
+  // Mark where new persistable messages begin: user message + everything
+  // generated by the AI in this turn. Anything before this index is system
+  // prompt + already-persisted history + ephemeral context.
+  const newMessageStartIndex = messages.length;
 
   // Add user message
   messages.push({
@@ -1028,8 +1078,6 @@ async function orchestrate(
     messages,
     tools,
     tool_choice: "auto",
-    reasoning_effort: "low",
-    verbosity: "low",
   });
   const elapsedMs1 = Date.now() - startTime1;
 
@@ -1043,6 +1091,17 @@ async function orchestrate(
       elapsed_ms: elapsedMs1,
     });
   }
+
+  log.info({
+    turn: 0,
+    model: response.model || aiModel,
+    latencyMs: elapsedMs1,
+    promptTokens: response.usage?.prompt_tokens,
+    completionTokens: response.usage?.completion_tokens,
+    totalTokens: response.usage?.total_tokens,
+    finishReason: response.choices?.[0]?.finish_reason,
+    toolCallCount: response.choices?.[0]?.message?.tool_calls?.length || 0,
+  }, "Orchestrator AI turn complete");
 
   const updatedMessages = [...messages];
   let assistantMessage = response.choices[0].message;
@@ -1074,8 +1133,10 @@ async function orchestrate(
         const toolName = toolCall.function.name;
         const toolArgs = JSON.parse(toolCall.function.arguments);
 
-        // Inject team_id into tools that need it
-        if (toolName === "create_dataset" || toolName === "run_query" || toolName === "create_chart" || toolName === "update_dataset" || toolName === "update_chart" || toolName === "create_temporary_chart" || toolName === "move_chart_to_dashboard") {
+        // Inject team_id into tools that need it. This includes the read tools
+        // (list_connections, get_schema) so connection access stays scoped to
+        // the active team — see assertConnectionInTeam.
+        if (toolName === "list_connections" || toolName === "get_schema" || toolName === "create_dataset" || toolName === "run_query" || toolName === "create_chart" || toolName === "update_dataset" || toolName === "update_chart" || toolName === "create_temporary_chart" || toolName === "move_chart_to_dashboard") {
           toolArgs.team_id = teamId;
         }
 
@@ -1084,8 +1145,10 @@ async function orchestrate(
           try {
             await toolProgressCallback(toolName, "start", toolArgs);
           } catch (callbackError) {
-            // eslint-disable-next-line no-console
-            console.error("Tool progress callback error:", callbackError);
+            baseLogger.error(
+              { err: callbackError },
+              "Tool progress callback error"
+            );
           }
         }
 
@@ -1131,8 +1194,10 @@ async function orchestrate(
             try {
               await toolProgressCallback(toolName, "error", { error: error.message });
             } catch (callbackError) {
-              // eslint-disable-next-line no-console
-              console.error("Tool progress callback error:", callbackError);
+              baseLogger.error(
+                { err: callbackError, toolName },
+                "Tool progress callback error (error path)"
+              );
             }
           }
 
@@ -1180,6 +1245,7 @@ async function orchestrate(
         prompt: disambiguationRequest.prompt,
         options: disambiguationRequest.options,
         conversationHistory: updatedMessages,
+        newMessageStartIndex,
       };
     }
 
@@ -1191,8 +1257,6 @@ async function orchestrate(
       messages: updatedMessages,
       tools,
       tool_choice: "auto",
-      reasoning_effort: "low",
-      verbosity: "low",
     });
     const elapsedMs = Date.now() - startTime;
 
@@ -1206,6 +1270,17 @@ async function orchestrate(
         elapsed_ms: elapsedMs,
       });
     }
+
+    log.info({
+      turn: iterations,
+      model: response.model || aiModel,
+      latencyMs: elapsedMs,
+      promptTokens: response.usage?.prompt_tokens,
+      completionTokens: response.usage?.completion_tokens,
+      totalTokens: response.usage?.total_tokens,
+      finishReason: response.choices?.[0]?.finish_reason,
+      toolCallCount: response.choices?.[0]?.message?.tool_calls?.length || 0,
+    }, "Orchestrator AI turn complete");
 
     assistantMessage = response.choices[0].message;
   }
@@ -1236,9 +1311,24 @@ async function orchestrate(
     emitProgressEvent(socketManager, conversation.id, "PROCESSING_COMPLETE");
   }
 
+  const totalTokens = usageRecords.reduce((sum, u) => sum + (u.total_tokens || 0), 0);
+  const totalPromptTokens = usageRecords.reduce((sum, u) => sum + (u.prompt_tokens || 0), 0);
+  const totalCompletionTokens = usageRecords.reduce((sum, u) => sum + (u.completion_tokens || 0), 0);
+
+  log.info({
+    iterations,
+    totalTurns: usageRecords.length,
+    durationMs: Date.now() - orchestrateStartedAt,
+    totalPromptTokens,
+    totalCompletionTokens,
+    totalTokens,
+    snapshotCount: snapshots.length,
+  }, "Orchestrator request complete");
+
   return {
     message: assistantMessage.content,
     conversationHistory: updatedMessages,
+    newMessageStartIndex, // Index where new messages begin (after system prompt + history)
     usage: response.usage, // Last API call usage (backward compatibility)
     usageRecords, // All usage records for saving to AiUsage table
     iterations,

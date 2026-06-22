@@ -144,8 +144,8 @@ function AddChart() {
 
   const _onChangeGlobalSettings = ({
     pointRadius, displayLegend, dateRange, includeZeros, timeInterval, currentEndDate,
-    fixedStartDate, maxValue, minValue, xLabelTicks, stacked, horizontal, dataLabels,
-    dateVarsFormat, isLogarithmic, dashedLastPoint, defaultRowsPerPage,
+    fixedStartDate, scopeDateToQuery, maxValue, minValue, xLabelTicks, stacked, horizontal,
+    dataLabels, dateVarsFormat, isLogarithmic, dashedLastPoint, defaultRowsPerPage,
   }) => {
     const tempChart = {
       pointRadius: typeof pointRadius !== "undefined" ? pointRadius : newChart.pointRadius,
@@ -158,6 +158,7 @@ function AddChart() {
       includeZeros: typeof includeZeros !== "undefined" ? includeZeros : newChart.includeZeros,
       currentEndDate: typeof currentEndDate !== "undefined" ? currentEndDate : newChart.currentEndDate,
       fixedStartDate: typeof fixedStartDate !== "undefined" ? fixedStartDate : newChart.fixedStartDate,
+      scopeDateToQuery: typeof scopeDateToQuery !== "undefined" ? scopeDateToQuery : newChart.scopeDateToQuery,
       minValue: typeof minValue !== "undefined" ? minValue : newChart.minValue,
       maxValue: typeof maxValue !== "undefined" ? maxValue : newChart.maxValue,
       xLabelTicks: typeof xLabelTicks !== "undefined" ? xLabelTicks : newChart.xLabelTicks,
@@ -205,7 +206,17 @@ function AddChart() {
 
         // run the preview refresh only when it's needed
         if (!data.name) {
-          if (data.subType || data.type) {
+          // When scopeDateToQuery is active and date-related settings changed,
+          // do a full data refresh so queries re-resolve {{start_date}}/{{end_date}}
+          const dateSettingsChanged = data.startDate !== undefined
+            || data.endDate !== undefined
+            || data.dateRange !== undefined
+            || data.currentEndDate !== undefined
+            || data.fixedStartDate !== undefined
+            || data.dateVarsFormat !== undefined
+            || data.scopeDateToQuery !== undefined;
+
+          if (data.subType || data.type || (dateSettingsChanged && newChart.scopeDateToQuery)) {
             _onRefreshData();
           } else {
             _onRefreshPreview(shouldSkipParsing);
@@ -257,16 +268,23 @@ function AddChart() {
       });
   };
 
+  // Debounced preview refresh to avoid rapid reloads when changing multiple settings
+  const debouncedRefreshRef = useRef(null);
   const _onRefreshPreview = (skipParsing = true, filters = []) => {
     if (!params.chartId) return;
-    dispatch(runQuery({
-      project_id: params.projectId,
-      chart_id: params.chartId,
-      noSource: true,
-      skipParsing,
-      filters,
-      getCache: true
-    }))
+    if (debouncedRefreshRef.current) {
+      clearTimeout(debouncedRefreshRef.current);
+    }
+    debouncedRefreshRef.current = setTimeout(() => {
+      debouncedRefreshRef.current = null;
+      dispatch(runQuery({
+        project_id: params.projectId,
+        chart_id: params.chartId,
+        noSource: true,
+        skipParsing,
+        filters,
+        getCache: true
+      }))
       .then(() => {
         if (conditions.length > 0) {
           return dispatch(runQueryWithFilters({
@@ -284,6 +302,7 @@ function AddChart() {
       .catch(() => {
         setLoading(false);
       });
+    }, 300);
   };
 
   const _onAddFilter = (condition) => {

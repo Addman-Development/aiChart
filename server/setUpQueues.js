@@ -7,6 +7,7 @@ const { getQueueOptions } = require("./redisConnection");
 const updateCharts = require("./crons/updateCharts");
 const updateDashboards = require("./crons/updateDashboards");
 const sendSnapshots = require("./crons/sendSnapshots");
+const logger = require("./modules/logger").child({ module: "setUpQueues" });
 // const updateSnapshots = require("./crons/updateSnapshots");
 
 async function cleanActiveJobs(queue) {
@@ -20,9 +21,9 @@ async function cleanActiveJobs(queue) {
 
     await Promise.all(jobPromises);
 
-    console.log(`Cleaned ${activeJobs.length} active jobs.`); // eslint-disable-line
+    logger.info({ count: activeJobs.length, queue: queue.name }, "Cleaned active jobs");
   } catch (err) {
-    console.error(`Failed to clean active jobs: ${err.message}`); // eslint-disable-line
+    logger.error({ err, queue: queue.name }, "Failed to clean active jobs");
   }
 }
 
@@ -39,7 +40,7 @@ const setUpQueues = (app) => {
   updateChartsQueue = new Queue("updateChartsQueue", getQueueOptions());
   updateChartsQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the updates queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      logger.error({ err: error, queue: "updateChartsQueue" }, "Failed to set up the updates queue. Check that Redis is running.");
       process.exit(1);
     }
   });
@@ -50,7 +51,7 @@ const setUpQueues = (app) => {
   updateDashboardsQueue = new Queue("updateDashboardsQueue", getQueueOptions());
   updateDashboardsQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the updates queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      logger.error({ err: error, queue: "updateDashboardsQueue" }, "Failed to set up the updates queue. Check that Redis is running.");
       process.exit(1);
     }
   });
@@ -61,7 +62,7 @@ const setUpQueues = (app) => {
   updateMongoDBSchemaQueue = new Queue("updateMongoDBSchemaQueue", getQueueOptions());
   updateMongoDBSchemaQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the MongoDB schema update queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      logger.error({ err: error, queue: "updateMongoDBSchemaQueue" }, "Failed to set up the MongoDB schema update queue. Check that Redis is running.");
       process.exit(1);
     }
   });
@@ -77,7 +78,7 @@ const setUpQueues = (app) => {
   const dashboardSnapshotQueue = new Queue("sendSnapshotsQueue", getQueueOptions());
   dashboardSnapshotQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the dashboard snapshot queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      logger.error({ err: error, queue: "sendSnapshotsQueue" }, "Failed to set up the dashboard snapshot queue. Check that Redis is running.");
       process.exit(1);
     }
   });
@@ -93,7 +94,7 @@ const setUpQueues = (app) => {
   const updateSnapshotsQueue = new Queue("updateSnapshotsQueue", getQueueOptions());
   updateSnapshotsQueue.on("error", (error) => {
     if (error.code === "ECONNREFUSED") {
-      console.error("Failed to set up the update snapshots queue. Please check if Redis is running: https://docs.smartchart.addman.com/quickstart#set-up-redis-for-automatic-dataset-updates"); // eslint-disable-line no-console
+      logger.error({ err: error, queue: "updateSnapshotsQueue" }, "Failed to set up the update snapshots queue. Check that Redis is running.");
       process.exit(1);
     }
   });
@@ -117,7 +118,7 @@ const setUpQueues = (app) => {
     serverAdapter,
     options: {
       uiConfig: {
-        boardTitle: "ADDMAN-SmartChart Jobs",
+        boardTitle: "Edison Jobs",
       },
     },
   });
@@ -135,29 +136,22 @@ const setUpQueues = (app) => {
   // Uncomment this to enable regular snapshot updates
   // updateSnapshots(updateSnapshotsQueue, takeSnapshotWorker);
 
-  // Handle PM2 shutdown/reload
-  process.on("SIGINT", async () => {
-    console.log("SIGINT received. Cleaning active jobs..."); // eslint-disable-line
+  // Clean BullMQ queues on shutdown. The HTTP graceful-shutdown handler in
+  // index.js (SIGTERM/SIGINT) is responsible for the final process.exit —
+  // these only handle queue cleanup so they run concurrently with HTTP drain.
+  // SIGUSR2 (nodemon reload) still needs an explicit exit since it has no
+  // index.js counterpart.
+  const cleanAll = async (signal) => {
+    logger.info({ signal }, "Signal received. Cleaning active jobs...");
     await cleanActiveJobs(updateChartsQueue);
     await cleanActiveJobs(updateDashboardsQueue);
     await cleanActiveJobs(updateMongoDBSchemaQueue);
-    process.exit(0);
-  });
+  };
 
-  process.on("SIGTERM", async () => {
-    console.log("SIGTERM received. Cleaning active jobs..."); // eslint-disable-line
-    await cleanActiveJobs(updateChartsQueue);
-    await cleanActiveJobs(updateDashboardsQueue);
-    await cleanActiveJobs(updateMongoDBSchemaQueue);
-    process.exit(0);
-  });
-
-  // Handle Nodemon reload
+  process.on("SIGINT", () => cleanAll("SIGINT"));
+  process.on("SIGTERM", () => cleanAll("SIGTERM"));
   process.on("SIGUSR2", async () => {
-    console.log("SIGUSR2 received. Cleaning active jobs..."); // eslint-disable-line
-    await cleanActiveJobs(updateChartsQueue);
-    await cleanActiveJobs(updateDashboardsQueue);
-    await cleanActiveJobs(updateMongoDBSchemaQueue);
+    await cleanAll("SIGUSR2");
     process.exit(0);
   });
 };

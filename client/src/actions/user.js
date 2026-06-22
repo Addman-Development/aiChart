@@ -368,34 +368,6 @@ export function logout() {
   };
 }
 
-export function sendFeedback({ name, feedback, email }) {
-  return (dispatch) => {
-    const body = JSON.stringify({
-      "from": name,
-      "email": email,
-      "data": feedback,
-    });
-    const headers = new Headers({
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-    });
-    return fetch(`${API_HOST}/user/feedback`, { method: "POST", body, headers })
-      .then((response) => {
-        if (!response.ok) {
-          dispatch(addError(response.status));
-          return new Promise((resolve, reject) => reject(response.statusText));
-        }
-        return response.json();
-      })
-      .then(data => {
-        return new Promise(resolve => resolve(data));
-      })
-      .catch(err => {
-        return new Promise((resolve, reject) => reject(err));
-      });
-  };
-}
-
 export function requestPasswordReset(email) {
   return (dispatch) => {
     const url = `${API_HOST}/user/password/reset`;

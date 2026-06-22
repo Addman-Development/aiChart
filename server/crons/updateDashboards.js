@@ -5,6 +5,7 @@ const { Worker } = require("bullmq");
 const path = require("path");
 
 const db = require("../models/models");
+const logger = require("../modules/logger").child({ module: "cron:updateDashboards" });
 
 async function addDashboardToQueue(queue, dashboardId) {
   const jobId = `dashboard_${dashboardId}`;
@@ -94,7 +95,7 @@ async function updateDashboards(queue) {
       }
     });
   } catch (error) {
-    console.error(`Error checking and updating dashboards: ${error.message}`); // eslint-disable-line
+    logger.error({ err: error }, "Error checking and updating dashboards");
   }
 }
 

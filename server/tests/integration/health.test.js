@@ -20,7 +20,7 @@ describe("Health Check API", () => {
         .expect(200);
 
       expect(response.body).toEqual({
-        message: "ADDMAN-SmartChart Test API",
+        message: "Edison Test API",
         status: "ok"
       });
     });
@@ -54,16 +54,11 @@ describe("Health Check API", () => {
 
       expect(connectionDetails).toHaveProperty("database");
       expect(connectionDetails).toHaveProperty("dialect");
-
-      // Different checks for different database types
-      if (connectionDetails.dialect === "sqlite") {
-        expect(connectionDetails.database).toBe(":memory:");
-      } else {
-        expect(connectionDetails).toHaveProperty("host");
-        expect(connectionDetails).toHaveProperty("port");
-        expect(connectionDetails).toHaveProperty("username");
-        expect(connectionDetails.database).toBe("smartchart_test");
-      }
+      expect(connectionDetails).toHaveProperty("host");
+      expect(connectionDetails).toHaveProperty("port");
+      expect(connectionDetails).toHaveProperty("username");
+      expect(connectionDetails.dialect).toBe("postgres");
+      expect(connectionDetails.database).toBe("smartchart_test");
     });
   });
 });

@@ -1,8 +1,41 @@
 const { fn, col, Op } = require("sequelize");
 
 const { orchestrate, availableTools } = require("../modules/ai/orchestrator/orchestrator");
+const { aiClient, aiModel } = require("../modules/ai/aiClient");
 const db = require("../models/models");
 const socketManager = require("../modules/socketManager");
+const logger = require("../modules/logger").child({ module: "AiController" });
+
+/**
+ * Generate a short conversation title from the user's question and the AI response.
+ * Runs as a lightweight, fire-and-forget AI call so it doesn't block the response.
+ */
+async function generateConversationTitle(question, aiResponse) {
+  if (!aiClient) return null;
+
+  try {
+    const response = await aiClient.chat.completions.create({
+      model: aiModel,
+      max_tokens: 60,
+      messages: [
+        {
+          role: "system",
+          content: "Generate a short, descriptive title (max 8 words) for a data analytics conversation. Output ONLY the title text, nothing else. No quotes, no punctuation at the end.",
+        },
+        {
+          role: "user",
+          content: `User asked: "${question}"\n\nAssistant responded: "${(aiResponse || "").substring(0, 300)}"`,
+        },
+      ],
+    });
+
+    const title = response.choices?.[0]?.message?.content?.trim();
+    return title || null;
+  } catch (err) {
+    logger.warn({ err }, "Failed to generate conversation title");
+    return null;
+  }
+}
 
 async function getOrchestration(
   teamId,
@@ -71,19 +104,8 @@ async function getOrchestration(
   try {
     const orchestration = await orchestrate(teamId, question, fullHistory, conversation, context);
 
-    // Extract title from AI response for new conversations
-    let finalMessage = orchestration.message;
-    let extractedTitle = null;
-
-    if (!conversation || conversation.message_count === 0) {
-      // Try to extract title from the first markdown header in the response
-      const titleMatch = orchestration.message?.match(/^#{1,6}\s+(.+)$/m);
-      if (titleMatch) {
-        extractedTitle = titleMatch[1].trim();
-        // Remove the title line from the response (including newline)
-        finalMessage = orchestration.message.replace(/^#{1,6}\s+.+\n?/, "").trim();
-      }
-    }
+    const finalMessage = orchestration.message;
+    const isNewConversation = !conversation || conversation.message_count === 0;
 
     // Get the starting sequence number (0 for new conversations, or continue from existing)
     const existingMessageCount = await db.AiMessage.count({
@@ -91,7 +113,11 @@ async function getOrchestration(
     });
 
     // Save new messages to AiMessage table
-    const newMessages = orchestration.conversationHistory.slice(existingMessageCount);
+    // Use newMessageStartIndex from orchestrator to correctly skip system prompt + loaded history
+    const sliceFrom = orchestration.newMessageStartIndex ?? existingMessageCount;
+    const newMessages = orchestration.conversationHistory
+      .slice(sliceFrom)
+      .filter((msg) => msg.role !== "system"); // Never persist system prompts
     const messagePromises = newMessages.map((msg, index) => {
       const messageData = {
         conversation_id: conversation.id,
@@ -140,12 +166,23 @@ async function getOrchestration(
       error_message: null,
     };
 
-    // Update title if extracted
-    if (extractedTitle) {
-      updateData.title = extractedTitle;
-    }
-
     await conversation.update(updateData);
+
+    // Generate title asynchronously for new conversations (don't block the response)
+    if (isNewConversation) {
+      generateConversationTitle(question, finalMessage)
+        .then(async (title) => {
+          if (title) {
+            await conversation.update({ title });
+            // Notify the client so the sidebar updates in real-time
+            socketManager.emitToUser(userId, "conversation-updated", {
+              conversationId: conversation.id,
+              title,
+            });
+          }
+        })
+        .catch(() => {}); // swallow — title is best-effort
+    }
 
     return {
       ...orchestration,
@@ -246,8 +283,10 @@ async function getConversation(conversationId, teamId) {
   // Rebuild full_history for backward compatibility with client
   const fullHistory = messages.map((msg) => {
     const messageObj = {
+      id: msg.id,
       role: msg.role,
       content: msg.content,
+      feedback: msg.feedback || null,
     };
 
     // Add tool-specific fields
@@ -380,11 +419,108 @@ async function getAiUsage(teamId, startDate, endDate) {
   }
 }
 
+async function renameConversation(conversationId, teamId, title) {
+  const conversation = await db.AiConversation.findOne({
+    where: {
+      id: conversationId,
+      team_id: teamId,
+    },
+  });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  await conversation.update({ title });
+
+  return { success: true, title };
+}
+
+async function submitMessageFeedback(conversationId, messageId, teamId, feedback) {
+  const conversation = await db.AiConversation.findOne({
+    where: { id: conversationId, team_id: teamId },
+  });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  const message = await db.AiMessage.findOne({
+    where: { id: messageId, conversation_id: conversationId },
+  });
+
+  if (!message) {
+    throw new Error("Message not found");
+  }
+
+  if (feedback !== "positive" && feedback !== "negative" && feedback !== null) {
+    throw new Error("Invalid feedback value");
+  }
+
+  await message.update({ feedback });
+
+  return { success: true, feedback };
+}
+
+async function forkConversation(conversationId, teamId, userId, targetUserId) {
+  const source = await db.AiConversation.findOne({
+    where: { id: conversationId, team_id: teamId },
+  });
+
+  if (!source) {
+    throw new Error("Conversation not found");
+  }
+
+  const ownerUserId = targetUserId || userId;
+  const isShare = !!targetUserId && targetUserId !== userId;
+
+  // Create the forked conversation
+  const forked = await db.AiConversation.create({
+    team_id: teamId,
+    user_id: ownerUserId,
+    title: isShare ? `${source.title} (shared)` : `${source.title} (fork)`,
+    source: "app",
+    status: "active",
+    message_count: source.message_count,
+  });
+
+  // Copy all messages
+  const messages = await db.AiMessage.findAll({
+    where: { conversation_id: conversationId },
+    order: [["sequence", "ASC"]],
+  });
+
+  if (messages.length > 0) {
+    const messageCopies = messages.map((msg) => ({
+      conversation_id: forked.id,
+      role: msg.role,
+      content: msg.content,
+      tool_calls: msg.getDataValue("tool_calls"),
+      tool_name: msg.tool_name,
+      tool_call_id: msg.tool_call_id,
+      tool_result_preview: msg.tool_result_preview,
+      sequence: msg.sequence,
+      // feedback is intentionally not copied — it belongs to the original user
+    }));
+
+    await db.AiMessage.bulkCreate(messageCopies);
+  }
+
+  return {
+    id: forked.id,
+    title: forked.title,
+    shared_to: isShare ? ownerUserId : null,
+  };
+}
+
 module.exports = {
   getOrchestration,
   getAvailableTools,
   getConversations,
   getConversation,
   deleteConversation,
+  renameConversation,
   getAiUsage,
+  submitMessageFeedback,
+  forkConversation,
 };

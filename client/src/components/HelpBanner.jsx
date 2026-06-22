@@ -26,6 +26,12 @@ const bannerData = {
     url: "#",
     info: "5 min read",
   },
+  mssql: {
+    title: "How to visualize your SQL Server data",
+    description: "Connect to your SQL Server database and create charts that tell you more about your data.",
+    url: "#",
+    info: "5 min read",
+  },
 }
 
 function HelpBanner(props) {

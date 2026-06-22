@@ -1,11 +1,25 @@
+const logger = require("./logger").child({ module: "applyVariables" });
+
+const escapeForDoubleQuotedString = (value) => String(value)
+  .replace(/\\/g, "\\\\")
+  .replace(/"/g, "\\\"");
+
+const escapeForAlreadyQuotedString = (value) => String(value)
+  .replace(/\\/g, "\\\\")
+  .replace(/"/g, "\\\"")
+  .replace(/'/g, "\\'");
+
 const applyPostgresVariables = (dataRequest, variables = {}) => {
   // Don't modify the original dataRequest at all
   const originalDataRequest = dataRequest;
 
-  // If there's no query or no variable bindings, return original with same query
+  // Check if there are runtime variables to substitute even without bindings
+  const hasRuntimeVariables = variables && Object.keys(variables).length > 0;
+
+  // If there's no query, or no variable bindings AND no runtime variables, return original
   if (!originalDataRequest.query
-    || !originalDataRequest.VariableBindings
-    || originalDataRequest.VariableBindings.length === 0
+    || ((!originalDataRequest.VariableBindings
+      || originalDataRequest.VariableBindings.length === 0) && !hasRuntimeVariables)
   ) {
     return {
       dataRequest: originalDataRequest,
@@ -140,10 +154,13 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
   // Don't modify the original dataRequest at all
   const originalDataRequest = dataRequest;
 
-  // If there's no query or no variable bindings, return original with same query
+  // Check if there are runtime variables to substitute even without bindings
+  const hasRuntimeVariables = variables && Object.keys(variables).length > 0;
+
+  // If there's no query, or no variable bindings AND no runtime variables, return original
   if (!originalDataRequest.query
-    || !originalDataRequest.VariableBindings
-    || originalDataRequest.VariableBindings.length === 0
+    || ((!originalDataRequest.VariableBindings
+      || originalDataRequest.VariableBindings.length === 0) && !hasRuntimeVariables)
   ) {
     return {
       dataRequest: originalDataRequest,
@@ -181,7 +198,7 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
 
   // Replace variables with their values using priority: runtime > default > error/removal
   foundVariables.forEach((variable) => {
-    const binding = originalDataRequest.VariableBindings.find((vb) => vb.name === variable.name);
+    const binding = originalDataRequest.VariableBindings?.find((vb) => vb.name === variable.name);
 
     // Check for runtime variable value first
     const runtimeValue = variables[variable.name];
@@ -192,18 +209,41 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
       && binding?.default_value !== undefined
       && binding?.default_value !== "";
 
+    // Determine if this is a known date variable (reserved or typed)
+    const isDateVariable = binding?.type === "date"
+      || variable.name === "start_date"
+      || variable.name === "end_date";
+
+    if (isDateVariable) {
+      logger.debug({
+        variable: variable.name,
+        runtimeValue,
+        hasRuntimeValue,
+        isDateVariable,
+      }, "applyMongoVariables: date variable resolved");
+    }
+
     if (hasRuntimeValue) {
       // Priority 1: Use runtime value
       let replacementValue = runtimeValue;
 
-      // Handle different data types based on binding type (if available)
-      if (binding?.type) {
+      if (isDateVariable) {
+        if (variable.isAlreadyQuoted) {
+          // Placeholder is inside quotes (e.g. "{{start_date}}") — field stores dates as strings
+          // Just substitute the raw value; the surrounding quotes handle formatting
+          replacementValue = String(runtimeValue);
+        } else {
+          // Bare placeholder — field stores native Date objects; wrap in new Date()
+          replacementValue = `new Date("${String(runtimeValue)}")`;
+        }
+      } else if (binding?.type) {
+        // Handle different data types based on binding type
         switch (binding.type) {
           case "string":
             // For MongoDB, strings need to be properly quoted
             replacementValue = variable.isAlreadyQuoted
-              ? String(runtimeValue).replace(/"/g, "\\\"").replace(/'/g, "\\'")
-              : `"${String(runtimeValue).replace(/"/g, "\\\"")}"`;
+              ? escapeForAlreadyQuotedString(runtimeValue)
+              : `"${escapeForDoubleQuotedString(runtimeValue)}"`;
             break;
           case "number":
             replacementValue = Number.isNaN(Number(runtimeValue)) ? "0" : Number(runtimeValue);
@@ -211,22 +251,16 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
           case "boolean":
             replacementValue = (runtimeValue === "true" || runtimeValue === true) ? "true" : "false";
             break;
-          case "date":
-            // For MongoDB dates, we can use ISODate or just a string
-            replacementValue = variable.isAlreadyQuoted
-              ? String(runtimeValue)
-              : `"${String(runtimeValue)}"`;
-            break;
           default:
             replacementValue = variable.isAlreadyQuoted
-              ? String(runtimeValue).replace(/"/g, "\\\"").replace(/'/g, "\\'")
-              : `"${String(runtimeValue).replace(/"/g, "\\\"")}"`;
+              ? escapeForAlreadyQuotedString(runtimeValue)
+              : `"${escapeForDoubleQuotedString(runtimeValue)}"`;
         }
       } else {
         // No binding type info, treat as string
         replacementValue = variable.isAlreadyQuoted
-          ? String(runtimeValue).replace(/"/g, "\\\"").replace(/'/g, "\\'")
-          : `"${String(runtimeValue).replace(/"/g, "\\\"")}"`;
+          ? escapeForAlreadyQuotedString(runtimeValue)
+          : `"${escapeForDoubleQuotedString(runtimeValue)}"`;
       }
 
       processedQuery = processedQuery.replace(variable.placeholder, replacementValue);
@@ -234,27 +268,30 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
       // Priority 2: Use default value
       let replacementValue = binding.default_value;
 
-      switch (binding.type) {
-        case "string":
-          replacementValue = variable.isAlreadyQuoted
-            ? binding.default_value.replace(/"/g, "\\\"").replace(/'/g, "\\'")
-            : `"${binding.default_value.replace(/"/g, "\\\"")}"`;
-          break;
-        case "number":
-          replacementValue = Number.isNaN(Number(binding.default_value)) ? "0" : Number(binding.default_value);
-          break;
-        case "boolean":
-          replacementValue = binding.default_value === "true" || binding.default_value === true ? "true" : "false";
-          break;
-        case "date":
-          replacementValue = variable.isAlreadyQuoted
-            ? binding.default_value
-            : `"${binding.default_value}"`;
-          break;
-        default:
-          replacementValue = variable.isAlreadyQuoted
-            ? binding.default_value.replace(/"/g, "\\\"").replace(/'/g, "\\'")
-            : `"${binding.default_value.replace(/"/g, "\\\"")}"`;
+      if (isDateVariable) {
+        if (variable.isAlreadyQuoted) {
+          replacementValue = String(binding.default_value);
+        } else {
+          replacementValue = `new Date("${String(binding.default_value)}")`;
+        }
+      } else {
+        switch (binding.type) {
+          case "string":
+            replacementValue = variable.isAlreadyQuoted
+              ? escapeForAlreadyQuotedString(binding.default_value)
+              : `"${escapeForDoubleQuotedString(binding.default_value)}"`;
+            break;
+          case "number":
+            replacementValue = Number.isNaN(Number(binding.default_value)) ? "0" : Number(binding.default_value);
+            break;
+          case "boolean":
+            replacementValue = binding.default_value === "true" || binding.default_value === true ? "true" : "false";
+            break;
+          default:
+            replacementValue = variable.isAlreadyQuoted
+              ? escapeForAlreadyQuotedString(binding.default_value)
+              : `"${escapeForDoubleQuotedString(binding.default_value)}"`;
+        }
       }
 
       processedQuery = processedQuery.replace(variable.placeholder, replacementValue);
@@ -280,9 +317,12 @@ const applyApiVariables = (dataRequest, variables = {}) => {
   // Don't modify the original dataRequest at all
   const originalDataRequest = dataRequest;
 
-  // If there's no variable bindings, return original unchanged
-  if (!originalDataRequest.VariableBindings
-    || originalDataRequest.VariableBindings.length === 0
+  // Check if there are runtime variables to substitute even without bindings
+  const hasRuntimeVariables = variables && Object.keys(variables).length > 0;
+
+  // If there's no variable bindings AND no runtime variables, return original unchanged
+  if ((!originalDataRequest.VariableBindings
+    || originalDataRequest.VariableBindings.length === 0) && !hasRuntimeVariables
   ) {
     return {
       dataRequest: originalDataRequest,
@@ -316,8 +356,11 @@ const applyApiVariables = (dataRequest, variables = {}) => {
 
     // Replace variables with their values using priority: runtime > default > error/removal
     foundVariables.forEach((variable) => {
-      // Skip reserved date variables - they're handled separately
-      if (variable.name === "start_date" || variable.name === "end_date") {
+      // Skip reserved date variables when no runtime value is provided
+      // (legacy behavior - ConnectionController handles them separately)
+      // When runtime values exist (e.g. from scopeDateToQuery), substitute them normally
+      if ((variable.name === "start_date" || variable.name === "end_date")
+        && !variables[variable.name]) {
         return;
       }
 
@@ -428,6 +471,7 @@ const applyVariables = (dataRequest, variables = {}) => {
 
   switch (connectionType) {
     case "postgres":
+    case "mssql":
       return applyPostgresVariables(dataRequest, variables);
     case "mongodb":
       return applyMongoVariables(dataRequest, variables);

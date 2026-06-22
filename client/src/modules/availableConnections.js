@@ -9,4 +9,8 @@ export default [{
   type: "postgres",
   name: "PostgreSQL",
   ai: true,
+}, {
+  type: "mssql",
+  name: "SQL Server",
+  ai: true,
 }];

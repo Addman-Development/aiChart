@@ -1,9 +1,19 @@
+const moment = require("moment");
 const db = require("../../../../models/models");
 const DatasetController = require("../../../../controllers/DatasetController");
 const ChartController = require("../../../../controllers/ChartController");
+const ensureGhostProject = require("./ensureGhostProject");
 
 const datasetController = new DatasetController();
 const chartController = new ChartController();
+
+/**
+ * Detects whether a query uses {{start_date}} and/or {{end_date}} variables.
+ */
+function queryUsesDateVars(query) {
+  if (!query) return false;
+  return query.includes("{{start_date}}") || query.includes("{{end_date}}");
+}
 
 async function createTemporaryChart(payload) {
   const {
@@ -28,17 +38,8 @@ async function createTemporaryChart(payload) {
   }
 
   try {
-    // Find the temporary preview project for this team
-    const ghostProject = await db.Project.findOne({
-      where: {
-        team_id,
-        ghost: true
-      }
-    });
-
-    if (!ghostProject) {
-      throw new Error("Temporary preview project not found for this team");
-    }
+    // Find or create the ghost project for this team
+    const ghostProject = await ensureGhostProject(team_id);
 
     // Create the dataset first
     // Note: project_ids is empty for temporary charts - ghost projects should not be included
@@ -119,6 +120,18 @@ async function createTemporaryChart(payload) {
         configuration: spec.configuration || {}
       }]
     }, null);
+
+    // Auto-enable scopeDateToQuery when the query uses date variables
+    if (queryUsesDateVars(query)) {
+      const defaultStart = moment().subtract(30, "days").startOf("day").toDate();
+      const defaultEnd = moment().endOf("day").toDate();
+      await db.Chart.update({
+        scopeDateToQuery: true,
+        startDate: defaultStart,
+        endDate: defaultEnd,
+        currentEndDate: true,
+      }, { where: { id: chart.id } });
+    }
 
     // Take a snapshot of the temporary chart for visualization
     let snapshot = null;

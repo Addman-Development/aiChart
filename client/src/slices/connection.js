@@ -6,6 +6,8 @@ const initialState = {
   loading: false,
   error: false,
   data: [],
+  shared: [],
+  sharedLoading: false,
 };
 
 export const getTeamConnections = createAsyncThunk(
@@ -227,6 +229,79 @@ export const duplicateConnection = createAsyncThunk(
   }
 );
 
+export const importConnections = createAsyncThunk(
+  "connection/importConnections",
+  async ({ team_id, source_team_id, connection_ids }) => {
+    const token = getAuthToken();
+    const url = `${API_HOST}/team/${team_id}/connections/import`;
+    const headers = new Headers({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    });
+    const body = JSON.stringify({ source_team_id, connection_ids });
+    const response = await fetch(url, { headers, method: "POST", body });
+    if (!response.ok) {
+      throw new Error(response.statusText);
+    }
+
+    const data = await response.json();
+    return data;
+  }
+);
+
+export const getSharedConnections = createAsyncThunk(
+  "connection/getSharedConnections",
+  async ({ team_id } = {}) => {
+    const token = getAuthToken();
+    const qs = team_id ? `?team_id=${team_id}` : "";
+    const url = `${API_HOST}/connection/shared${qs}`;
+    const headers = new Headers({
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    });
+    const response = await fetch(url, { headers, method: "GET" });
+    if (!response.ok) throw new Error(response.statusText);
+    return response.json();
+  }
+);
+
+export const optInSharedConnection = createAsyncThunk(
+  "connection/optInSharedConnection",
+  async ({ team_id, connection_id }) => {
+    const token = getAuthToken();
+    const url = `${API_HOST}/team/${team_id}/connections/${connection_id}/optin`;
+    const headers = new Headers({
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    });
+    const response = await fetch(url, { headers, method: "POST" });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || response.statusText);
+    }
+    return { team_id, connection_id };
+  }
+);
+
+export const optOutSharedConnection = createAsyncThunk(
+  "connection/optOutSharedConnection",
+  async ({ team_id, connection_id }) => {
+    const token = getAuthToken();
+    const url = `${API_HOST}/team/${team_id}/connections/${connection_id}/optin`;
+    const headers = new Headers({
+      Accept: "application/json",
+      Authorization: `Bearer ${token}`,
+    });
+    const response = await fetch(url, { headers, method: "DELETE" });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || response.statusText);
+    }
+    return { team_id, connection_id };
+  }
+);
+
 export const updateMongoSchema = createAsyncThunk(
   "connection/updateMongoSchema",
   async ({ team_id, connection_id }) => {
@@ -381,7 +456,20 @@ export const connectionSlice = createSlice({
     builder.addCase(duplicateConnection.rejected, (state) => {
       state.loading = false;
       state.error = true;
-    }); 
+    });
+
+    // importConnections
+    builder.addCase(importConnections.pending, (state) => {
+      state.loading = true;
+    })
+    builder.addCase(importConnections.fulfilled, (state, action) => {
+      state.loading = false;
+      state.data = [...action.payload, ...state.data];
+    })
+    builder.addCase(importConnections.rejected, (state) => {
+      state.loading = false;
+      state.error = true;
+    });
 
     // updateMongoSchema
     builder.addCase(updateMongoSchema.pending, (state) => {
@@ -400,11 +488,45 @@ export const connectionSlice = createSlice({
       state.loading = false;
       state.error = true;
     });
+
+    // getSharedConnections
+    builder.addCase(getSharedConnections.pending, (state) => {
+      state.sharedLoading = true;
+    })
+    builder.addCase(getSharedConnections.fulfilled, (state, action) => {
+      state.sharedLoading = false;
+      state.shared = action.payload;
+    })
+    builder.addCase(getSharedConnections.rejected, (state) => {
+      state.sharedLoading = false;
+    });
+
+    // optInSharedConnection: flip isOptedIn locally so panel/badges update
+    builder.addCase(optInSharedConnection.fulfilled, (state, action) => {
+      const { team_id, connection_id } = action.payload;
+      state.shared = state.shared.map((c) => {
+        if (c.id !== connection_id) return c;
+        const optedInTeamIds = Array.from(new Set([...(c.optedInTeamIds || []), Number(team_id)]));
+        return { ...c, optedInTeamIds, isOptedIn: true };
+      });
+    });
+
+    builder.addCase(optOutSharedConnection.fulfilled, (state, action) => {
+      const { team_id, connection_id } = action.payload;
+      state.shared = state.shared.map((c) => {
+        if (c.id !== connection_id) return c;
+        const optedInTeamIds = (c.optedInTeamIds || []).filter((id) => id !== Number(team_id));
+        return { ...c, optedInTeamIds, isOptedIn: false };
+      });
+      state.data = state.data.filter((c) => c.id !== connection_id || c.team_id === Number(team_id));
+    });
   },
 });
 
 export const { clearConnections } = connectionSlice.actions;
 
 export const selectConnections = (state) => state.connection.data;
+export const selectSharedConnections = (state) => state.connection.shared;
+export const selectSharedConnectionsLoading = (state) => state.connection.sharedLoading;
 
 export default connectionSlice.reducer;

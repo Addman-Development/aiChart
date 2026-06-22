@@ -5,6 +5,7 @@ const TeamController = require("../controllers/TeamController");
 const verifyToken = require("../modules/verifyToken");
 const DatasetController = require("../controllers/DatasetController");
 const ConnectionController = require("../controllers/ConnectionController");
+const logger = require("../modules/logger").child({ module: "api:DataRequestRoute" });
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -23,6 +24,10 @@ module.exports = (app) => {
 
   const checkPermissions = async (req, res, next) => {
     const { team_id } = req.params;
+
+    if (req.user.admin) {
+      return next();
+    }
 
     // Fetch the TeamRole for the user
     const teamRole = await teamController.getTeamRole(team_id, req.user.id);
@@ -199,12 +204,31 @@ module.exports = (app) => {
         return res.status(200).send(newDataRequest);
       })
       .catch((error) => {
-        console.error("[DataRequestRoute] runRequest error:", error.message, error.stack);
+        logger.error({ err: error }, "DataRequestRoute runRequest failed");
         if (error.message === "401") {
           return res.status(401).send({ error: "Not authorized" });
         }
 
         return res.status(400).json({ error: error.message });
+      });
+  });
+  // -------------------------------------------------
+
+  /*
+  ** Route for inline AI query completion (ghost text suggestions)
+  */
+  app.post(`${root}/:id/completeQuery`, verifyToken, checkPermissions, apiLimiter(20), (req, res) => {
+    return dataRequestController.completeQuery(
+      req.params.id,
+      req.body.currentQuery || "",
+      req.body.cursorPosition || 0,
+    )
+      .then((result) => res.status(200).send(result))
+      .catch((error) => {
+        if (error?.message) {
+          return res.status(400).send({ error: error.message });
+        }
+        return res.status(400).send(error);
       });
   });
   // -------------------------------------------------

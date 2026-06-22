@@ -1,4 +1,13 @@
+const moment = require("moment");
 const db = require("../../../../models/models");
+
+/**
+ * Detects whether a query uses {{start_date}} and/or {{end_date}} variables.
+ */
+function queryUsesDateVars(query) {
+  if (!query) return false;
+  return query.includes("{{start_date}}") || query.includes("{{end_date}}");
+}
 
 async function updateDataset(payload) {
   const {
@@ -57,6 +66,35 @@ async function updateDataset(payload) {
 
     if (Object.keys(drUpdates).length > 0) {
       await db.DataRequest.update(drUpdates, { where: { id: dataRequest.id } });
+    }
+
+    // If the query was updated and now uses date variables, retroactively enable
+    // scopeDateToQuery on all charts linked to this dataset
+    if (query !== undefined && queryUsesDateVars(query)) {
+      const linkedConfigs = await db.ChartDatasetConfig.findAll({
+        where: { dataset_id },
+        attributes: ["chart_id"],
+      });
+      if (linkedConfigs.length > 0) {
+        const chartIds = linkedConfigs.map((c) => c.chart_id);
+        const defaultStart = moment().subtract(30, "days").startOf("day").toDate();
+        const defaultEnd = moment().endOf("day").toDate();
+        // Only update charts that don't already have scopeDateToQuery enabled
+        await db.Chart.update(
+          {
+            scopeDateToQuery: true,
+            startDate: defaultStart,
+            endDate: defaultEnd,
+            currentEndDate: true,
+          },
+          {
+            where: {
+              id: chartIds,
+              scopeDateToQuery: false,
+            },
+          }
+        );
+      }
     }
 
     // Refresh the dataset to get updated values

@@ -49,7 +49,7 @@ function UserInvite() {
       <div className="container mx-auto pt-20 justify-center items-center">
         <Row justify="center" align="center" className={"text-center"}>
           <Text size="h2">
-            {"You've been invited to join ADDMAN-SmartChart"}
+            {"You've been invited to join Edison"}
           </Text>
         </Row>
         <Row justify="center" align="center">

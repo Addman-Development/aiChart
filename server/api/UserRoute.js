@@ -5,6 +5,7 @@ const UserController = require("../controllers/UserController");
 const verifyUser = require("../modules/verifyUser");
 const verifyToken = require("../modules/verifyToken");
 const userResponse = require("../modules/userResponse");
+const logger = require("../modules/logger").child({ module: "api:UserRoute" });
 
 const apiLimiter = (max = 10) => {
   return rateLimit({
@@ -137,6 +138,23 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
+  ** Route to verify a welcome token from the invite email
+  */
+  app.post("/user/welcome/verify", apiLimiter(20), (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).send("Missing token");
+
+    return jwt.verify(token, app.settings.encryptionKey, (err, decoded) => {
+      if (err) return res.status(401).send("Invalid or expired token");
+      return res.status(200).send({
+        email: decoded.email,
+        temporaryPassword: decoded.temporaryPassword,
+      });
+    });
+  });
+  // --------------------------------------
+
+  /*
   ** Route to process invitations
   */
   app.post("/user/invited", (req, res) => {
@@ -185,7 +203,8 @@ module.exports = (app) => {
   app.post("/user/login", apiLimiter(10), (req, res) => {
     if (!req.body.email || !req.body.password) return res.status(400).send("fields are missing");
     let user = {};
-    return userController.login(req.body.email, req.body.password)
+    const normalizedEmail = req.body.email.toLowerCase().trim();
+    return userController.login(normalizedEmail, req.body.password)
       .then((data) => {
         if (data?.method_id) {
           return data;
@@ -203,6 +222,10 @@ module.exports = (app) => {
       .catch((error) => {
         if (error.message === "401") {
           return res.status(401).json({ message: "The credentials are incorrect" });
+        }
+
+        if (error.message === "KEYCLOAK_ONLY") {
+          return res.status(400).json({ error: "KEYCLOAK_ONLY" });
         }
 
         return res.status(400).send(error);
@@ -281,49 +304,19 @@ module.exports = (app) => {
   // --------------------------------------
 
   /*
-  ** Route to send a new feedback email
-  */
-  app.post("/user/feedback", (req, res) => {
-    let { from } = req.body;
-    if (!from) from = "Anonymous";
-
-    const message = {
-      "from": { "email": "info@depomo.com" },
-      "subject": `${from} left us a feedback - ${req.body.email}`,
-      "personalizations": [{
-        "to": [{ email: "info@depomo.com" }]
-      }],
-      "content": [
-        {
-          "type": "text/plain",
-          "value": req.body.data
-        }
-      ]
-    };
-
-    return fetch(`${app.settings.sendgridHost}/mail/send`, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${app.settings.sendgridKey}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(message),
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(response.statusText);
-        return res.status(200).send({});
-      })
-      .catch((err) => {
-        return res.status(400).send(err);
-      });
-  });
-  // --------------------------------------
-
-  /*
   ** Route to request a password reset email
   */
   app.post("/user/password/reset", apiLimiter(10), (req, res) => {
-    userController.requestPasswordReset(req.body.email);
+    // Always return 200 to avoid leaking whether the email exists.
+    // Log errors server-side so admins can diagnose delivery failures.
+    userController.requestPasswordReset(req.body.email?.toLowerCase().trim())
+      .catch((err) => {
+        const code = err.message || err;
+        // 404 = email not found — this is expected and not an error
+        if (String(code) !== "404") {
+          logger.error({ err }, "password-reset: failed to send reset email");
+        }
+      });
     return res.status(200).send({ "success": true });
   });
   // --------------------------------------
@@ -337,7 +330,10 @@ module.exports = (app) => {
         return res.status(200).send(result);
       })
       .catch((error) => {
-        return res.status(400).send(error);
+        if (error.message === "401") {
+          return res.status(401).send({ message: "Invalid or expired reset link" });
+        }
+        return res.status(400).send({ message: error.message || "Password change failed" });
       });
   });
   // --------------------------------------

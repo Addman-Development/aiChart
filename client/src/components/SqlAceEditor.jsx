@@ -2,7 +2,10 @@ import React, { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import AceEditor from "react-ace";
 
+import useAiGhostText from "../hooks/useAiGhostText";
+
 import "ace-builds/src-min-noconflict/mode-json";
+import "ace-builds/src-min-noconflict/mode-javascript";
 import "ace-builds/src-min-noconflict/mode-pgsql";
 import "ace-builds/src-min-noconflict/theme-tomorrow";
 import "ace-builds/src-min-noconflict/theme-one_dark";
@@ -289,12 +292,32 @@ function SqlAceEditor({
   className = "",
   name = "sqlEditor",
   readOnly = false,
+  aiCompletion,
   ...otherProps
 }) {
   const [editorInstance, setEditorInstance] = useState(null);
 
   // Use the custom hook for moustache variable highlighting
   useMoustacheVariables(editorInstance, onVariableClick);
+
+  // Inline AI ghost text suggestions (Copilot-style)
+  useAiGhostText(editorInstance, {
+    teamId: aiCompletion?.teamId,
+    datasetId: aiCompletion?.datasetId,
+    dataRequestId: aiCompletion?.dataRequestId,
+    enabled: !!aiCompletion?.enabled,
+    debounceMs: aiCompletion?.debounceMs || 800,
+  });
+
+  // Disable the lint worker when the document contains moustache variables ({{...}})
+  // The JS/SQL parser hits an unrecoverable syntax error on {{ which cascades
+  // false errors to every subsequent line — disabling the worker prevents this entirely
+  useEffect(() => {
+    if (!editorInstance) return;
+    const session = editorInstance.getSession();
+    const hasMoustache = value && value.includes("{{");
+    session.setUseWorker(!hasMoustache);
+  }, [editorInstance, value]);
 
   return (
     <div className="w-full">
@@ -333,6 +356,13 @@ SqlAceEditor.propTypes = {
   className: PropTypes.string,
   name: PropTypes.string,
   readOnly: PropTypes.bool,
+  aiCompletion: PropTypes.shape({
+    enabled: PropTypes.bool,
+    teamId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    datasetId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    dataRequestId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    debounceMs: PropTypes.number,
+  }),
 };
 
 export default SqlAceEditor;

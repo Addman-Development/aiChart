@@ -9,6 +9,7 @@ import { useSelector } from "react-redux";
 import { API_HOST } from "../../config/settings";
 import { getAuthToken } from "../../modules/auth";
 import { selectTeam } from "../../slices/team";
+import formatSql from "../../modules/formatSql";
 
 function AiQuery({ onChangeQuery, dataRequest, query = "", connectionType = "" }) {
   const [askAiLoading, setAskAiLoading] = useState(false);
@@ -69,7 +70,8 @@ function AiQuery({ onChangeQuery, dataRequest, query = "", connectionType = "" }
       })
       .then((data) => {
         setAskAiLoading(false);
-        onChangeQuery(data.query);
+        const formatted = connectionType === "mongodb" ? data.query : formatSql(data.query, connectionType);
+        onChangeQuery(formatted);
         // Add AI response to conversation
         setConversation(data.conversationHistory);
         setAiQuestion("");

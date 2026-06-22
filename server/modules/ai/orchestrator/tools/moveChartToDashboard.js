@@ -19,7 +19,7 @@ async function moveChartToDashboard(payload) {
   }
 
   try {
-    // Find the chart
+    // Find the source chart
     const chart = await db.Chart.findByPk(chart_id);
     if (!chart) {
       throw new Error("Chart not found");
@@ -47,20 +47,23 @@ async function moveChartToDashboard(payload) {
       attributes: ["layout"],
     });
 
-    // Calculate new layout for the chart
+    // Calculate new layout for the cloned chart
     const calculatedLayout = calculateChartLayout(existingCharts);
     const finalLayout = ensureCompleteLayout(calculatedLayout);
 
-    // Update the chart's project_id and layout
-    await db.Chart.update(
-      {
-        project_id: target_project_id,
-        layout: finalLayout
-      },
-      { where: { id: chart_id } }
-    );
+    // Clone the chart into the target project (original stays in ghost project)
+    const chartValues = chart.toJSON();
+    delete chartValues.id;
+    delete chartValues.createdAt;
+    delete chartValues.updatedAt;
 
-    // Update project_ids for all datasets used by this chart
+    const clonedChart = await db.Chart.create({
+      ...chartValues,
+      project_id: target_project_id,
+      layout: finalLayout,
+    });
+
+    // Clone ChartDatasetConfig records and link datasets to target project
     const chartDatasetConfigs = await db.ChartDatasetConfig.findAll({
       where: { chart_id },
       include: [{
@@ -70,33 +73,43 @@ async function moveChartToDashboard(payload) {
     });
 
     for (const cdc of chartDatasetConfigs) {
+      const cdcValues = cdc.toJSON();
+      delete cdcValues.id;
+      delete cdcValues.createdAt;
+      delete cdcValues.updatedAt;
+
+      await db.ChartDatasetConfig.create({
+        ...cdcValues,
+        chart_id: clonedChart.id,
+      });
+
+      // Add target project to dataset's project_ids
       if (cdc.Dataset) {
         const currentProjectIds = cdc.Dataset.project_ids || [];
-
-        // Add target project if not already included
         if (!currentProjectIds.includes(target_project_id)) {
-          cdc.Dataset.update({
+          await cdc.Dataset.update({
             project_ids: [...currentProjectIds, target_project_id]
           });
         }
       }
     }
 
-    // Run the chart update in the background
+    // Run the cloned chart update in the background
     try {
       const ChartController = require("../../../controllers/ChartController"); // eslint-disable-line
       const chartController = new ChartController();
-      chartController.updateChartData(chart_id, null, {});
+      chartController.updateChartData(clonedChart.id, null, {});
     } catch {
       // Ignore background update errors
     }
 
     return {
-      chart_id,
+      chart_id: clonedChart.id,
+      source_chart_id: chart_id,
       previous_project_id: chart.project_id,
       new_project_id: target_project_id,
       dashboard_url: `${global.clientUrl}/dashboard/${target_project_id}`,
-      chart_url: `${global.clientUrl}/dashboard/${target_project_id}/chart/${chart_id}/edit`,
+      chart_url: `${global.clientUrl}/dashboard/${target_project_id}/chart/${clonedChart.id}/edit`,
     };
   } catch (error) {
     throw new Error(`Chart move failed: ${error.message}`);

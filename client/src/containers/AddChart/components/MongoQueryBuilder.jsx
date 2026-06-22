@@ -326,6 +326,12 @@ function MongoQueryBuilder(props) {
               onVariableClick={_onVariableClick}
               name="queryEditor"
               className="mongobuilder-query-tut"
+              aiCompletion={{
+                enabled: !!dataRequest?.id,
+                teamId: team?.id,
+                datasetId: params.datasetId,
+                dataRequestId: dataRequest?.id,
+              }}
             />
           </Row>
           <Spacer y={2} />
@@ -351,7 +357,7 @@ function MongoQueryBuilder(props) {
             </Checkbox>
             <Spacer x={1} />
             <Tooltip
-              content={"ADDMAN-SmartChart will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change the query."}
+              content={"Edison will use cached data for extra editing speed ⚡️. The cache gets automatically invalidated when you change the query."}
               className="max-w-[400px]"
             >
               <div><LuInfo /></div>

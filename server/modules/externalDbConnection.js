@@ -9,72 +9,132 @@ module.exports = async (connection) => {
   const { port, connectionString } = connection;
   const dialect = connection.type;
 
+
   let sequelize;
 
   const connectionConfig = {
     host,
-    port,
+    port: port || (dialect === "mssql" ? 1433 : undefined),
     dialect,
     logging: false,
   };
 
-  let sslOptions = null;
-
-  if (connection.subType === "timescaledb") {
-    sslOptions = {
-      require: true,
-      rejectUnauthorized: false,
+  // MSSQL-specific configuration
+  if (dialect === "mssql") {
+    connectionConfig.dialectOptions = {
+      options: {
+        encrypt: !!connection.ssl,
+        trustServerCertificate: true,
+        // Avoid TLS SNI issues when connecting to IP addresses
+        cryptoCredentialsDetails: {
+          servername: "",
+        },
+      },
+      connectTimeout: 15000,
+      requestTimeout: 15000,
+    };
+    connectionConfig.pool = {
+      max: 5,
+      min: 0,
+      acquire: 20000,
+      idle: 10000,
     };
   }
 
-  if (connection.ssl) {
-    switch (connection.sslMode) {
-      case "require":
-        sslOptions = {
-          require: true,
-          rejectUnauthorized: false,
-        };
-        break;
+  // SSL options only apply to Postgres-family dialects
+  let sslOptions = null;
 
-      case "verify-ca":
-        sslOptions = {
-          require: true,
-          rejectUnauthorized: true,
-          ca: connection.sslCa ? decryptFileSync(connection.sslCa) : undefined,
-        };
-        break;
+  if (dialect !== "mssql") {
+    if (connection.subType === "timescaledb") {
+      sslOptions = {
+        require: true,
+        rejectUnauthorized: false,
+      };
+    }
 
-      case "verify-full":
-        sslOptions = {
-          require: true,
-          rejectUnauthorized: true,
-          ca: connection.sslCa ? decryptFileSync(connection.sslCa) : undefined,
-          key: connection.sslKey ? decryptFileSync(connection.sslKey) : undefined,
-          cert: connection.sslCert ? decryptFileSync(connection.sslCert) : undefined,
-        };
-        break;
-      case "prefer":
-        sslOptions = {
-          require: false,
-          rejectUnauthorized: false,
-        };
-        break;
-      case "disable":
-        sslOptions = {
-          require: false,
-          rejectUnauthorized: false,
-        };
-        break;
-      default:
-        sslOptions = {
-          require: true,
-          rejectUnauthorized: false,
-        };
-        break;
+    if (connection.ssl) {
+      switch (connection.sslMode) {
+        case "require":
+          sslOptions = {
+            require: true,
+            rejectUnauthorized: false,
+          };
+          break;
+
+        case "verify-ca":
+          sslOptions = {
+            require: true,
+            rejectUnauthorized: true,
+            ca: connection.sslCa ? decryptFileSync(connection.sslCa) : undefined,
+          };
+          break;
+
+        case "verify-full":
+          sslOptions = {
+            require: true,
+            rejectUnauthorized: true,
+            ca: connection.sslCa ? decryptFileSync(connection.sslCa) : undefined,
+            key: connection.sslKey ? decryptFileSync(connection.sslKey) : undefined,
+            cert: connection.sslCert ? decryptFileSync(connection.sslCert) : undefined,
+          };
+          break;
+        case "prefer":
+          sslOptions = {
+            require: false,
+            rejectUnauthorized: false,
+          };
+          break;
+        case "disable":
+          sslOptions = {
+            require: false,
+            rejectUnauthorized: false,
+          };
+          break;
+        default:
+          sslOptions = {
+            require: true,
+            rejectUnauthorized: false,
+          };
+          break;
+      }
     }
   }
 
-  if (connectionString) {
+  if (connectionString && dialect === "mssql") {
+    // Parse MSSQL connection string (Server=...;Database=...;User Id=...;Password=...;)
+    const params = {};
+    connectionString.split(";").forEach((pair) => {
+      const idx = pair.indexOf("=");
+      if (idx > -1) {
+        const key = pair.substring(0, idx).trim().toLowerCase();
+        const value = pair.substring(idx + 1).trim();
+        params[key] = value;
+      }
+    });
+
+    const csHost = params.server || params.host || params["data source"] || host;
+    const csDb = params.database || params["initial catalog"] || name;
+    const csUser = params["user id"] || params.uid || params.user || username;
+    const csPass = params.password || params.pwd || password;
+    const csPort = params.port || port || 1433;
+
+    const encrypt = params.encrypt === "true" || params.encrypt === "yes" || !!connection.ssl;
+    connectionConfig.host = csHost;
+    connectionConfig.port = csPort;
+    connectionConfig.dialectOptions = {
+      options: {
+        encrypt,
+        trustServerCertificate: true,
+        cryptoCredentialsDetails: {
+          servername: "",
+        },
+      },
+      connectTimeout: 15000,
+      requestTimeout: 15000,
+    };
+
+    sequelize = new Sequelize(csDb, csUser, csPass, connectionConfig);
+  } else if (connectionString) {
     // extract each element from the string so that we can encode the password
     // this is needed when the password contains symbols that are not URI-friendly
     const cs = connectionString;
@@ -111,7 +171,7 @@ module.exports = async (connection) => {
     sequelize = new Sequelize(newConnectionString, connectionConfig);
   // else just connect with each field from the form
   } else {
-    if (sslOptions) {
+    if (sslOptions && dialect !== "mssql") {
       connectionConfig.dialectOptions = {
         ssl: sslOptions,
       };

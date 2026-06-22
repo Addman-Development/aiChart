@@ -7,10 +7,11 @@ const savedQuery = require("./SavedQueryRoute");
 const dataRequest = require("./DataRequestRoute");
 const dataset = require("./DatasetRoute");
 const template = require("./TemplateRoute");
-const update = require("./UpdateRoute");
 const integration = require("./IntegrationRoute");
 const ai = require("./AiRoute");
-const azure = require("./AzureRoute");
+const keycloak = require("./KeycloakRoute");
+const accessRequest = require("./AccessRequestRoute");
+const feedback = require("./FeedbackRoute");
 
 module.exports = {
   team,
@@ -22,8 +23,9 @@ module.exports = {
   dataRequest,
   dataset,
   template,
-  update,
   integration,
   ai,
-  azure,
+  keycloak,
+  accessRequest,
+  feedback,
 };

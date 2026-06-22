@@ -15,7 +15,8 @@ import Container from "../../components/Container";
 import Row from "../../components/Row";
 import Text from "../../components/Text";
 import {
-  selectTeam, selectTeams, getTeams, saveActiveTeam, getTeamMembers,
+  selectTeam, selectTeams, selectTeamsLoading, selectTeamsFetched,
+  getTeams, saveActiveTeam, getTeamMembers,
 } from "../../slices/team";
 
 import DashboardList from "./DashboardList";
@@ -25,15 +26,14 @@ import TopNav from "../../components/TopNav";
 import { selectSidebarCollapsed } from "../../slices/ui";
 import { getDatasets } from "../../slices/dataset";
 
-/*
-  The user dashboard with all the teams and projects
-*/
 function UserDashboard(props) {
   const { cleanErrors } = props;
   const collapsed = useSelector(selectSidebarCollapsed);
 
   const team = useSelector(selectTeam);
   const teams = useSelector(selectTeams);
+  const teamsLoading = useSelector(selectTeamsLoading);
+  const teamsFetched = useSelector(selectTeamsFetched);
 
   const user = useSelector((state) => state.user);
 
@@ -68,16 +68,24 @@ function UserDashboard(props) {
     }
   }, [user.data.id, user.loading]);
 
+  useEffect(() => {
+    if (user.data.id && teamsFetched && !teamsLoading && teams.length === 0) {
+      navigate("/onboarding", { replace: true });
+    }
+  }, [user.data.id, teamsFetched, teamsLoading, teams.length]);
+
   const teamsLength = teams?.length || 0;
   useEffect(() => {
     if (teamsLength > 0 && !teamsRef.current) {
       teamsRef.current = true;
-      let selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id));
-
       const storageActiveTeam = window.localStorage.getItem("__cb_active_team");
+      let selectedTeam;
       if (storageActiveTeam) {
-        const storageTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
-        if (storageTeam) selectedTeam = storageTeam;
+        selectedTeam = teams.find((t) => `${t.id}` === `${storageActiveTeam}`);
+      }
+      if (!selectedTeam) {
+        selectedTeam = teams.find((t) => t.TeamRoles?.find((tr) => tr.role === "teamOwner" && tr.user_id === user.data.id))
+          || teams[0];
       }
 
       if (selectedTeam) {
@@ -152,7 +160,7 @@ function UserDashboard(props) {
 
       <Spacer y={4} />
 
-      {(teams && teams.length === 0) && (
+      {(teams && teams.length === 0 && teamsLoading) && (
         <div className="bg-content2 pt-10 mt-[-20px]">
           <div className="flex justify-center items-center">
             <Spinner variant="simple" aria-label="Loading" />
@@ -170,7 +178,6 @@ function UserDashboard(props) {
 const styles = {
   container: (height) => ({
     flex: 1,
-    // backgroundColor: "#103751",
     minHeight: height,
   }),
 };
