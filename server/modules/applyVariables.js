@@ -1,5 +1,14 @@
 const logger = require("./logger").child({ module: "applyVariables" });
 
+const escapeForDoubleQuotedString = (value) => String(value)
+  .replace(/\\/g, "\\\\")
+  .replace(/"/g, "\\\"");
+
+const escapeForAlreadyQuotedString = (value) => String(value)
+  .replace(/\\/g, "\\\\")
+  .replace(/"/g, "\\\"")
+  .replace(/'/g, "\\'");
+
 const applyPostgresVariables = (dataRequest, variables = {}) => {
   // Don't modify the original dataRequest at all
   const originalDataRequest = dataRequest;
@@ -233,8 +242,8 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
           case "string":
             // For MongoDB, strings need to be properly quoted
             replacementValue = variable.isAlreadyQuoted
-              ? String(runtimeValue).replace(/"/g, "\\\"").replace(/'/g, "\\'")
-              : `"${String(runtimeValue).replace(/"/g, "\\\"")}"`;
+              ? escapeForAlreadyQuotedString(runtimeValue)
+              : `"${escapeForDoubleQuotedString(runtimeValue)}"`;
             break;
           case "number":
             replacementValue = Number.isNaN(Number(runtimeValue)) ? "0" : Number(runtimeValue);
@@ -244,14 +253,14 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
             break;
           default:
             replacementValue = variable.isAlreadyQuoted
-              ? String(runtimeValue).replace(/"/g, "\\\"").replace(/'/g, "\\'")
-              : `"${String(runtimeValue).replace(/"/g, "\\\"")}"`;
+              ? escapeForAlreadyQuotedString(runtimeValue)
+              : `"${escapeForDoubleQuotedString(runtimeValue)}"`;
         }
       } else {
         // No binding type info, treat as string
         replacementValue = variable.isAlreadyQuoted
-          ? String(runtimeValue).replace(/"/g, "\\\"").replace(/'/g, "\\'")
-          : `"${String(runtimeValue).replace(/"/g, "\\\"")}"`;
+          ? escapeForAlreadyQuotedString(runtimeValue)
+          : `"${escapeForDoubleQuotedString(runtimeValue)}"`;
       }
 
       processedQuery = processedQuery.replace(variable.placeholder, replacementValue);
@@ -269,8 +278,8 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
         switch (binding.type) {
           case "string":
             replacementValue = variable.isAlreadyQuoted
-              ? binding.default_value.replace(/"/g, "\\\"").replace(/'/g, "\\'")
-              : `"${binding.default_value.replace(/"/g, "\\\"")}"`;
+              ? escapeForAlreadyQuotedString(binding.default_value)
+              : `"${escapeForDoubleQuotedString(binding.default_value)}"`;
             break;
           case "number":
             replacementValue = Number.isNaN(Number(binding.default_value)) ? "0" : Number(binding.default_value);
@@ -280,8 +289,8 @@ const applyMongoVariables = (dataRequest, variables = {}) => {
             break;
           default:
             replacementValue = variable.isAlreadyQuoted
-              ? binding.default_value.replace(/"/g, "\\\"").replace(/'/g, "\\'")
-              : `"${binding.default_value.replace(/"/g, "\\\"")}"`;
+              ? escapeForAlreadyQuotedString(binding.default_value)
+              : `"${escapeForDoubleQuotedString(binding.default_value)}"`;
         }
       }
 
