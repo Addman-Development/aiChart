@@ -460,6 +460,7 @@ function ManageUser() {
       )}
 
       {authMethods?.length > 0 && (
+        <div className="overflow-x-auto">
         <Table aria-label="Two-factor authentication methods">
           <TableHeader>
             <TableColumn key="method" align="center">Method</TableColumn>
@@ -490,6 +491,7 @@ function ManageUser() {
             ))}
           </TableBody>
         </Table>
+        </div>
       )}
 
       <Spacer y={4} />

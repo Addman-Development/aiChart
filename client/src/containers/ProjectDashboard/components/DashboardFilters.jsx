@@ -261,10 +261,10 @@ function DashboardFilters({
   return (
     <>
       <div>
-        <div className="flex flex-row flex-wrap gap-1 min-w-min">
+        <div className="flex flex-wrap gap-1 sm:flex-row">
           {projectFilters.map((filter) => (
-            <div className="flex flex-row items-center" key={filter.id}>
-              <div className="cursor-pointer flex flex-row gap-1 items-center">
+            <div className="flex flex-row items-center w-full sm:w-auto" key={filter.id}>
+              <div className="cursor-pointer flex flex-row gap-1 items-center w-full sm:w-auto">
                 {filter.type === "date" && (
                   <DateRangeFilter
                     startDate={filter.startDate}

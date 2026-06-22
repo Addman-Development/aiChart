@@ -54,6 +54,7 @@ import Auth from "./Integrations/Auth/Auth";
 import SlackCallback from "./Integrations/Auth/SlackCallback";
 import Integration from "./Integrations/Integration/Integration";
 import NoAccessPage from "../components/NoAccessPage";
+import MobileEditorGuard from "../components/MobileEditorGuard";
 import { SITE_HOST } from "../config/settings";
 
 let _basePath = "/";
@@ -244,9 +245,9 @@ function Main(props) {
               <Route path="/" element={<UserDashboard />}>
                 <Route index element={<DashboardList />} />
                 <Route path="connections" element={<ConnectionList />} />
-                <Route path="connections/:connectionId" element={<ConnectionWizard />} />
+                <Route path="connections/:connectionId" element={<MobileEditorGuard><ConnectionWizard /></MobileEditorGuard>} />
                 <Route path="datasets" element={<DatasetList />} />
-                <Route path="datasets/:datasetId" element={<Dataset />} />
+                <Route path="datasets/:datasetId" element={<MobileEditorGuard><Dataset /></MobileEditorGuard>} />
                 {canAccess("teamAdmin", user.id, team?.TeamRoles, user) ? (
                   <>
                     <Route path="integrations" element={<Integrations />} />
@@ -265,8 +266,8 @@ function Main(props) {
                 <Route path="settings/*" element={<ManageTeam />} />
                 <Route path="dashboard" element={<ProjectBoard />}>
                   <Route path=":projectId" element={<ProjectDashboard />} />
-                  <Route path=":projectId/chart" element={<AddChart />} />
-                  <Route path=":projectId/chart/:chartId/edit" element={<AddChart />} />
+                  <Route path=":projectId/chart" element={<MobileEditorGuard><AddChart /></MobileEditorGuard>} />
+                  <Route path=":projectId/chart/:chartId/edit" element={<MobileEditorGuard><AddChart /></MobileEditorGuard>} />
                   <Route path=":projectId/settings" element={<ProjectSettings />} />
                 </Route>
               </Route>

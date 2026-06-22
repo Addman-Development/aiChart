@@ -173,7 +173,7 @@ function LoginForm() {
         </div>
       )}
       {!view2FaApp && (
-        <form onSubmit={loginUser} className="sm:min-w-[400px]">
+        <form onSubmit={loginUser} className="w-full">
           <div className="w-full">
             <Row>
               <Input
@@ -253,7 +253,7 @@ function LoginForm() {
       )}
 
       {view2FaApp && (
-        <form onSubmit={_onValidateToken} className="sm:min-w-[500px] flex flex-col gap-2">
+        <form onSubmit={_onValidateToken} className="w-full flex flex-col gap-2">
           <div className="font-bold">Two-factor authentication</div>
           <div>Enter the token from your authenticator app</div>
 

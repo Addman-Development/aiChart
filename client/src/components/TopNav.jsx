@@ -2,10 +2,11 @@ import React, { useEffect } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { TbBrandDiscord } from "react-icons/tb";
 import { useNavigate, useLocation, useParams } from "react-router";
-import { LuBell, LuBook, LuBookOpenText, LuBrainCircuit, LuFileCode2, LuGithub, LuHeartHandshake, LuPanelLeftClose, LuPanelLeftOpen, LuSmile, LuSquareKanban } from "react-icons/lu";
+import { LuBell, LuBook, LuBookOpenText, LuBrainCircuit, LuFileCode2, LuGithub, LuHeartHandshake, LuMenu, LuPanelLeftClose, LuPanelLeftOpen, LuSmile, LuSquareKanban } from "react-icons/lu";
 import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Breadcrumbs, BreadcrumbItem } from "@heroui/react";
 
-import { selectSidebarCollapsed, showFeedbackModal, toggleAiModal, toggleSidebar } from "../slices/ui";
+import { selectSidebarCollapsed, showFeedbackModal, toggleAiModal, toggleSidebar, toggleMobileSidebar } from "../slices/ui";
+import useIsMobile from "../modules/useIsMobile";
 import canAccess from "../config/canAccess";
 import { selectUser } from "../slices/user";
 import { selectTeam } from "../slices/team";
@@ -20,6 +21,7 @@ function TopNav() {
   const params = useParams();
 
   const collapsed = useSelector(selectSidebarCollapsed);
+  const isMobile = useIsMobile();
   const user = useSelector(selectUser);
   const team = useSelector(selectTeam);
   const project = useSelector(selectProject);
@@ -106,9 +108,13 @@ function TopNav() {
 
   return (
     <div className="w-full bg-content1 border-b border-divider p-2 sticky top-0 z-50">
-      <div className="flex flex-row items-center justify-between">
-        <div className="flex flex-row items-center gap-3">
-          {collapsed ? (
+      <div className="flex flex-row items-center justify-between flex-wrap gap-2">
+        <div className="flex flex-row items-center gap-3 min-w-0">
+          {isMobile ? (
+            <Button isIconOnly variant="light" color="default" aria-label="Open menu" onPress={() => dispatch(toggleMobileSidebar())}>
+              <LuMenu size={20} className="text-foreground" />
+            </Button>
+          ) : collapsed ? (
             <Button isIconOnly variant="light" color="default" onPress={() => dispatch(toggleSidebar())}>
               <LuPanelLeftOpen size={18} className="text-foreground" />
             </Button>
@@ -176,7 +182,7 @@ function TopNav() {
               size="sm"
               className="from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-linear-to-tr hover:bg-linear-to-br transition-all duration-300 shadow-md"
             >
-              Ask Edison AI
+              <span className="hidden sm:inline">Ask Edison AI</span>
             </Button>
           )}
 

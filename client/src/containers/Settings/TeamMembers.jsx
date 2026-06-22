@@ -3,14 +3,14 @@ import PropTypes from "prop-types";
 import { useDispatch, useSelector } from "react-redux";
 import {
   Chip, Button, Checkbox, Divider, Dropdown, Modal, Spacer, Table, Tooltip, CircularProgress,
-  TableHeader, TableColumn, TableBody, TableRow, TableCell, DropdownMenu, DropdownItem,
+  TableHeader, TableColumn, TableBody, TableRow, TableCell, DropdownMenu, DropdownItem, DropdownSection,
   DropdownTrigger, ModalHeader, ModalBody, ModalFooter, ModalContent, Code,
   Input, Tabs, Tab,
 } from "@heroui/react";
 import _ from "lodash";
 import toast from "react-hot-toast";
 import { useSearchParams } from "react-router";
-import { LuFolderKey, LuInfo, LuStar, LuUser, LuX, LuCircleX, LuKeyRound, LuIdCard, LuCircleCheck, LuLock } from "react-icons/lu";
+import { LuFolderKey, LuInfo, LuStar, LuUser, LuX, LuCircleX, LuKeyRound, LuIdCard, LuCircleCheck, LuLock, LuEllipsisVertical } from "react-icons/lu";
 
 import {
   getTeam, getTeamMembers, updateTeamRole, deleteTeamMember, selectTeam, selectTeamMembers,
@@ -270,7 +270,7 @@ function TeamMembers(props) {
         <Spacer y={2} />
 
         {_canAccess("teamAdmin") && (
-          <Table shadow="none" isStriped aria-label="Team members">
+          <Table shadow="none" isStriped aria-label="Team members" classNames={{ wrapper: "overflow-x-auto", table: "min-w-[640px]" }}>
             <TableHeader>
               <TableColumn key="member">Member</TableColumn>
               <TableColumn key="role">Role</TableColumn>
@@ -310,7 +310,7 @@ function TeamMembers(props) {
                       {(!memberRole?.canExport && memberRole?.role?.indexOf("team") === -1) && <Chip color="danger" variant={"flat"} size="sm">No</Chip>}
                     </TableCell>
                     <TableCell key="actions">
-                      <div className="flex flex-row items-center gap-1">
+                      <div className="hidden sm:flex flex-row items-center gap-1">
                         {_canAccess("teamAdmin") && memberRole.role !== "teamOwner" && memberRole.role !== "teamAdmin" && (
                           <>
                             <Tooltip content="Change dashboard access">
@@ -445,6 +445,95 @@ function TeamMembers(props) {
                               </Button>
                             </Tooltip>
                           )}
+                      </div>
+                      <div className="flex sm:hidden flex-row items-center justify-end">
+                        <Dropdown aria-label="Member actions">
+                          <DropdownTrigger>
+                            <Button variant="light" isIconOnly size="sm" aria-label="Member actions">
+                              <LuEllipsisVertical />
+                            </Button>
+                          </DropdownTrigger>
+                          <DropdownMenu aria-label="Member actions menu">
+                            {_canAccess("teamAdmin") && memberRole.role !== "teamOwner" && memberRole.role !== "teamAdmin" ? (
+                              <DropdownItem
+                                key="manageAccess"
+                                startContent={<LuFolderKey />}
+                                onPress={() => _openProjectAccess(member)}
+                              >
+                                Manage access
+                              </DropdownItem>
+                            ) : null}
+                            {_canAccess("teamOwner") && memberRole.role === "teamAdmin" ? (
+                              <DropdownItem
+                                key="transferOwnership"
+                                startContent={<LuKeyRound />}
+                                onPress={() => {
+                                  if (_teamsOwned().length < 2) {
+                                    toast.error("You need to own at least one other team to transfer ownership", { position: "bottom-right" });
+                                    return;
+                                  }
+
+                                  setTransferOwnershipMember(member);
+                                }}
+                              >
+                                Transfer ownership
+                              </DropdownItem>
+                            ) : null}
+                            {user.id !== member.id
+                              && (_canAccess("teamOwner") || (_canAccess("teamAdmin") && memberRole.role !== "teamOwner")) ? (
+                                <DropdownSection title="Change role" showDivider>
+                                  <DropdownItem
+                                    key="teamAdmin"
+                                    startContent={<LuIdCard />}
+                                    onPress={() => _onChangeRole("teamAdmin", member)}
+                                  >
+                                    Team Admin
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    key="projectAdmin"
+                                    startContent={<LuIdCard />}
+                                    onPress={() => _onChangeRole("projectAdmin", member)}
+                                  >
+                                    Client admin
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    key="projectEditor"
+                                    startContent={<LuIdCard />}
+                                    onPress={() => _onChangeRole("projectEditor", member)}
+                                  >
+                                    Client editor
+                                  </DropdownItem>
+                                  <DropdownItem
+                                    key="projectViewer"
+                                    startContent={<LuIdCard />}
+                                    onPress={() => _onChangeRole("projectViewer", member)}
+                                  >
+                                    Client viewer
+                                  </DropdownItem>
+                                </DropdownSection>
+                              ) : null}
+                            {user.id !== member.id && (_canAccess("teamOwner") || (_canAccess("teamAdmin") && memberRole.role !== "teamOwner")) ? (
+                              <DropdownItem
+                                key="resetPassword"
+                                startContent={<LuLock />}
+                                onPress={() => setResetPasswordMember(member)}
+                              >
+                                Reset password
+                              </DropdownItem>
+                            ) : null}
+                            {user.id !== member.id && (_canAccess("teamOwner") || (_canAccess("teamAdmin") && memberRole.role !== "teamOwner")) ? (
+                              <DropdownItem
+                                key="remove"
+                                className="text-danger"
+                                color="danger"
+                                startContent={<LuCircleX />}
+                                onPress={() => _onDeleteConfirmation(member.id)}
+                              >
+                                Remove
+                              </DropdownItem>
+                            ) : null}
+                          </DropdownMenu>
+                        </Dropdown>
                       </div>
                     </TableCell>
                   </TableRow>

@@ -48,6 +48,8 @@ import { cols, margin, widthSize } from "../../modules/layoutBreakpoints";
 import { selectUser } from "../../slices/user";
 import DashboardFilters from "../ProjectDashboard/components/DashboardFilters";
 import useInterval from "../../modules/useInterval";
+import useIsMobile from "../../modules/useIsMobile";
+import { sortChartsForStack, getMobileChartHeight } from "../../modules/mobileDashboard";
 
 const ResponsiveGridLayout = WidthProvider(Responsive, { measureBeforeMount: true });
 
@@ -89,6 +91,7 @@ function PublicDashboard() {
   const params = useParams();
   const dispatch = useDispatch();
   const initLayoutRef = useRef(null);
+  const isMobile = useIsMobile();
 
   const removeStyling = searchParams.get("removeStyling") === "true";
   const removeHeader = searchParams.get("removeHeader") === "true";
@@ -556,7 +559,7 @@ function PublicDashboard() {
         </Helmet>
 
         {passwordRequired && (
-          <div className="container mx-auto max-w-xl p-16">
+          <div className="container mx-auto max-w-xl px-4 py-8 sm:p-16">
             <Row justify="center">
               <Text size="h3">
                 Please enter the password to access this report
@@ -622,8 +625,7 @@ function PublicDashboard() {
           <Row justify="center">
             <Image
               src={instructionDashboard}
-              height={500}
-              width={1000}
+              className="w-full max-w-[1000px] h-auto"
               css={{ filter: "drop-shadow(1px 5px 5px rgba(0, 0, 0, 0.5))", p: 15 }}
             />
           </Row>
@@ -926,7 +928,41 @@ function PublicDashboard() {
               </div>
             )}
 
-            {layouts && charts?.length > 0 && (
+            {layouts && charts?.length > 0 && isMobile && (
+              <div className="flex flex-col gap-3">
+                {sortChartsForStack(charts.filter((c) => !c.draft && c.onReport)).map((chart) => (
+                  <div
+                    key={chart.id}
+                    className="w-full"
+                    style={chart.type === "markdown" ? undefined : { height: getMobileChartHeight(chart) }}
+                  >
+                    {chart.type === "markdown" ? (
+                      <TextWidget
+                        isPublic
+                        chart={chart}
+                        onEditLayout={() => {}}
+                        editingLayout={false}
+                        onCancelChanges={() => {}}
+                        onSaveChanges={() => {}}
+                        onEditContent={() => {}}
+                      />
+                    ) : (
+                      <Chart
+                        isPublic
+                        chart={chart}
+                        charts={charts}
+                        className="chart-card"
+                        height={getMobileChartHeight(chart)}
+                        showExport={project.Team?.allowReportExport}
+                        password={project.password || window.localStorage.getItem("reportPassword")}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {layouts && charts?.length > 0 && !isMobile && (
               <div className="w-full">
                 <ResponsiveGridLayout
                   className="layout"

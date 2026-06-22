@@ -61,40 +61,42 @@ function ManageTeam() {
         </div>
       </div>
       <Spacer y={4} />
-      <Tabs
-        onSelectionChange={_onMenuChange}
-        classNames={{ tabList: "border-1 border-divider" }}
-        selectedKey={activeMenu}
-      >
-        <Tab key="profile" title={
-          <div className="flex flex-row items-center gap-2">
-            <LuUser />
-            <div>Profile</div>
-          </div>
-        } />
-        {_canAccess("teamOwner") && (
-          <Tab key="team" title={
+      <div className="overflow-x-auto">
+        <Tabs
+          onSelectionChange={_onMenuChange}
+          classNames={{ tabList: "border-1 border-divider" }}
+          selectedKey={activeMenu}
+        >
+          <Tab key="profile" title={
             <div className="flex flex-row items-center gap-2">
-              <LuSettings />
-              <div>Team</div>
+              <LuUser />
+              <div className="hidden sm:inline">Profile</div>
             </div>
           } />
-        )}
-          <Tab key="members" title={
-          <div className="flex flex-row items-center gap-2">
-            <LuUsers />
-            <div>Members</div>
-          </div>
-        } />
-        {_canAccess("teamAdmin") && (
-          <Tab key="api-keys" title={
+          {_canAccess("teamOwner") && (
+            <Tab key="team" title={
+              <div className="flex flex-row items-center gap-2">
+                <LuSettings />
+                <div className="hidden sm:inline">Team</div>
+              </div>
+            } />
+          )}
+            <Tab key="members" title={
             <div className="flex flex-row items-center gap-2">
-              <LuCode />
-              <div>API Keys</div>
+              <LuUsers />
+              <div className="hidden sm:inline">Members</div>
             </div>
           } />
-        )}
-      </Tabs>
+          {_canAccess("teamAdmin") && (
+            <Tab key="api-keys" title={
+              <div className="flex flex-row items-center gap-2">
+                <LuCode />
+                <div className="hidden sm:inline">API Keys</div>
+              </div>
+            } />
+          )}
+        </Tabs>
+      </div>
 
       <div className="mt-4">
         <Routes>

@@ -142,12 +142,12 @@ function UserDashboard(props) {
 
           <div
             className={cn(
-              "min-h-[calc(100vh-64px)] transition-all duration-300",
-              collapsed ? "ml-16" : "ml-64"
+              "min-h-[calc(100vh-64px)] transition-all duration-300 ml-0 overflow-x-hidden",
+              collapsed ? "sm:ml-16" : "sm:ml-64"
             )}
           >
             <TopNav />
-            <div className="px-6 py-4">
+            <div className="px-3 py-3 sm:px-6 sm:py-4">
               <Outlet />
 
               {window.location.pathname === "/user" && (

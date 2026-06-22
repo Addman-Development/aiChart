@@ -14,7 +14,7 @@ import { parseDate, today } from "@internationalized/date";
 
 function VariableFilter({
   filter,
-  className = "max-w-xs",
+  className = "w-full sm:max-w-xs",
   onApply = () => {},
 }) {
   const { label, value, dataType, allowValueChange } = filter;
@@ -44,6 +44,7 @@ function VariableFilter({
             value={textValue || ""}
             onChange={(e) => setTextValue(e.target.value)}
             size="sm"
+            fullWidth
             className={className}
             endContent={allowValueChange && textValue !== filter?.value && (
               <Link onPress={() => onApply?.(textValue)} className="text-foreground hover:text-foreground-500 cursor-pointer">
@@ -69,6 +70,7 @@ function VariableFilter({
             onChange={(e) => setTextValue(e.target.value)}
             type="number"
             size="sm"
+            fullWidth
             className={className}
             endContent={allowValueChange && textValue !== filter?.value && (
               <Link onPress={() => onApply?.(textValue)} className="text-foreground hover:text-foreground-500 cursor-pointer">
@@ -92,6 +94,7 @@ function VariableFilter({
             onChange={(date) => setDateValue(date.toString())}
             variant={allowValueChange ? "bordered" : "flat"}
             size="sm"
+            fullWidth
             className={className}
             isDisabled={!allowValueChange}
             showMonthAndYearPickers
@@ -111,6 +114,8 @@ function VariableFilter({
             selectedKeys={[value || ""]}
             onSelectionChange={(keys) => onApply?.(keys.currentKey)}
             size="sm"
+            fullWidth
+            className={className}
             isDisabled={!allowValueChange}
             startContent={(
               <Chip variant="flat" radius="sm" size="sm" className="text-xs" startContent={<LuVariable size={16} />}>

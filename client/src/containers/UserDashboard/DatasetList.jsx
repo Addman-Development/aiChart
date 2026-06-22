@@ -228,7 +228,7 @@ function DatasetList() {
 
   return (
     <div className="flex flex-col">
-      <div className="flex flex-row items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="text-2xl font-semibold font-tw">
             Datasets
@@ -399,6 +399,7 @@ function DatasetList() {
           radius="sm"
           isStriped
           className="max-h-[65vh]"
+          classNames={{ wrapper: "overflow-x-auto", table: "min-w-[640px]" }}
           aria-label="Dataset list"
           selectionMode="multiple"
           onSelectionChange={(keys) => {

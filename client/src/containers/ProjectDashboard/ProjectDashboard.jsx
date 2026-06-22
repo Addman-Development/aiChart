@@ -58,6 +58,8 @@ import DashboardFilters from "./components/DashboardFilters";
 import { selectConnections } from "../../slices/connection";
 import { tidyLayout, placeNewWidget } from "../../modules/autoLayout";
 import SuspenseLoader from "../../components/SuspenseLoader";
+import useIsMobile from "../../modules/useIsMobile";
+import { sortChartsForStack, getMobileChartHeight } from "../../modules/mobileDashboard";
 
 const ResponsiveGridLayout = WidthProvider(Responsive, { measureBeforeMount: true });
 
@@ -94,6 +96,7 @@ function ProjectDashboard() {
   const params = useParams();
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const team = useSelector(selectTeam);
   const user = useSelector(selectUser);
@@ -110,6 +113,9 @@ function ProjectDashboard() {
 
   useEffect(() => {
     const handleKeyPress = (event) => {
+      // Editing the layout is desktop-only; ignore the shortcut on phones.
+      if (isMobile) return;
+
       // Only trigger if no input/textarea is focused
       if (event.target.tagName.toLowerCase() === "input" || event.target.tagName.toLowerCase() === "textarea") return;
 
@@ -128,7 +134,7 @@ function ProjectDashboard() {
     return () => {
       document.removeEventListener("keydown", handleKeyPress);
     };
-  }, [editingLayout]);
+  }, [editingLayout, isMobile]);
 
   useEffect(() => {
     if (!filterLoading && filters && charts.length > 0 && !hasRunInitialFiltering.current) {
@@ -982,8 +988,8 @@ function ProjectDashboard() {
             <div
               className={"w-full box-shadow-none radius-0"}
             >
-              <div className="flex flex-row justify-between w-full py-1">
-                <div className="flex flex-row items-center gap-1">
+              <div className="flex flex-row flex-wrap justify-between gap-2 w-full py-1">
+                <div className="flex flex-row items-center gap-1 min-w-0">
                   {projectMembers?.length > 0 && (
                     <>
                       <div className="hidden sm:flex sm:flex-row border-r-1 border-solid border-content3 pl-1">
@@ -1078,7 +1084,7 @@ function ProjectDashboard() {
                           onPress={() => navigate(`/dashboard/${params.projectId}/chart`)}
                           startContent={<LuGrid2X2Plus size={18} />}
                         >
-                          {"Add widget"}
+                          <span className="hidden sm:inline">{"Add widget"}</span>
                         </Button>
                       </DropdownTrigger>
                       <DropdownMenu>
@@ -1105,7 +1111,7 @@ function ProjectDashboard() {
                       onPress={() => setShowShare(true)}
                       startContent={<LuShare size={18} />}
                     >
-                      Share
+                      <span className="hidden sm:inline">Share</span>
                     </Button>
                     <ButtonGroup className="hidden sm:flex">
                       <Button
@@ -1191,13 +1197,15 @@ function ProjectDashboard() {
                         </DropdownTrigger>
                       )}
                       <DropdownMenu>
-                        <DropdownItem
-                          startContent={<LuLayoutDashboard />}
-                          onPress={() => _onEditLayout()}
-                          endContent={<Kbd keys={[isMac ? "command" : "ctrl", "e"]}>E</Kbd>}
-                        >
-                          {"Edit layout"}
-                        </DropdownItem>
+                        {!isMobile && (
+                          <DropdownItem
+                            startContent={<LuLayoutDashboard />}
+                            onPress={() => _onEditLayout()}
+                            endContent={<Kbd keys={[isMac ? "command" : "ctrl", "e"]}>E</Kbd>}
+                          >
+                            {"Edit layout"}
+                          </DropdownItem>
+                        )}
                         <DropdownItem
                           startContent={<LuTvMinimal />}
                           onPress={() => navigate(`/report/${project.brewName}/edit`)}
@@ -1321,6 +1329,27 @@ function ProjectDashboard() {
         )}
 
         {layouts && charts.filter((c) => `${c.project_id}` === params.projectId).length > 0 && (
+          isMobile ? (
+            <div className="flex flex-col gap-3">
+              {sortChartsForStack(charts.filter((c) => `${c.project_id}` === params.projectId)).map((chart) => (
+                <div
+                  key={chart.id}
+                  className="w-full"
+                  style={chart.type === "markdown" ? undefined : { height: getMobileChartHeight(chart) }}
+                >
+                  {chart.type === "markdown" ? (
+                    <TextWidget chart={chart} editingLayout={false} />
+                  ) : (
+                    <Chart
+                      chart={chart}
+                      charts={charts}
+                      editingLayout={false}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
           <ResponsiveGridLayout
             className="layout dashboard-tutorial"
             layouts={layouts}
@@ -1372,6 +1401,7 @@ function ProjectDashboard() {
               </div>
             ))}
           </ResponsiveGridLayout>
+          )
         )}
       </div>
       
@@ -1430,7 +1460,7 @@ function ProjectDashboard() {
         project={project}
       />
 
-      {editingLayout && (
+      {editingLayout && !isMobile && (
         <div className="dark fixed bottom-0 left-0 right-0 z-50 border-t-1 border-solid border-content3">
           <div className="bg-background p-4 flex justify-center items-center animate-appearance-in">
             <div className="flex gap-4 items-center flex-wrap">

@@ -269,7 +269,7 @@ function ConnectionList() {
 
   return (
     <div className="flex flex-col">
-      <div className="flex flex-row items-center justify-between">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <div className="text-2xl font-semibold font-tw">
             Data connections
@@ -279,13 +279,14 @@ function ConnectionList() {
           </div>
         </div>
 
-        <div className="flex flex-row items-center gap-2">
+        <div className="flex flex-row flex-wrap items-center gap-2">
           {_canAccess("teamAdmin", team.TeamRoles) && _getOtherTeams().length > 0 && (
             <Button
               variant="bordered"
               endContent={<LuDownload />}
               onPress={() => setImportModalOpen(true)}
               isDisabled={user.temporary}
+              className="w-full sm:w-auto"
             >
               Import connection
             </Button>
@@ -296,6 +297,7 @@ function ConnectionList() {
               endContent={<LuPlus />}
               onPress={() => navigate("/connections/new")}
               isDisabled={user.temporary}
+              className="w-full sm:w-auto"
             >
               Create connection
             </Button>

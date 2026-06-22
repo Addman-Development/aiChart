@@ -19,6 +19,8 @@ import { selectDatasetsNoDrafts } from "../../slices/dataset";
 import isMac from "../../modules/isMac";
 import socketClient from "../../modules/socketClient";
 import { SITE_HOST } from "../../config/settings";
+import useIsMobile from "../../modules/useIsMobile";
+import { cn } from "../../modules/utils";
 
 function formatDate(date) {
   return new Date(date).toLocaleDateString("en-US", {
@@ -72,6 +74,8 @@ function AiModal({ isOpen, onClose }) {
   const [shareModalConversationId, setShareModalConversationId] = useState(null);
   const [shareTargetUserId, setShareTargetUserId] = useState(null);
   const [shareLoading, setShareLoading] = useState(false);
+  // On phones the conversations list is an off-canvas drawer inside the modal.
+  const [showConvoSidebar, setShowConvoSidebar] = useState(false);
 
   const params = useParams();
   const team = useSelector(selectTeam);
@@ -80,6 +84,7 @@ function AiModal({ isOpen, onClose }) {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const dispatch = useDispatch();
+  const isMobile = useIsMobile();
   const fetchedChartsRef = useRef(new Set());
   const projects = useSelector(selectProjects);
   const connections = useSelector(selectConnections);
@@ -642,6 +647,7 @@ function AiModal({ isOpen, onClose }) {
 
   const _onSelectConversation = async (conversationId) => {
     // Reset state for clean viewing
+    setShowConvoSidebar(false);
     setLocalMessages([]);
     setProgressEvents([]);
     setCreatedCharts([]);
@@ -1166,12 +1172,12 @@ function AiModal({ isOpen, onClose }) {
     // Tool calls - centered with compact display
     if (parsed.type === "tool_call") {
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
-          <div className="w-full max-w-[90%]">
+        <div key={index} className="flex justify-center mb-4 px-2 sm:px-4">
+          <div className="w-full max-w-full sm:max-w-[90%]">
             <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <Avatar
-                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
                   color="primary"
                 />
@@ -1211,10 +1217,10 @@ function AiModal({ isOpen, onClose }) {
     // Tool results - centered with compact display
     if (parsed.type === "tool_result") {
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
-          <div className="w-full max-w-[90%]">
+        <div key={index} className="flex justify-center mb-4 px-2 sm:px-4">
+          <div className="w-full max-w-full sm:max-w-[90%]">
             <div className="bg-success-50 border border-success-200 px-4 py-3 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 <Chip variant="flat" color="success" size="sm">
                   Result: {parsed.name}
                 </Chip>
@@ -1244,24 +1250,24 @@ function AiModal({ isOpen, onClose }) {
       const chartData = createdCharts.find((c) => c.id === parsed.chartId);
 
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
-          <div className="w-full max-w-[90%]">
-            <div className="px-6 py-4 rounded-lg border border-warning-200">
+        <div key={index} className="flex justify-center mb-4 px-2 sm:px-4">
+          <div className="w-full max-w-full sm:max-w-[90%]">
+            <div className="px-3 py-3 sm:px-6 sm:py-4 rounded-lg border border-warning-200">
               <div className="flex items-start gap-3">
                 <Avatar
-                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
                   color="warning"
                 />
                 <div className="w-full min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-sm font-medium">Chart Updated</span>
                     <Chip size="sm" variant="flat" color="warning">
                       {parsed.chartName}
                     </Chip>
                   </div>
                   {chartData ? (
-                    <div className="overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
+                    <div className="w-full overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
                       <Chart
                         chart={chartData}
                         isPublic={false}
@@ -1294,19 +1300,19 @@ function AiModal({ isOpen, onClose }) {
       const chartAlreadyMoved = !!addedProjectId;
 
       return (
-        <div key={index} className="flex justify-center mb-4 px-4">
-          <div className="w-full max-w-[90%]">
-            <div className={`px-6 py-4 rounded-lg border ${
+        <div key={index} className="flex justify-center mb-4 px-2 sm:px-4">
+          <div className="w-full max-w-full sm:max-w-[90%]">
+            <div className={`px-3 py-3 sm:px-6 sm:py-4 rounded-lg border ${
               chartAlreadyMoved ? "border-success-200" : "border-primary-200 bg-primary-50/50"
             }`}>
               <div className="flex items-start gap-3">
                 <Avatar
-                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
                   color={chartAlreadyMoved ? "success" : "primary"}
                 />
                 <div className="w-full min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <span className="text-sm font-medium">
                       {chartAlreadyMoved ? "Chart Added" : "Temporary Chart Preview"}
                     </span>
@@ -1338,7 +1344,7 @@ function AiModal({ isOpen, onClose }) {
                     )}
                   </div>
                   {chartData ? (
-                    <div className="overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
+                    <div className="w-full overflow-auto h-[300px]" style={{ contain: "inline-size" }}>
                       <Chart
                         chart={chartData}
                         isPublic={false}
@@ -1423,16 +1429,16 @@ function AiModal({ isOpen, onClose }) {
     if (message.role === "assistant" && parsed.type === "message_with_suggestions") {
       const isError = message.isError;
       return (
-        <div key={index} className="flex justify-center mb-4 px-4 group">
-          <div className="w-full max-w-[90%]">
-            <div className={`px-6 py-4 rounded-lg ${
+        <div key={index} className="flex justify-center mb-4 px-2 sm:px-4 group">
+          <div className="w-full max-w-full sm:max-w-[90%]">
+            <div className={`px-3 py-3 sm:px-6 sm:py-4 rounded-lg ${
               isError
                 ? "bg-danger-50 border border-danger-200"
                 : ""
             }`}>
               <div className="flex items-start gap-3">
                 <Avatar
-                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
                   color={isError ? "danger" : "primary"}
                 />
@@ -1476,16 +1482,16 @@ function AiModal({ isOpen, onClose }) {
     if (message.role === "assistant" && parsed.type === "message") {
       const isError = message.isError;
       return (
-        <div key={index} className="flex justify-center mb-4 px-4 group">
-          <div className="w-full max-w-[90%]">
-            <div className={`px-6 py-4 rounded-lg ${
+        <div key={index} className="flex justify-center mb-4 px-2 sm:px-4 group">
+          <div className="w-full max-w-full sm:max-w-[90%]">
+            <div className={`px-3 py-3 sm:px-6 sm:py-4 rounded-lg ${
               isError
                 ? "bg-danger-50 border border-danger-200"
                 : ""
             }`}>
               <div className="flex items-start gap-3">
                 <Avatar
-                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                   size="sm"
                   color={isError ? "danger" : "primary"}
                 />
@@ -1564,12 +1570,12 @@ function AiModal({ isOpen, onClose }) {
 
     // Render grouped assistant messages
     return (
-      <div key={`group-${groupIndex}`} className="flex justify-center mb-4 px-4 group">
-        <div className="w-full max-w-[90%]">
-          <div className="px-6 py-4">
+      <div key={`group-${groupIndex}`} className="flex justify-center mb-4 px-2 sm:px-4 group">
+        <div className="w-full max-w-full sm:max-w-[90%]">
+          <div className="px-3 py-3 sm:px-6 sm:py-4">
             <div className="flex items-start gap-3">
               <Avatar
-                icon={<LuBrainCircuit size={16} className="text-background" />}
+                className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                 size="sm"
                 color="primary"
               />
@@ -1641,12 +1647,12 @@ function AiModal({ isOpen, onClose }) {
     if (progressEvents.length === 0) return null;
 
     return (
-      <div className="flex justify-center mb-4 px-4">
-        <div className="w-full max-w-[90%]">
+      <div className="flex justify-center mb-4 px-2 sm:px-4">
+        <div className="w-full max-w-full sm:max-w-[90%]">
           <div className="px-4 py-3">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Avatar
-                icon={<LuBrainCircuit size={16} className="text-background" />}
+                className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                 size="sm"
                 color="primary"
               />
@@ -1679,9 +1685,11 @@ function AiModal({ isOpen, onClose }) {
     <>
     <Modal
       classNames={{
-        wrapper: conversation ? "p-4 !overflow-hidden" : "",
+        wrapper: conversation ? (isMobile ? "!overflow-hidden" : "p-4 !overflow-hidden") : "",
         base: conversation
-          ? "border-1 border-divider !h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !my-0 !overflow-hidden"
+          ? (isMobile
+            ? "!h-full !max-h-full !m-0 !rounded-none !overflow-hidden"
+            : "border-1 border-divider !h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !my-0 !overflow-hidden")
           : "border-1 border-divider",
         body: conversation ? "!p-0 !overflow-hidden !flex-1 !min-h-0" : "",
       }}
@@ -1692,7 +1700,7 @@ function AiModal({ isOpen, onClose }) {
         if (!open) onClose();
       }}
       hideCloseButton
-      size={conversation ? "6xl" : "xl"}
+      size={conversation ? (isMobile ? "full" : "6xl") : "xl"}
       scrollBehavior={conversation ? "normal" : "inside"}
     >
       <ModalContent>{(closeModal) => (<>
@@ -1708,7 +1716,7 @@ function AiModal({ isOpen, onClose }) {
           <ModalBody className="pt-8">
             <div className="flex flex-col gap-2 items-center justify-center">
               <Avatar
-                icon={<LuBrainCircuit size={24} className="text-background" />}
+                className="shrink-0 aspect-square" icon={<LuBrainCircuit size={24} className="text-background" />}
                 size="lg"
                 color="primary"
               />
@@ -1978,14 +1986,20 @@ function AiModal({ isOpen, onClose }) {
 
         {conversation && (
           <ModalBody>
-            <div className="flex flex-row h-full min-h-0">
-              <div className="flex-none w-60">
+            <div className="flex flex-row h-full min-h-0 relative">
+              <div className={cn(
+                "flex-none w-60",
+                // On phones the list slides in over the chat instead of stealing width.
+                isMobile && "absolute inset-y-0 left-0 z-30 w-[85%] max-w-[18rem] transition-transform duration-300",
+                isMobile && (showConvoSidebar ? "translate-x-0 shadow-2xl" : "-translate-x-full")
+              )}>
                 <div className="flex flex-col relative h-full bg-content2 rounded-tl-2xl rounded-bl-2xl">
                   <div className="w-full px-4 pt-4 border-r border-divider rounded-tl-2xl">
                     <Button
                       color="primary"
                       startContent={<LuPlus size={18} />}
                       onPress={() => {
+                        setShowConvoSidebar(false);
                         setConversation(null);
                         setLocalMessages([]);
                         setProgressEvents([]);
@@ -2094,11 +2108,29 @@ function AiModal({ isOpen, onClose }) {
                   </div>
                 </div>
               </div>
-              <div className="relative flex-1 flex flex-col min-h-0 rounded-lg">
+              {isMobile && showConvoSidebar && (
+                <div
+                  className="absolute inset-0 z-20 bg-black/40"
+                  onClick={() => setShowConvoSidebar(false)}
+                  aria-hidden="true"
+                />
+              )}
+              <div className="relative flex-1 min-w-0 flex flex-col min-h-0 rounded-lg">
                 <div className="flex-none py-4 border-b border-divider">
                   <div className="flex flex-row gap-3 pl-4 pr-4 items-start">
+                    {isMobile && (
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="light"
+                        aria-label="Conversations"
+                        onPress={() => setShowConvoSidebar(true)}
+                      >
+                        <LuMessageSquare size={18} />
+                      </Button>
+                    )}
                     <Avatar
-                      icon={<LuBrainCircuit size={24} className="text-background" />}
+                      className="shrink-0 aspect-square" icon={<LuBrainCircuit size={24} className="text-background" />}
                       color="primary"
                     />
                     <div className="flex flex-col gap-1 flex-1">
@@ -2199,12 +2231,12 @@ function AiModal({ isOpen, onClose }) {
                       ))}
                       {_renderProgressEvents()}
                       {isLoading && progressEvents.length === 0 && (
-                        <div className="flex justify-center mb-4 px-4">
-                          <div className="w-full max-w-[90%]">
+                        <div className="flex justify-center mb-4 px-2 sm:px-4">
+                          <div className="w-full max-w-full sm:max-w-[90%]">
                             <div className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <Avatar
-                                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                                   size="sm"
                                   color="primary"
                                 />
@@ -2228,12 +2260,12 @@ function AiModal({ isOpen, onClose }) {
                       )}
                       {_renderProgressEvents()}
                       {isLoading && progressEvents.length === 0 && (
-                        <div className="flex justify-center mb-4 px-4">
-                          <div className="w-full max-w-[90%]">
+                        <div className="flex justify-center mb-4 px-2 sm:px-4">
+                          <div className="w-full max-w-full sm:max-w-[90%]">
                             <div className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <Avatar
-                                  icon={<LuBrainCircuit size={16} className="text-background" />}
+                                  className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
                                   size="sm"
                                   color="primary"
                                 />
@@ -2444,6 +2476,7 @@ function AiModal({ isOpen, onClose }) {
                     size="sm"
                     showFallback
                     fallback={<LuUsers size={14} />}
+                    className="shrink-0 aspect-square"
                   />
                   <div className="flex flex-col flex-1">
                     <span className="text-sm font-medium">{member.name}</span>

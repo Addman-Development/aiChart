@@ -14,6 +14,7 @@ import { useSearchParams } from "react-router";
 import { LuEllipsis, LuFileDown, LuListFilter } from "react-icons/lu";
 import { useParams } from "react-router";
 import { useDispatch } from "react-redux";
+import { useWindowSize } from "react-use";
 
 import {
   getSharedChart, runQueryWithFilters,
@@ -37,8 +38,6 @@ import { canExportChart, exportChartToExcel } from "../modules/exportChart";
 import GaugeChart from "./Chart/components/GaugeChart";
 import MatrixChart from "./Chart/components/MatrixChart";
 
-const pageHeight = window.innerHeight;
-
 /*
   This container is used for embedding charts in other websites
 */
@@ -59,7 +58,8 @@ function SharedChart() {
   const [searchParams] = useSearchParams();
   const filterRef = useRef(null);
   const chartSize = useChartSize(chart?.layout);
-  
+  const { height } = useWindowSize();
+
   useInterval(() => {
     setDataLoading(true);
     
@@ -284,7 +284,7 @@ function SharedChart() {
   }
 
   return (
-    <div style={styles.container} id="chart-container">
+    <div style={styles.container} className="p-2 sm:p-5" id="chart-container">
       <Helmet>
         <title>
           {chart.name || "Edison chart"}
@@ -390,35 +390,35 @@ function SharedChart() {
             />
           )}
           {chart.type === "bar" && (
-            <BarChart chart={chart} height={pageHeight - 100} />
+            <BarChart chart={chart} height={height - 100} />
           )}
           {chart.type === "pie" && (
             <PieChart
               chart={chart}
-              height={pageHeight - 100}
+              height={height - 100}
             />
           )}
           {chart.type === "doughnut" && (
             <DoughnutChart
               chart={chart}
-              height={pageHeight - 100}
+              height={height - 100}
             />
           )}
           {chart.type === "radar" && (
             <RadarChart
               chart={chart}
-              height={pageHeight - 100}
+              height={height - 100}
             />
           )}
           {chart.type === "polar" && (
             <PolarChart
               chart={chart}
-              height={pageHeight - 100}
+              height={height - 100}
             />
           )}
           {chart.type === "table" && (
             <TableContainer
-              height={pageHeight - 100}
+              height={height - 100}
               tabularData={chart.chartData}
               embedded
               datasets={chart.ChartDatasetConfigs}
@@ -457,7 +457,6 @@ function SharedChart() {
 const styles = {
   container: {
     backgroundColor: "transparent",
-    padding: 20,
   },
   header: (type) => ({
     paddingBottom: type === "table" ? 10 : 0,

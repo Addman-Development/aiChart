@@ -11,7 +11,7 @@ import { operators } from "../../../modules/filterOperations";
 
 function FieldFilter({
   filter,
-  className = "max-w-xs",
+  className = "w-full sm:max-w-xs",
   onApply = () => {},
 }) {
   const { field, operator, value, dataType } = filter;
@@ -76,6 +76,7 @@ function FieldFilter({
           isReadOnly
           variant="bordered"
           size="sm"
+          fullWidth
           className={className}
         />
       );
@@ -92,6 +93,7 @@ function FieldFilter({
           onChange={(date) => setDateValue(date.toString())}
           variant="bordered"
           size="sm"
+          fullWidth
           className={className}
           showMonthAndYearPickers
           calendarProps={{ color: "primary" }}
@@ -114,6 +116,7 @@ function FieldFilter({
         value={textValue || ""}
         onChange={(e) => setTextValue(e.target.value)}
         size="sm"
+        fullWidth
         className={className}
         endContent={textValue !== filter?.value && (
           <Link onPress={() => onApply?.({ ...filter, operator: currentOperator, value: textValue })} className="text-foreground hover:text-foreground-500 cursor-pointer">

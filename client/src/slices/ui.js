@@ -17,6 +17,9 @@ const initialState = {
   aiModalOpen: false,
   feedbackModalOpen: false,
   sidebarCollapsed: getInitialSidebarState(),
+  // Off-canvas sidebar drawer state for phones (< sm). Intentionally NOT
+  // persisted to localStorage so the drawer always starts closed.
+  mobileSidebarOpen: false,
 };
 
 export const uiSlice = createSlice({
@@ -57,13 +60,23 @@ export const uiSlice = createSlice({
         console.error("Error saving sidebar state to localStorage:", error);
       }
     },
+    openMobileSidebar: (state) => {
+      state.mobileSidebarOpen = true;
+    },
+    closeMobileSidebar: (state) => {
+      state.mobileSidebarOpen = false;
+    },
+    toggleMobileSidebar: (state) => {
+      state.mobileSidebarOpen = !state.mobileSidebarOpen;
+    },
   },
 });
 
-export const { showAiModal, hideAiModal, toggleAiModal, showFeedbackModal, hideFeedbackModal, toggleFeedbackModal, setSidebarCollapsed, toggleSidebar } = uiSlice.actions;
+export const { showAiModal, hideAiModal, toggleAiModal, showFeedbackModal, hideFeedbackModal, toggleFeedbackModal, setSidebarCollapsed, toggleSidebar, openMobileSidebar, closeMobileSidebar, toggleMobileSidebar } = uiSlice.actions;
 
 export const selectAiModalOpen = (state) => state.ui.aiModalOpen;
 export const selectFeedbackModalOpen = (state) => state.ui.feedbackModalOpen;
 export const selectSidebarCollapsed = (state) => state.ui.sidebarCollapsed;
+export const selectMobileSidebarOpen = (state) => state.ui.mobileSidebarOpen;
 
 export default uiSlice.reducer;

@@ -1,10 +1,11 @@
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Avatar, Button, ButtonGroup, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Tooltip } from "@heroui/react"
-import { Link, useNavigate } from "react-router"
+import { Link, useNavigate, useLocation } from "react-router"
 import { useDispatch, useSelector } from "react-redux"
 import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMessageSquare, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
 
 import { cn } from "../modules/utils"
+import useIsMobile from "../modules/useIsMobile"
 import { useTheme } from "../modules/ThemeContext"
 import cbLogoDark from "../assets/cb_logo_dark.svg"
 import cbLogoLight from "../assets/cb_logo_light.svg"
@@ -14,14 +15,20 @@ import canAccess from "../config/canAccess"
 import { createTeam, getTeamMembers, saveActiveTeam, selectTeam, selectTeams } from "../slices/team"
 import { clearConnections } from "../slices/connection"
 import { clearDatasets, getDatasets } from "../slices/dataset"
-import { selectSidebarCollapsed, showFeedbackModal } from "../slices/ui"
+import { selectSidebarCollapsed, selectMobileSidebarOpen, closeMobileSidebar, showFeedbackModal } from "../slices/ui"
 import toast from "react-hot-toast"
 import { logout } from "../slices/user"
 
 
 function Sidebar() {
   const { isDark, theme, setTheme } = useTheme()
-  const collapsed = useSelector(selectSidebarCollapsed);
+  const storedCollapsed = useSelector(selectSidebarCollapsed);
+  const mobileSidebarOpen = useSelector(selectMobileSidebarOpen);
+  const isMobile = useIsMobile();
+  // On phones the off-canvas drawer always shows the full (expanded) menu; the
+  // narrow w-16 rail collapse only applies on desktop. Re-deriving `collapsed`
+  // here keeps every existing layout branch below mobile-aware without edits.
+  const collapsed = !isMobile && storedCollapsed;
 
   const [createTeamModal, setCreateTeamModal] = useState(false);
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -32,7 +39,14 @@ function Sidebar() {
   const teams = useSelector(selectTeams);
   
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
+
+  // Auto-close the off-canvas drawer whenever the route changes, so tapping any
+  // nav item / quick action / profile link dismisses the drawer on phones.
+  useEffect(() => {
+    dispatch(closeMobileSidebar());
+  }, [location.pathname]);
 
   const _canAccess = (role, teamRoles) => {
     return canAccess(role, user.data.id, teamRoles, user.data);
@@ -59,6 +73,7 @@ function Sidebar() {
     dispatch(getTeamMembers({ team_id: team.id }));
     dispatch(getDatasets({ team_id: team.id }));
 
+    dispatch(closeMobileSidebar());
     navigate("/");
   };
 
@@ -76,12 +91,23 @@ function Sidebar() {
 
 
   return (
-    <aside
-      className={cn(
-        "fixed left-0 top-0 z-40 h-screen bg-content1 border-r border-divider transition-all duration-300",
-        collapsed ? "w-16" : "w-64"
+    <>
+      {mobileSidebarOpen && (
+        <div
+          className="fixed inset-0 z-[55] bg-black/50 sm:hidden"
+          onClick={() => dispatch(closeMobileSidebar())}
+          aria-hidden="true"
+        />
       )}
-    >
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-[60] h-screen bg-content1 border-r border-divider transition-all duration-300",
+          collapsed ? "w-16" : "w-64",
+          // Off-canvas drawer on phones; always on-screen from sm up.
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full",
+          "sm:translate-x-0"
+        )}
+      >
       <div className="flex flex-col h-full justify-between">
         <div className="flex flex-col">
           <a href="https://aos.addmangroup.com/home" className="flex items-center justify-start h-16 px-4">
@@ -331,7 +357,11 @@ function Sidebar() {
                 startContent={<LuMessageSquare />}
                 key="feedback"
                 showDivider
-                onClick={() => dispatch(showFeedbackModal())}
+                onClick={() => {
+                  // Close the mobile drawer so it doesn't cover the feedback modal.
+                  dispatch(closeMobileSidebar());
+                  dispatch(showFeedbackModal());
+                }}
                 textValue="Send feedback"
               >
                 <div className="w-full text-foreground">
@@ -422,7 +452,8 @@ function Sidebar() {
           </ModalFooter>
         </ModalContent>
       </Modal>
-    </aside>
+      </aside>
+    </>
   );
 }
 

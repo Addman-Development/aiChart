@@ -182,7 +182,7 @@ function DashboardList() {
         open={addProject}
         onClose={() => setAddProject(false)}
       />
-      <div className="flex flex-row justify-between items-center">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-row items-center">
           <div className="flex flex-col gap-1">
             <div className="text-2xl font-semibold font-tw">
@@ -317,6 +317,7 @@ function DashboardList() {
         <Table
           aria-label="Dashboard list"
           className="h-auto min-w-full border-1 border-solid border-content3 rounded-xl"
+          classNames={{ wrapper: "overflow-x-auto", table: "min-w-[640px]" }}
           radius="md"
           shadow="none"
           isStriped
@@ -350,7 +351,7 @@ function DashboardList() {
                       </Tooltip>
                     ) : (
                       <Tooltip content="Pin dashboard" placement="left-start">
-                        <Button isIconOnly size="sm" onPress={() => _onPinDashboard(project.id)} variant="light" className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                        <Button isIconOnly size="sm" onPress={() => _onPinDashboard(project.id)} variant="light" className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300">
                           <LuPin className="text-secondary" size={18} />
                         </Button>
                       </Tooltip>

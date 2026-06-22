@@ -89,9 +89,7 @@ function ProjectBoard() {
 
   return (
     <div className="bg-content2">
-      <div
-        style={{ overflowY: "auto", height: "100%", overflowX: "hidden" }}
-      >
+      <div className="overflow-y-auto min-h-[calc(100vh-64px)]">
         <div className="pl-0">
           <MainContent
             _canAccess={_canAccess}
@@ -130,25 +128,6 @@ const styles = {
     padding: 20,
     paddingLeft: 30,
   },
-  page: {
-    backgroundColor: "$backgroundContrast",
-    br: "$md",
-    p: 10,
-    "@xs": {
-      p: 20,
-    },
-    "@sm": {
-      p: 20,
-    },
-    "@md": {
-      p: 20,
-      m: 20,
-    },
-    "@lg": {
-      p: 20,
-      m: 20,
-    },
-  }
 };
 
 export default ProjectBoard;

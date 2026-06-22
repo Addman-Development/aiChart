@@ -5,6 +5,8 @@ import moment from "moment"
 import { parseDateTime } from "@internationalized/date"
 import { LuArrowRight } from "react-icons/lu"
 
+import useIsMobile from "../../../modules/useIsMobile"
+
 function DateRangeFilter({
   startDate,
   endDate,
@@ -14,6 +16,8 @@ function DateRangeFilter({
   size = "sm",
   isEdit = false,
 }) {
+  const isMobile = useIsMobile();
+
   // This is the actual value that is displayed to the user
   const [currentValue, setCurrentValue] = useState({
     start: startDate ? parseDateTime(moment.utc(startDate).format("YYYY-MM-DDTHH:mm:ss")) : null,
@@ -123,7 +127,7 @@ function DateRangeFilter({
   return (
     <DateRangePicker
       variant={variant}
-      visibleMonths={2}
+      visibleMonths={isMobile ? 1 : 2}
       value={currentValue}
       calendarProps={{
         // focusedValue: currentValue?.start,
@@ -133,7 +137,8 @@ function DateRangeFilter({
       color="primary"
       aria-label="Select a date range"
       size={size}
-      className={className}
+      fullWidth
+      className={`w-full sm:max-w-xs ${className}`}
       classNames={{
         input: "text-xs",
       }}
