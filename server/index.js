@@ -5,6 +5,7 @@ setUpEncryptionKeys();
 
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
+const rateLimit = require("express-rate-limit");
 
 const logger = require("./modules/logger");
 
@@ -135,10 +136,17 @@ app.use("/uploads", express.static("uploads"));
 // uses /health to gate traffic.
 let isReady = false;
 
+const healthRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // limit each IP to 60 health checks per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Health endpoint registered BEFORE other middlewares so it can't be blocked
 // by anything route-related and stays cheap. Liveness is implicit (we
 // responded). Readiness reflects DB/migration state.
-app.get("/health", async (req, res) => {
+app.get("/health", healthRateLimiter, async (req, res) => {
   res.set("Cache-Control", "no-store");
   if (!isReady) {
     return res.status(503).json({ status: "starting" });
