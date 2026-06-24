@@ -41,7 +41,7 @@ function PendingAccessRequestCard(props) {
     setLoading(true);
     setLoadError("");
 
-    fetch(`${API_HOST}/api/access-requests/${requestId}`, { headers: authHeaders })
+    fetch(`${API_HOST}/access-requests/${requestId}`, { headers: authHeaders })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error || "Failed to load request");
@@ -83,7 +83,7 @@ function PendingAccessRequestCard(props) {
         ? { role, projects: projectAccess, canExport: exportAllowed }
         : {};
 
-      const res = await fetch(`${API_HOST}/api/access-requests/${requestId}/${action}`, {
+      const res = await fetch(`${API_HOST}/access-requests/${requestId}/${action}`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),

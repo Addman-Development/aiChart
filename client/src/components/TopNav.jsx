@@ -1,11 +1,19 @@
-import React, { useEffect } from "react"
+import React, { useEffect, useState } from "react"
 import { useDispatch, useSelector } from "react-redux"
 import { TbBrandDiscord } from "react-icons/tb";
 import { useNavigate, useLocation, useParams } from "react-router";
 import { LuBell, LuBook, LuBookOpenText, LuBrainCircuit, LuFileCode2, LuGithub, LuHeartHandshake, LuMenu, LuPanelLeftClose, LuPanelLeftOpen, LuSmile, LuSquareKanban } from "react-icons/lu";
-import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Breadcrumbs, BreadcrumbItem } from "@heroui/react";
+import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Breadcrumbs, BreadcrumbItem, Popover, PopoverTrigger, PopoverContent, Badge } from "@heroui/react";
 
-import { selectSidebarCollapsed, showFeedbackModal, toggleAiModal, toggleSidebar, toggleMobileSidebar } from "../slices/ui";
+import { selectSidebarCollapsed, showFeedbackModal, toggleAiModal, toggleSidebar, toggleMobileSidebar, showAiModal, setAiPendingConversationId } from "../slices/ui";
+import {
+  selectNotifications, selectUnreadCount, getNotifications,
+  markNotificationRead, markAllNotificationsRead, clearNotifications,
+  notificationReceived, notificationUpdated, notificationDeleted,
+  notificationsReadAll, notificationsCleared,
+} from "../slices/notification";
+import socketClient from "../modules/socketClient";
+import { cn } from "../modules/utils";
 import useIsMobile from "../modules/useIsMobile";
 import canAccess from "../config/canAccess";
 import { selectUser } from "../slices/user";
@@ -29,6 +37,66 @@ function TopNav() {
   const connection = useSelector((state) => state.connection.data.find((c) => `${c.id}` === `${params.connectionId}`));
   const dataset = useSelector((state) => state.dataset.data.find((d) => `${d.id}` === `${params.datasetId}`));
   const integrations = useSelector(selectIntegrations);
+  const notifications = useSelector(selectNotifications);
+  const unreadCount = useSelector(selectUnreadCount);
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const _formatNotifTime = (iso) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const _onNotificationClick = (n) => {
+    if (!n.read && team?.id) {
+      dispatch(markNotificationRead({ team_id: team.id, id: n.id }));
+    }
+    setNotifOpen(false);
+    if (n.type === "ai") {
+      if (n.meta?.conversationId) {
+        dispatch(setAiPendingConversationId(n.meta.conversationId));
+      }
+      dispatch(showAiModal());
+    }
+  };
+
+  // Load this team's notifications and subscribe to real-time updates so the
+  // bell stays in sync across the user's sessions/devices.
+  useEffect(() => {
+    if (!user?.id || !team?.id) return undefined;
+
+    dispatch(getNotifications({ team_id: team.id }));
+    socketClient.connect(user.id, team.id).catch(() => {});
+
+    const onCreated = (n) => dispatch(notificationReceived(n));
+    const onUpdated = (n) => dispatch(notificationUpdated(n));
+    const onDeleted = (p) => dispatch(notificationDeleted(p));
+    const onReadAll = (p) => dispatch(notificationsReadAll(p));
+    const onCleared = (p) => dispatch(notificationsCleared(p));
+    // Resync via REST on (re)connect so a session that was briefly offline
+    // catches any events it missed while disconnected.
+    const onReconnect = () => dispatch(getNotifications({ team_id: team.id }));
+
+    socketClient.on("notification-created", onCreated);
+    socketClient.on("notification-updated", onUpdated);
+    socketClient.on("notification-deleted", onDeleted);
+    socketClient.on("notifications-read-all", onReadAll);
+    socketClient.on("notifications-cleared", onCleared);
+    socketClient.on("connect", onReconnect);
+
+    return () => {
+      socketClient.off("notification-created", onCreated);
+      socketClient.off("notification-updated", onUpdated);
+      socketClient.off("notification-deleted", onDeleted);
+      socketClient.off("notifications-read-all", onReadAll);
+      socketClient.off("notifications-cleared", onCleared);
+      socketClient.off("connect", onReconnect);
+    };
+  }, [user?.id, team?.id]);
 
   useEffect(() => {
     try {
@@ -180,9 +248,9 @@ function TopNav() {
               onPress={() => dispatch(toggleAiModal())}
               startContent={<LuBrainCircuit size={18} />}
               size="sm"
-              className="from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-linear-to-tr hover:bg-linear-to-br transition-all duration-300 shadow-md"
+              className="hidden sm:inline-flex from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-linear-to-tr hover:bg-linear-to-br transition-all duration-300 shadow-md"
             >
-              <span className="hidden sm:inline">Ask Edison AI</span>
+              Ask Edison AI
             </Button>
           )}
 
@@ -223,15 +291,73 @@ function TopNav() {
             </DropdownMenu>
           </Dropdown> */}
 
-          <Button
-            isIconOnly
-            variant="light"
-            className="changelog-trigger mr-2"
-            title="Changelog"
-            size="sm"
-          >
-            <LuBell size={18} className="text-foreground" />
-          </Button>
+          <Popover placement="bottom-end" isOpen={notifOpen} onOpenChange={setNotifOpen}>
+            <PopoverTrigger>
+              <Button
+                isIconOnly
+                variant="light"
+                className="mr-2"
+                aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+                title="Notifications"
+                size="sm"
+              >
+                <Badge
+                  color="danger"
+                  size="sm"
+                  shape="circle"
+                  content={unreadCount > 9 ? "9+" : unreadCount}
+                  isInvisible={unreadCount === 0}
+                >
+                  <LuBell size={18} className="text-foreground" />
+                </Badge>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="p-0 w-[300px] max-w-[92vw]" aria-label="Notifications">
+              <div className="flex items-center justify-between gap-2 px-4 py-2 border-b border-divider w-full">
+                <span className="text-sm font-medium text-foreground">Notifications</span>
+                {notifications.length > 0 && (
+                  <div className="flex items-center">
+                    {unreadCount > 0 && (
+                      <Button size="sm" variant="light" className="h-7 min-w-0 px-2 text-xs" onPress={() => team?.id && dispatch(markAllNotificationsRead({ team_id: team.id }))}>
+                        Mark all read
+                      </Button>
+                    )}
+                    <Button size="sm" variant="light" className="h-7 min-w-0 px-2 text-xs" onPress={() => team?.id && dispatch(clearNotifications({ team_id: team.id }))}>
+                      Clear
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {notifications.length === 0 ? (
+                <div role="status" className="px-4 py-6 text-center text-xs text-foreground-500 w-full">
+                  No new notifications
+                </div>
+              ) : (
+                <div className="max-h-[60vh] overflow-y-auto w-full">
+                  {notifications.map((n) => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      onClick={() => _onNotificationClick(n)}
+                      className={cn(
+                        "flex w-full flex-col items-start gap-0.5 px-4 py-2 text-left border-b border-divider last:border-b-0 hover:bg-content2 transition-colors",
+                        !n.read && "bg-primary-50/40"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 w-full min-w-0">
+                        {!n.read && <span className="w-2 h-2 rounded-full bg-primary shrink-0" />}
+                        <span className="text-sm font-medium text-foreground truncate">{n.title}</span>
+                      </div>
+                      {n.message && (
+                        <span className="text-xs text-foreground-500 line-clamp-2">{n.message}</span>
+                      )}
+                      <span className="text-[10px] text-foreground-400">{_formatNotifTime(n.createdAt)}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </div>

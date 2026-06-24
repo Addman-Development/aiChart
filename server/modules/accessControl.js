@@ -518,6 +518,18 @@ const grantList = [
   //
   // resource: integration ---> Team Perspective
   //
+
+  // resource: notification ---> per-user, every team member manages their own.
+  // Ownership is enforced in the controller (where user_id = req.user.id), so
+  // every role gets full CRUD on the notification resource.
+  ...["teamOwner", "teamAdmin", "projectAdmin", "projectEditor", "projectViewer"]
+    .flatMap((role) => [
+      { role, resource: "notification", action: "create:any", attributes: "*" },
+      { role, resource: "notification", action: "read:any", attributes: "*" },
+      { role, resource: "notification", action: "update:any", attributes: "*" },
+      { role, resource: "notification", action: "delete:any", attributes: "*" },
+    ]),
+
   // ----- END OF V3 ACCESS CONTROL LIST -----
 
   //

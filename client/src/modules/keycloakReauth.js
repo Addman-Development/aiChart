@@ -12,7 +12,7 @@ export const FEEDBACK_REAUTH_ATTEMPTED_KEY = "feedback_reauth_attempted";
   server-side Keycloak token cache when a forwarded token is rejected.
 */
 export async function startKeycloakLogin() {
-  const response = await fetch(`${API_HOST}/api/keycloak/auth`, {
+  const response = await fetch(`${API_HOST}/keycloak/auth`, {
     method: "GET",
     credentials: "include",
     headers: { "Content-Type": "application/json" },

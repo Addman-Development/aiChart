@@ -54,7 +54,10 @@
       "Bash(bunx vitest *)",
       "Bash(rm -f deadscan.mjs)",
       "Bash(bunx vite *)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(bash -n ../entrypoint.sh)",
+      "Bash(bash -n entrypoint.sh)",
+      "Bash(sort -t: -k1)"
     ]
   }
 }

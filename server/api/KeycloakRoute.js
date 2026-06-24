@@ -43,7 +43,7 @@ module.exports = (app) => {
     });
   };
 
-  app.get("/api/keycloak/auth", apiLimiter(10), async (req, res) => {
+  app.get("/keycloak/auth", apiLimiter(10), async (req, res) => {
     if (!keycloakConnector.isEnabled()) {
       return res.status(503).json({ error: "Keycloak authentication is not configured" });
     }
@@ -63,7 +63,7 @@ module.exports = (app) => {
     }
   });
 
-  app.get("/api/keycloak/auth/callback", apiLimiter(10), async (req, res) => {
+  app.get("/keycloak/auth/callback", apiLimiter(10), async (req, res) => {
     if (!keycloakConnector.isEnabled()) {
       return res.redirect(`${app.settings.client}/login?error=keycloak_not_configured`);
     }
@@ -166,7 +166,7 @@ module.exports = (app) => {
     }
   });
 
-  app.post("/api/keycloak/link", verifyToken, apiLimiter(5), async (req, res) => {
+  app.post("/keycloak/link", verifyToken, apiLimiter(5), async (req, res) => {
     if (!keycloakConnector.isEnabled()) {
       return res.status(503).json({ error: "Keycloak authentication is not configured" });
     }
@@ -235,7 +235,7 @@ module.exports = (app) => {
     }
   });
 
-  app.delete("/api/keycloak/unlink", verifyToken, apiLimiter(5), async (req, res) => {
+  app.delete("/keycloak/unlink", verifyToken, apiLimiter(5), async (req, res) => {
     const { password } = req.body;
 
     try {

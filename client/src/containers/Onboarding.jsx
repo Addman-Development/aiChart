@@ -102,7 +102,7 @@ function JoinTeamPanel() {
   const [submitted, setSubmitted] = useState(null);
 
   const fetchTeams = useMemo(() => _.debounce((q, signal) => {
-    const url = `${API_HOST}/api/access-requests/teams${q ? `?q=${encodeURIComponent(q)}` : ""}`;
+    const url = `${API_HOST}/access-requests/teams${q ? `?q=${encodeURIComponent(q)}` : ""}`;
     fetch(url, { headers: authHeaders(), signal })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => setTeams(Array.isArray(data) ? data : []))
@@ -123,7 +123,7 @@ function JoinTeamPanel() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch(`${API_HOST}/api/access-requests`, {
+      const res = await fetch(`${API_HOST}/access-requests`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ teamId: selectedTeamId, reason: reason || undefined }),

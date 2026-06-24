@@ -17,17 +17,13 @@ const logger = require("./logger").child({ module: "socketManager" });
 class SocketManager {
   constructor() {
     this.io = null;
-    this.activeConnections = new Map(); // userId -> socket
+    this.activeConnections = new Map(); // userId -> Set<socketId> (one entry per open session)
     this.roomConnections = new Map(); // room -> Set of socket IDs
     this.pubClient = null;
     this.subClient = null;
   }
 
   async initialize(server) {
-    // Engine.IO listens on the raw HTTP server's upgrade event, so the
-    // Express prefix-strip middleware does not apply. Bake the public-facing
-    // base path into the socket path so wss://host/<base>/socket.io matches.
-    const apiBasePath = (process.env.CB_API_BASE_PATH || "").replace(/\/$/, "");
     this.io = new Server(server, {
       cors: {
         origin: process.env.VITE_APP_CLIENT_HOST || false,
@@ -42,7 +38,7 @@ class SocketManager {
         maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
         skipMiddlewares: true,
       },
-      path: `${apiBasePath}/socket.io`
+      path: "/api/socket.io"
     });
 
     // Try to set up Redis adapter for cross-process communication
@@ -138,13 +134,15 @@ class SocketManager {
           return;
         }
 
-        // Remove old connection for this user if exists
-        const existingSocket = this.activeConnections.get(userId);
-        if (existingSocket && existingSocket.id !== socket.id) {
-          existingSocket.disconnect(true);
+        // Track every socket for this user (multiple tabs/devices). We do NOT
+        // force-disconnect prior sockets: that would defeat multi-session sync
+        // (e.g. notifications) and trigger a reconnect war between tabs. The
+        // user:${userId} room below holds all of them, so emitToUser reaches
+        // every session.
+        if (!this.activeConnections.has(userId)) {
+          this.activeConnections.set(userId, new Set());
         }
-
-        this.activeConnections.set(userId, socket);
+        this.activeConnections.get(userId).add(socket.id);
         // eslint-disable-next-line no-param-reassign
         socket.userId = userId;
         // eslint-disable-next-line no-param-reassign
@@ -197,9 +195,16 @@ class SocketManager {
           }
         });
 
-        // Clean up active connections
+        // Clean up active connections: remove just this socket and drop the
+        // user entry only once they have no remaining sessions.
         if (socket.userId) {
-          this.activeConnections.delete(socket.userId);
+          const userSockets = this.activeConnections.get(socket.userId);
+          if (userSockets) {
+            userSockets.delete(socket.id);
+            if (userSockets.size === 0) {
+              this.activeConnections.delete(socket.userId);
+            }
+          }
         }
       });
     });

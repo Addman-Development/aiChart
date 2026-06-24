@@ -55,22 +55,6 @@ app.settings = settings;
 
 app.set("trust proxy", 1);
 
-// Strip an optional public-facing API prefix (e.g. "/smart-chart-api") so
-// internal routes mounted at "/" still match. No-op when the prefix is unset
-// or already stripped upstream by the gateway. req.originalUrl is preserved
-// for log correlation.
-const apiBasePath = (process.env.CB_API_BASE_PATH || "").replace(/\/$/, "");
-if (apiBasePath) {
-  app.use((req, res, next) => {
-    if (req.url === apiBasePath) {
-      req.url = "/";
-    } else if (req.url.startsWith(`${apiBasePath}/`)) {
-      req.url = req.url.slice(apiBasePath.length);
-    }
-    next();
-  });
-}
-
 app.use(pinoHttp({
   logger,
   customLogLevel: (req, res, err) => {
@@ -129,7 +113,7 @@ app.get("/", (req, res) => {
   return res.send("Welcome to Edison server API");
 });
 
-app.use("/uploads", express.static("uploads"));
+app.use("/api/uploads", express.static("uploads"));
 
 // Readiness state: flips to true once migrations complete so the /health
 // endpoint can return 503 while we're still starting up. The reverse proxy
@@ -162,15 +146,24 @@ app.get("/health", healthRateLimiter, async (req, res) => {
 // load middlewares
 app.use(parseQueryParams);
 
+// Every API endpoint lives under an explicit /api namespace. Each controller
+// registers its routes on this sub-app (and reads its custom keys off
+// .settings), and the whole thing is mounted once at /api. No prefix stripping
+// anywhere: what the client requests is exactly what the server serves.
+const apiApp = express();
+Object.assign(apiApp.settings, settings);
+
 // Load the routes
-_.each(routes, (controller, route) => {
-  app.use(route, controller(app));
+_.each(routes, (controller) => {
+  controller(apiApp);
 });
 
 // Load the apps routes
-_.each(appsRoutes, (controller, route) => {
-  app.use(route, controller(app));
+_.each(appsRoutes, (controller) => {
+  controller(apiApp);
 });
+
+app.use("/api", apiApp);
 
 const port = process.env.PORT || app.settings.port || 4019;
 

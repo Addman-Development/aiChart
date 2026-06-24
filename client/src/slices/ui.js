@@ -20,6 +20,9 @@ const initialState = {
   // Off-canvas sidebar drawer state for phones (< sm). Intentionally NOT
   // persisted to localStorage so the drawer always starts closed.
   mobileSidebarOpen: false,
+  // When set, the Edison AI modal opens straight to this conversation (used by
+  // notifications that deep-link back to a finished chat).
+  aiPendingConversationId: null,
 };
 
 export const uiSlice = createSlice({
@@ -69,14 +72,18 @@ export const uiSlice = createSlice({
     toggleMobileSidebar: (state) => {
       state.mobileSidebarOpen = !state.mobileSidebarOpen;
     },
+    setAiPendingConversationId: (state, action) => {
+      state.aiPendingConversationId = action.payload;
+    },
   },
 });
 
-export const { showAiModal, hideAiModal, toggleAiModal, showFeedbackModal, hideFeedbackModal, toggleFeedbackModal, setSidebarCollapsed, toggleSidebar, openMobileSidebar, closeMobileSidebar, toggleMobileSidebar } = uiSlice.actions;
+export const { showAiModal, hideAiModal, toggleAiModal, showFeedbackModal, hideFeedbackModal, toggleFeedbackModal, setSidebarCollapsed, toggleSidebar, openMobileSidebar, closeMobileSidebar, toggleMobileSidebar, setAiPendingConversationId } = uiSlice.actions;
 
 export const selectAiModalOpen = (state) => state.ui.aiModalOpen;
 export const selectFeedbackModalOpen = (state) => state.ui.feedbackModalOpen;
 export const selectSidebarCollapsed = (state) => state.ui.sidebarCollapsed;
 export const selectMobileSidebarOpen = (state) => state.ui.mobileSidebarOpen;
+export const selectAiPendingConversationId = (state) => state.ui.aiPendingConversationId;
 
 export default uiSlice.reducer;

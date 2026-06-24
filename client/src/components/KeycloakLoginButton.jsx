@@ -17,7 +17,7 @@ function KeycloakLoginButton() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_HOST}/api/keycloak/auth`, {
+      const response = await fetch(`${API_HOST}/keycloak/auth`, {
         method: "GET",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

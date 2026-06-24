@@ -21,14 +21,6 @@ echo "The UI is rebuilding. Please wait..."
 (cd client && bun run build)
 echo "UI built successfully!"
 
-# If deployed under a sub-path (e.g. /smart-chart), create a symlink inside
-# dist/ so that requests with the prefix still resolve to the correct assets.
-BASEPATH=$(node -e "try{const u=new URL(process.env.VITE_APP_CLIENT_HOST||'');const p=u.pathname.replace(/^\/|\/$/g,'');if(p)console.log(p)}catch{}")
-if [ -n "$BASEPATH" ]; then
-  ln -sfn . "client/dist/$BASEPATH"
-  echo "Sub-path symlink created: client/dist/$BASEPATH -> ."
-fi
-
 # Serve the UI in the background so we can supervise both processes from the
 # foreground bash script.
 bunx serve -s client/dist -l "${VITE_APP_CLIENT_PORT}" &

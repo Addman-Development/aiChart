@@ -16,6 +16,8 @@ import Chart from "../Chart/Chart";
 import { selectProjects } from "../../slices/project";
 import { selectConnections } from "../../slices/connection";
 import { selectDatasetsNoDrafts } from "../../slices/dataset";
+import { createNotification } from "../../slices/notification";
+import { selectAiPendingConversationId, setAiPendingConversationId } from "../../slices/ui";
 import isMac from "../../modules/isMac";
 import socketClient from "../../modules/socketClient";
 import { SITE_HOST } from "../../config/settings";
@@ -85,6 +87,11 @@ function AiModal({ isOpen, onClose }) {
   const inputRef = useRef(null);
   const dispatch = useDispatch();
   const isMobile = useIsMobile();
+  const aiPendingConversationId = useSelector(selectAiPendingConversationId);
+  // Track the live "is the panel open?" value for async completion handlers,
+  // since _onAskAi captures `isOpen` at call time.
+  const isOpenRef = useRef(isOpen);
+  useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
   const fetchedChartsRef = useRef(new Set());
   const projects = useSelector(selectProjects);
   const connections = useSelector(selectConnections);
@@ -428,6 +435,14 @@ function AiModal({ isOpen, onClose }) {
     }
   }, [isOpen]);
 
+  // Deep-link: when a notification opens the modal straight to a conversation.
+  useEffect(() => {
+    if (isOpen && aiPendingConversationId) {
+      _onSelectConversation(aiPendingConversationId);
+      dispatch(setAiPendingConversationId(null));
+    }
+  }, [isOpen, aiPendingConversationId]);
+
   // Join conversation room when conversation changes
   useEffect(() => {
     if (!isSocketReady || !conversation?.id) return;
@@ -473,12 +488,65 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
+  // When Edison finishes but the user has left the chat panel, surface an
+  // in-app notification (bell + toast) and, when the tab is backgrounded and
+  // permission was granted, a browser/OS notification.
+  const _notifyAiComplete = (message, conversationId) => {
+    if (isOpenRef.current) return; // panel is open — they'll see the answer
+    const snippet = (message || "")
+      .replace(/```cb-actions[\s\S]*?```/g, "")
+      .replace(/```[\s\S]*?```/g, "")
+      .replace(/[#*_>`]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 140);
+    if (team?.id) {
+      // Persist server-side so it syncs to the user's other sessions/devices;
+      // the socket echo + this thunk's result are de-duped by id in the slice.
+      dispatch(createNotification({
+        team_id: team.id,
+        type: "ai",
+        title: "Edison finished your request",
+        message: snippet || "Your response is ready.",
+        meta: { conversationId: conversationId || null },
+      }));
+    }
+    toast.success("Edison finished your request");
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted"
+        && typeof document !== "undefined" && document.hidden) {
+        const notifOptions = { body: snippet || "Your response is ready." };
+        // Only share a tag across the SAME conversation (so repeated answers in
+        // one chat coalesce); distinct completions stay separate when there's no id.
+        if (conversationId) notifOptions.tag = `edison-${conversationId}`;
+        const n = new Notification("Edison finished your request", notifOptions);
+        n.onclick = () => { try { window.focus(); } catch (err) { /* ignore */ } };
+      }
+    } catch (err) {
+      // browser notifications are best-effort
+    }
+  };
+
+  const _maybeRequestNotifyPermission = () => {
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission().catch(() => {});
+      }
+    } catch (err) {
+      // ignore
+    }
+  };
+
   const _onAskAi = async (e, overrideQuestion) => {
     if (e?.preventDefault) e.preventDefault();
     const sourceQuestion = typeof overrideQuestion === "string" ? overrideQuestion : question;
     // Allow submission if there's either a question or a selected context
     const hasContent = sourceQuestion.trim() || selectedContext.multiSelect.length > 0 || selectedContext.singleSelect;
     if (!hasContent || isLoading) return;
+
+    // Ask once (on this user gesture) so we can post a browser notification if
+    // the user leaves the tab while Edison is working.
+    _maybeRequestNotifyPermission();
 
     const userMessage = {
       role: "user",
@@ -545,6 +613,8 @@ function AiModal({ isOpen, onClose }) {
         };
         setLocalMessages(prev => [...prev, aiMessage]);
 
+        _notifyAiComplete(response.orchestration.message, response.orchestration.aiConversationId || conversation?.id);
+
         // Update with real conversation data in the background
         if (response.orchestration?.aiConversationId) {
           await loadConversations();
@@ -599,6 +669,8 @@ function AiModal({ isOpen, onClose }) {
         if (!response || !response.orchestration || !response.orchestration.message) {
           throw new Error("Invalid response from AI");
         }
+
+        _notifyAiComplete(response.orchestration.message, conversation.id);
 
         // Refresh conversation with updated history from database
         const updatedConversation = await getAiConversation(conversation.id, team.id);
@@ -805,6 +877,8 @@ function AiModal({ isOpen, onClose }) {
         content: response.orchestration.message
       };
       setLocalMessages(prev => [...prev, aiMessage]);
+
+      _notifyAiComplete(response.orchestration.message, response.orchestration.aiConversationId || conversation?.id);
 
       // Update conversation data in background
       if (response.orchestration?.aiConversationId) {

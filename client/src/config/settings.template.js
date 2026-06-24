@@ -1,4 +1,4 @@
-export const API_HOST = import.meta.env.VITE_APP_API_HOST || "http://localhost:4019";
+export const API_HOST = import.meta.env.VITE_APP_API_HOST || "http://localhost:4019/api";
 
 export const SITE_HOST = import.meta.env.VITE_APP_CLIENT_HOST || "http://localhost:4018";
 

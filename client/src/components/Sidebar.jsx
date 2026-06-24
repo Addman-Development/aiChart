@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react"
 import { Avatar, Button, ButtonGroup, Chip, Divider, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Image, Input, Listbox, ListboxItem, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Tooltip } from "@heroui/react"
 import { Link, useNavigate, useLocation } from "react-router"
 import { useDispatch, useSelector } from "react-redux"
-import { LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMessageSquare, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
+import { LuBrainCircuit, LuChevronDown, LuDatabase, LuDatabaseZap, LuGrid2X2Plus, LuLayoutGrid, LuLogOut, LuMessageSquare, LuMonitor, LuMoon, LuPlug, LuPlus, LuPuzzle, LuSettings, LuSun, LuUnplug, LuUser, LuUserPlus, LuUsers } from "react-icons/lu"
 
 import { cn } from "../modules/utils"
 import useIsMobile from "../modules/useIsMobile"
@@ -15,7 +15,7 @@ import canAccess from "../config/canAccess"
 import { createTeam, getTeamMembers, saveActiveTeam, selectTeam, selectTeams } from "../slices/team"
 import { clearConnections } from "../slices/connection"
 import { clearDatasets, getDatasets } from "../slices/dataset"
-import { selectSidebarCollapsed, selectMobileSidebarOpen, closeMobileSidebar, showFeedbackModal } from "../slices/ui"
+import { selectSidebarCollapsed, selectMobileSidebarOpen, closeMobileSidebar, showFeedbackModal, toggleAiModal } from "../slices/ui"
 import toast from "react-hot-toast"
 import { logout } from "../slices/user"
 
@@ -101,16 +101,20 @@ function Sidebar() {
       )}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-[60] h-screen bg-content1 border-r border-divider transition-all duration-300",
+          // Mobile: off-canvas drawer above everything (z-[60]). Desktop: drop
+          // below the HeroUI overlay layer (modal z-50, popovers/dropdowns) so
+          // the Edison AI chat modal — and every other modal — renders above
+          // the sidebar instead of being covered by it.
+          "fixed left-0 top-0 z-[60] sm:z-20 h-dvh bg-content1 border-r border-divider transition-all duration-300",
           collapsed ? "w-16" : "w-64",
           // Off-canvas drawer on phones; always on-screen from sm up.
           mobileSidebarOpen ? "translate-x-0" : "-translate-x-full",
           "sm:translate-x-0"
         )}
       >
-      <div className="flex flex-col h-full justify-between">
+      <div className="flex flex-col h-full justify-between overflow-y-auto">
         <div className="flex flex-col">
-          <a href="https://aos.addmangroup.com/home" className="flex items-center justify-start h-16 px-4">
+          <a href="https://aos.addmangroup.com" className="flex items-center justify-start h-16 px-4">
             {collapsed ? (
               <Image src={isDark ? cbLogoSmallDark : cbLogoSmallLight} alt="Edison Logo" width={40} radius="none" />
             ) : (
@@ -178,6 +182,21 @@ function Sidebar() {
                 </DropdownMenu>
               </Dropdown>
             </div>
+
+            {/* Edison AI lives in the menu on phones (it's a header button from sm up). */}
+            {_canAccess("teamAdmin", team.TeamRoles) && (
+              <Button
+                className="sm:hidden mt-3 from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-linear-to-tr hover:bg-linear-to-br transition-all duration-300 shadow-md"
+                startContent={<LuBrainCircuit size={18} />}
+                fullWidth
+                onPress={() => {
+                  dispatch(closeMobileSidebar());
+                  dispatch(toggleAiModal());
+                }}
+              >
+                Ask Edison AI
+              </Button>
+            )}
 
             <Spacer y={4} />
             <Divider />
@@ -310,7 +329,7 @@ function Sidebar() {
           </div>
         </div>
         
-        <div className="flex flex-col">
+        <div className="flex flex-col pb-[env(safe-area-inset-bottom)]">
           <Divider />
           <Spacer y={2} />
           <Dropdown aria-label="Select a user option">

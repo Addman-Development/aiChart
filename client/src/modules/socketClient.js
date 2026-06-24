@@ -1,8 +1,10 @@
 import { io } from "socket.io-client";
 import { API_HOST } from "../config/settings";
 
-// Derive the socket.io origin and path from API_HOST so it works behind a sub-path proxy.
-// io() treats URL pathname as a namespace, so we must split origin from path.
+// API_HOST carries the API's explicit mount path (e.g. "/api"); the gateway
+// forwards it to the server untouched. io() treats a URL pathname as a
+// namespace, so split the origin from the path and append socket.io to the
+// mount path so the browser connects to "<origin>/<mount>/socket.io".
 let _socketOrigin = API_HOST;
 let _socketPath = "/socket.io";
 try {

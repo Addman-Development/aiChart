@@ -53,7 +53,7 @@ module.exports = (app) => {
   // Requests may arrive as JSON (no attachments) or multipart/form-data (with
   // screenshots). multer parses the latter, leaving text fields on req.body and
   // image files on req.files; it passes JSON requests through untouched.
-  app.post("/api/feedback", verifyToken, apiLimiter(20), (req, res, next) => {
+  app.post("/feedback", verifyToken, apiLimiter(20), (req, res, next) => {
     uploadScreenshots(req, res, (err) => {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {

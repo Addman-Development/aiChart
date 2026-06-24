@@ -40,7 +40,7 @@ module.exports = (app) => {
     }
   };
 
-  app.get("/api/access-requests/teams", verifyToken, apiLimiter(60), async (req, res) => {
+  app.get("/access-requests/teams", verifyToken, apiLimiter(60), async (req, res) => {
     try {
       const q = (req.query.q || "").trim();
       const where = q
@@ -61,7 +61,7 @@ module.exports = (app) => {
     }
   });
 
-  app.post("/api/access-requests", verifyToken, apiLimiter(20), async (req, res) => {
+  app.post("/access-requests", verifyToken, apiLimiter(20), async (req, res) => {
     const { teamId, reason } = req.body || {};
 
     if (!teamId) {
@@ -131,7 +131,7 @@ module.exports = (app) => {
     }
   });
 
-  app.get("/api/access-requests", verifyToken, async (req, res) => {
+  app.get("/access-requests", verifyToken, async (req, res) => {
     try {
       let teamIds;
       if (req.user.admin) {
@@ -155,11 +155,11 @@ module.exports = (app) => {
     }
   });
 
-  app.get("/api/access-requests/:id", verifyToken, requireOwner, (req, res) => {
+  app.get("/access-requests/:id", verifyToken, requireOwner, (req, res) => {
     return res.status(200).json(req.accessRequest);
   });
 
-  app.post("/api/access-requests/:id/approve", verifyToken, requireOwner, async (req, res) => {
+  app.post("/access-requests/:id/approve", verifyToken, requireOwner, async (req, res) => {
     const { role, projects, canExport } = req.body || {};
 
     try {
@@ -180,7 +180,7 @@ module.exports = (app) => {
     }
   });
 
-  app.post("/api/access-requests/:id/reject", verifyToken, requireOwner, async (req, res) => {
+  app.post("/access-requests/:id/reject", verifyToken, requireOwner, async (req, res) => {
     try {
       const request = await controller.reject(req.accessRequest.id, {
         resolverId: req.user.id,

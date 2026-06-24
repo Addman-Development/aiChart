@@ -17,17 +17,6 @@ const store = configureStore({
   reducer,
 });
 
-let basename = "/";
-try {
-  const clientHost = import.meta.env.VITE_APP_CLIENT_HOST;
-  if (clientHost) {
-    const { pathname } = new URL(clientHost);
-    if (pathname && pathname !== "/") {
-      basename = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-    }
-  }
-} catch (e) { basename = "/"; }
-
 const router = createBrowserRouter([
   {
     path: "/",
@@ -141,7 +130,7 @@ const router = createBrowserRouter([
       },
     ],
   },
-], { basename });
+]);
 
 export default function App() {
   return (

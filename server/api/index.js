@@ -12,6 +12,7 @@ const ai = require("./AiRoute");
 const keycloak = require("./KeycloakRoute");
 const accessRequest = require("./AccessRequestRoute");
 const feedback = require("./FeedbackRoute");
+const notification = require("./NotificationRoute");
 
 module.exports = {
   team,
@@ -28,4 +29,5 @@ module.exports = {
   keycloak,
   accessRequest,
   feedback,
+  notification,
 };

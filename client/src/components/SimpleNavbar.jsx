@@ -14,7 +14,7 @@ function SimpleNavbar() {
   return (
     <Navbar maxWidth={"full"} className="z-50" isBordered>
       <NavbarBrand>
-        <a href="https://aos.addmangroup.com/home">
+        <a href="https://aos.addmangroup.com">
           <Image src={isDark ? cbLogoDark : cbLogoLight} alt="Edison Logo" width={150} radius="sm" />
         </a>
       </NavbarBrand>

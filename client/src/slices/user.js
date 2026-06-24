@@ -187,7 +187,7 @@ export const sendFeedback = createAsyncThunk(
   async ({
     category, message, pageUrl, module, screenshots,
   }, { rejectWithValue }) => {
-    const url = `${API_HOST}/api/feedback`;
+    const url = `${API_HOST}/feedback`;
 
     const headers = new Headers({
       "Accept": "application/json",
