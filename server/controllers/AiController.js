@@ -44,6 +44,7 @@ async function getOrchestration(
   aiConversationId,
   userId,
   context = null,
+  clientTurnId = null,
 ) {
   let conversation;
 
@@ -168,6 +169,15 @@ async function getOrchestration(
 
     await conversation.update(updateData);
 
+    // Authoritative completion signal. The answer is already persisted above, so
+    // emit to the user's room — this lets the client finalize the turn even if
+    // the long-lived orchestrate HTTP response is lost (proxy/idle timeout),
+    // which was the cause of the chat getting stuck on "computing".
+    socketManager.emitToUser(userId, "ai-orchestration-complete", {
+      conversationId: conversation.id,
+      turnId: clientTurnId,
+    });
+
     // Generate title asynchronously for new conversations (don't block the response)
     if (isNewConversation) {
       generateConversationTitle(question, finalMessage)
@@ -201,6 +211,14 @@ async function getOrchestration(
       socketManager.emitProgress(conversation.id, "error", {
         message: "An error occurred during AI orchestration",
         error: error.message
+      });
+      // Also signal completion-with-error on the user's room so a client whose
+      // HTTP connection was lost still stops spinning instead of hanging.
+      socketManager.emitToUser(userId, "ai-orchestration-complete", {
+        conversationId: conversation.id,
+        turnId: clientTurnId,
+        error: true,
+        errorMessage: error.message,
       });
     }
 

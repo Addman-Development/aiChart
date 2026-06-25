@@ -13,6 +13,7 @@ import {
   notificationsReadAll, notificationsCleared,
 } from "../slices/notification";
 import socketClient from "../modules/socketClient";
+import { syncSubscription } from "../modules/pushNotifications";
 import { cn } from "../modules/utils";
 import useIsMobile from "../modules/useIsMobile";
 import canAccess from "../config/canAccess";
@@ -97,6 +98,33 @@ function TopNav() {
       socketClient.off("connect", onReconnect);
     };
   }, [user?.id, team?.id]);
+
+  // Keep this device's push subscription fresh once the user is logged in and
+  // hasn't disabled push. Silent — only (re)subscribes if OS permission was
+  // already granted; granting on a new device happens via the settings toggle.
+  useEffect(() => {
+    if (user?.id && user?.pushNotificationsEnabled !== false) {
+      syncSubscription();
+    }
+  }, [user?.id, user?.pushNotificationsEnabled]);
+
+  // When the user clicks an OS push notification, the service worker focuses the
+  // app and posts us the payload — mirror the in-app bell click so an "ai"
+  // notification deep-links back to its conversation.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return undefined;
+    const onSwMessage = (event) => {
+      const msg = event.data;
+      if (!msg || msg.type !== "push-notification-click") return;
+      const data = msg.data || {};
+      if (data.type === "ai") {
+        if (data.conversationId) dispatch(setAiPendingConversationId(data.conversationId));
+        dispatch(showAiModal());
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onSwMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onSwMessage);
+  }, [dispatch]);
 
   useEffect(() => {
     try {

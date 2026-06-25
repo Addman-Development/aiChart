@@ -39,6 +39,11 @@ export default ({ mode }) => {
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,woff,woff2}"],
+          // Layer our Web Push handlers onto Workbox's generated service worker.
+          // push-sw.js lives in public/ (served at /push-sw.js) and adds the
+          // `push` + `notificationclick` listeners without us having to hand-roll
+          // the whole SW (which `generateSW` owns).
+          importScripts: ["push-sw.js"],
           // The main bundle is large (~8MB); raise the precache ceiling so the
           // app shell is fully cached for offline/instant reloads.
           maximumFileSizeToCacheInBytes: 12 * 1024 * 1024,

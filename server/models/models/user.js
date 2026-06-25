@@ -77,6 +77,13 @@ module.exports = (sequelize, DataTypes) => {
       defaultValue: false,
       allowNull: false,
     },
+    // Master preference for Web Push notifications. Defaults on; the server skips
+    // sending push to any of a user's devices when this is false.
+    pushNotificationsEnabled: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: true,
+      allowNull: false,
+    },
     tutorials: {
       type: DataTypes.TEXT,
       allowNull: false,

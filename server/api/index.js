@@ -13,6 +13,7 @@ const keycloak = require("./KeycloakRoute");
 const accessRequest = require("./AccessRequestRoute");
 const feedback = require("./FeedbackRoute");
 const notification = require("./NotificationRoute");
+const pushSubscription = require("./PushSubscriptionRoute");
 
 module.exports = {
   team,
@@ -30,4 +31,5 @@ module.exports = {
   accessRequest,
   feedback,
   notification,
+  pushSubscription,
 };

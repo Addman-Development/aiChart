@@ -24,4 +24,14 @@ module.exports = {
   },
   signupRestricted: process.env.CB_RESTRICT_SIGNUP,
   ssoAutoCreate: process.env.CB_SSO_AUTOCREATE_USERS !== "false",
+  vapid: {
+    publicKey: process.env.CB_VAPID_PUBLIC_KEY,
+    privateKey: process.env.CB_VAPID_PRIVATE_KEY,
+    // RFC 8292 requires a contact (mailto: or https:) so push services can reach
+    // the app operator; fall back to the admin mail when unset.
+    subject: process.env.CB_VAPID_SUBJECT
+      || (process.env.SMTP_FROM || process.env.CB_ADMIN_MAIL
+        ? `mailto:${(process.env.CB_ADMIN_MAIL || "admin@localhost")}`
+        : "mailto:admin@localhost"),
+  },
 };

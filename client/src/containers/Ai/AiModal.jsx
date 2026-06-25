@@ -93,6 +93,23 @@ function AiModal({ isOpen, onClose }) {
   const isOpenRef = useRef(isOpen);
   useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
   const fetchedChartsRef = useRef(new Set());
+  // Mirror the current conversation into a ref so socket handlers (attached once
+  // per open) can read the latest value without stale closures.
+  const conversationRef = useRef(null);
+  useEffect(() => { conversationRef.current = conversation; }, [conversation]);
+  // Tracks the in-flight orchestration turn. Completion is driven by whichever
+  // of (HTTP response | "ai-orchestration-complete" socket event) lands first;
+  // the other becomes a no-op via the `done` flag.
+  const turnRef = useRef(null);
+  // The modal component stays mounted across open/close, so when it closes,
+  // abandon any in-flight turn and clear the spinner — otherwise a stale
+  // completion could surface against a fresh reopen.
+  useEffect(() => {
+    if (!isOpen) {
+      turnRef.current = null;
+      setIsLoading(false);
+    }
+  }, [isOpen]);
   const projects = useSelector(selectProjects);
   const connections = useSelector(selectConnections);
   const datasets = useSelector(selectDatasetsNoDrafts);
@@ -390,14 +407,42 @@ function AiModal({ isOpen, onClose }) {
       }
     };
 
+    // Authoritative completion signal from the server: the answer is persisted
+    // and the turn is done. Clears the spinner and refetches even if the long
+    // orchestrate HTTP response never arrives — the fix for the chat getting
+    // stuck on "computing" until a manual refresh.
+    const handleOrchestrationComplete = (data) => {
+      const turn = turnRef.current;
+      if (!turn || turn.done) return; // no in-flight turn, or HTTP already settled it
+      // Ignore completions that aren't for this client's current turn (another
+      // tab's turn, or a delayed event from a previous turn in this tab).
+      if (data?.turnId != null && data.turnId !== turn.id) return;
+      turn.done = true;
+      const convId = data?.conversationId || turn.conversationId || conversationRef.current?.id;
+      if (data?.error) {
+        const msg = data?.errorMessage
+          ? `Sorry, I encountered an error: ${data.errorMessage}`
+          : "Sorry, I encountered an error finishing your request.";
+        toast.error(data?.errorMessage || "Edison ran into an error finishing your request.");
+        // Leave a persistent in-thread error bubble (matches the HTTP error path).
+        setLocalMessages(prev => [...prev, { role: "assistant", content: msg, isError: true }]);
+        setProgressEvents([]);
+      } else {
+        _finalizeTurnFromServer(convId).catch(() => {});
+      }
+      setIsLoading(false);
+    };
+
     initSocket();
     socketClient.on("conversation-created", handleConversationCreated);
     socketClient.on("conversation-updated", handleConversationUpdated);
+    socketClient.on("ai-orchestration-complete", handleOrchestrationComplete);
 
     return () => {
       isMounted = false;
       socketClient.off("conversation-created", handleConversationCreated);
       socketClient.off("conversation-updated", handleConversationUpdated);
+      socketClient.off("ai-orchestration-complete", handleOrchestrationComplete);
       // Note: We don't disconnect the socket here - it's a singleton that stays connected
       // This allows seamless reconnection when modal reopens
     };
@@ -537,6 +582,34 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
+  // Pull the freshly-persisted conversation from the server and settle the UI.
+  // Shared by the HTTP response path and the socket completion safety net, so a
+  // turn finishes correctly even if the long orchestrate HTTP response is lost.
+  // Only swaps the displayed conversation when the user is still viewing it, so
+  // a late completion can't hijack a conversation they've since navigated away from.
+  const _finalizeTurnFromServer = async (conversationId) => {
+    if (!conversationId) return;
+    const updated = await getAiConversation(conversationId, team.id);
+    if (updated?.conversation) {
+      const viewing = conversationRef.current?.id;
+      // Only swap the displayed conversation when the user is still viewing this
+      // exact one — never adopt it onto a blank/New Conversation screen or a
+      // conversation they've navigated to since.
+      if (`${viewing}` === `${conversationId}`) {
+        setConversation(updated.conversation);
+        setLocalMessages([]);
+        setProgressEvents([]);
+        // Refresh updated charts in the background — never gate the spinner on them.
+        const updatedCharts = _getUpdatedChartIds(updated.conversation.full_history);
+        updatedCharts.forEach(({ chartId, projectId }) => {
+          fetchedChartsRef.current.add(chartId);
+          fetchChartData(chartId, projectId, { isUpdate: true });
+        });
+      }
+    }
+    loadConversations();
+  };
+
   const _onAskAi = async (e, overrideQuestion) => {
     if (e?.preventDefault) e.preventDefault();
     const sourceQuestion = typeof overrideQuestion === "string" ? overrideQuestion : question;
@@ -574,147 +647,127 @@ function AiModal({ isOpen, onClose }) {
     });
     setContextSearch("");
 
+    // Mark this turn in-flight so the HTTP response and the socket
+    // "ai-orchestration-complete" event coordinate: whichever lands first
+    // finalizes the turn; the other becomes a no-op via `done`.
+    const myTurn = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      conversationId: conversation?.id || null,
+      done: false,
+    };
+    turnRef.current = myTurn;
+
     try {
-      // If no conversation exists, create it immediately and switch to conversation view
+      let response;
+
       if (!conversation || conversation.isTemporary) {
-        // Add user message to local messages immediately
+        // New conversation: show the user's message + a temporary conversation
+        // immediately. The backend creates the real conversation and emits its
+        // id via "conversation-created" (handled in the socket effect above).
         setLocalMessages([userMessage]);
-        
-        // Create a temporary conversation object to show in UI
+
         const tempConversation = {
-          id: conversation?.id || null, // Keep ID if already set by socket
+          id: conversation?.id || null, // keep id if the socket already set it
           title: "New Conversation",
           full_history: [],
           createdAt: new Date().toISOString(),
           message_count: 1,
           isTemporary: true
         };
-        
         setConversation(tempConversation);
-        
-        // Make the API call - backend creates conversation immediately
-        const response = await orchestrateAi(
-          team.id,
-          currentQuestion,
-          [],
-          tempConversation.id, // Use the ID if we already have it from socket
-          context
-        );
 
-        // Validate response structure
-        if (!response || !response.orchestration || !response.orchestration.message) {
-          throw new Error("Invalid response from AI");
-        }
-
-        // Add AI response to local messages
-        const aiMessage = {
-          role: "assistant",
-          content: response.orchestration.message
-        };
-        setLocalMessages(prev => [...prev, aiMessage]);
-
-        _notifyAiComplete(response.orchestration.message, response.orchestration.aiConversationId || conversation?.id);
-
-        // Update with real conversation data in the background
-        if (response.orchestration?.aiConversationId) {
-          await loadConversations();
-          const updatedConversations = await getAiConversations(team.id);
-          const newConversation = updatedConversations.conversations.find(
-            c => c.id === response.orchestration.aiConversationId
-          );
-          if (newConversation) {
-            // Fetch the full conversation with history from database
-            // This is important for follow-up messages to have complete context
-            const fullConversation = await getAiConversation(newConversation.id, team.id);
-            
-            if (fullConversation?.conversation) {
-              // Update conversation with complete data including full_history
-              setConversation({
-                ...fullConversation.conversation,
-                id: newConversation.id,
-                isTemporary: false
-              });
-
-              // Clear localMessages and progress events since they're now in full_history
-              setLocalMessages([]);
-              setProgressEvents([]);
-
-              // Immediately refresh any charts that were updated in this round
-              const updatedCharts = _getUpdatedChartIds(fullConversation.conversation.full_history);
-              for (const { chartId, projectId } of updatedCharts) {
-                fetchedChartsRef.current.add(chartId);
-                await fetchChartData(chartId, projectId, { isUpdate: true });
-              }
-            }
-          }
-        }
+        response = await orchestrateAi(team.id, currentQuestion, [], tempConversation.id, context, { clientTurnId: myTurn.id });
       } else {
-        // Show the user's message in the chat immediately. It gets cleared
-        // once the server response refreshes full_history below.
+        // Existing conversation: show the user's message immediately, then send
+        // the latest history so the orchestrator has full context.
         setLocalMessages([userMessage]);
 
-        // Existing conversation - get complete history from database
         const latestConversation = await getAiConversation(conversation.id, team.id);
         const conversationHistory = latestConversation?.conversation?.full_history || [];
 
-        const response = await orchestrateAi(
-          team.id,
-          currentQuestion,
-          conversationHistory,
-          conversation.id,
-          context
-        );
-
-        // Validate response structure
-        if (!response || !response.orchestration || !response.orchestration.message) {
-          throw new Error("Invalid response from AI");
-        }
-
-        _notifyAiComplete(response.orchestration.message, conversation.id);
-
-        // Refresh conversation with updated history from database
-        const updatedConversation = await getAiConversation(conversation.id, team.id);
-        if (updatedConversation?.conversation) {
-          setConversation(updatedConversation.conversation);
-          // Local user bubble is now in full_history; clear the placeholder.
-          setLocalMessages([]);
-
-          // Immediately refresh any charts that were updated in this round
-          const updatedCharts = _getUpdatedChartIds(updatedConversation.conversation.full_history);
-          for (const { chartId, projectId } of updatedCharts) {
-            fetchedChartsRef.current.add(chartId);
-            await fetchChartData(chartId, projectId, { isUpdate: true });
-          }
-        }
-
-        // Refresh conversations list
-        await loadConversations();
+        response = await orchestrateAi(team.id, currentQuestion, conversationHistory, conversation.id, context, { clientTurnId: myTurn.id });
       }
 
-      // Clear progress events
-      setProgressEvents([]);
+      // This turn is stale if the socket event already finalized it (done), or
+      // the user navigated away / started another turn while we awaited
+      // (turnRef no longer points at us). In either case, don't render/finalize.
+      if (myTurn.done || turnRef.current !== myTurn) return;
+      myTurn.done = true;
 
-    } catch (error) {
-      toast.error(error.message);
-      const errorMessage = {
+      if (!response || !response.orchestration || !response.orchestration.message) {
+        throw new Error("Invalid response from AI");
+      }
+
+      const finishedConversationId = response.orchestration.aiConversationId
+        || conversationRef.current?.id || conversation?.id;
+
+      // Render the answer and stop the spinner immediately — the conversation /
+      // chart refresh below must never keep the user stuck on "computing".
+      setLocalMessages(prev => [...prev, {
         role: "assistant",
-        content: `Sorry, I encountered an error: ${error.message}`,
-        isError: true
-      };
+        content: response.orchestration.message,
+      }]);
+      _notifyAiComplete(response.orchestration.message, finishedConversationId);
+      setIsLoading(false);
 
-      if (conversation) {
-        setLocalMessages(prev => [...prev, errorMessage]);
+      // Settle canonical state (full_history + charts + sidebar) in the background.
+      _finalizeTurnFromServer(finishedConversationId).catch(() => {});
+    } catch (error) {
+      if (myTurn.done) {
+        // Already finalized by the socket completion event — ignore a late HTTP failure.
+      } else if (error.name === "AbortError") {
+        // The long request was aborted client-side after the deadline. The server
+        // may still be finishing; the socket completion event will finalize it.
+        // Meanwhile, try to recover an answer that was already persisted.
+        let recovered = false;
+        const convId = conversationRef.current?.id || conversation?.id;
+        if (convId) {
+          try {
+            const latest = await getAiConversation(convId, team.id);
+            const history = latest?.conversation?.full_history || [];
+            if (history.length && history[history.length - 1].role === "assistant") {
+              myTurn.done = true;
+              // Settle via the shared finalizer so charts + sidebar refresh too.
+              await _finalizeTurnFromServer(convId);
+              recovered = true;
+            }
+          } catch (e) { /* ignore — fall through to the notice */ }
+        }
+        if (!recovered) {
+          // Leave the turn open so the socket completion event can still finalize it.
+          setProgressEvents([]);
+          toast("Edison is taking longer than usual — I'll update this as soon as it's ready.", { icon: "⏳" });
+        }
       } else {
-        // If conversation creation failed, go back to welcome screen
-        setConversation(null);
-        setLocalMessages([]);
+        myTurn.done = true;
+        toast.error(error.message);
+        const errorMessage = {
+          role: "assistant",
+          content: `Sorry, I encountered an error: ${error.message}`,
+          isError: true
+        };
+        if (conversation) {
+          setLocalMessages(prev => [...prev, errorMessage]);
+        } else {
+          // If conversation creation failed, go back to welcome screen
+          setConversation(null);
+          setLocalMessages([]);
+        }
+        setProgressEvents([]);
       }
-
-      // Clear progress events on error
-      setProgressEvents([]);
+    } finally {
+      // Only act if this is still the active turn — a newer turn submitted after
+      // we cleared the spinner early must keep its own loading state and slot.
+      if (turnRef.current === myTurn) {
+        setIsLoading(false);
+        // Release the turn once settled; if we're still waiting on the socket
+        // completion event (abort without recovery), keep it so that handler
+        // can finalize the turn when it arrives.
+        if (myTurn.done) {
+          turnRef.current = null;
+        }
+      }
     }
-
-    setIsLoading(false);
   };
 
   const _onSelectConversation = async (conversationId) => {
@@ -2079,6 +2132,10 @@ function AiModal({ isOpen, onClose }) {
                         setProgressEvents([]);
                         setCreatedCharts([]);
                         fetchedChartsRef.current.clear();
+                        // Abandon any in-flight turn so its late completion can't
+                        // hijack the fresh blank screen.
+                        turnRef.current = null;
+                        setIsLoading(false);
                         setSelectedContext({
                           multiSelect: [],
                           singleSelect: null

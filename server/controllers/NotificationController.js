@@ -1,5 +1,6 @@
 const db = require("../models/models");
 const socketManager = require("../modules/socketManager");
+const pushService = require("../modules/pushService");
 
 class NotificationController {
   findByTeamUser(teamId, userId) {
@@ -31,6 +32,24 @@ class NotificationController {
       .then((created) => this.findById(created.id))
       .then((notification) => {
         socketManager.emitToUser(notification.user_id, "notification-created", notification.toJSON());
+
+        // Also deliver via Web Push so backgrounded / closed / secondary devices
+        // are reached. Fire-and-forget: pushService is best-effort, gates on the
+        // user's master preference, and the service worker suppresses the OS
+        // notification when a focused tab is already showing the in-app one.
+        const meta = notification.meta || {};
+        pushService.sendToUser(notification.user_id, {
+          title: notification.title,
+          body: notification.message || "",
+          tag: meta.conversationId ? `edison-${meta.conversationId}` : `notif-${notification.id}`,
+          data: {
+            notificationId: notification.id,
+            type: notification.type,
+            conversationId: meta.conversationId || null,
+            url: "/",
+          },
+        });
+
         return notification;
       })
       .catch((error) => new Promise((resolve, reject) => reject(error)));

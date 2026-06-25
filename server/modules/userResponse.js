@@ -11,5 +11,7 @@ module.exports = (user) => {
     User2fas: user.User2fas,
     PinnedDashboards: user.PinnedDashboards,
     mustChangePassword: user.mustChangePassword || false,
+    // Default to enabled for legacy rows that predate the column.
+    pushNotificationsEnabled: user.pushNotificationsEnabled !== false,
   };
 };

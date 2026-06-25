@@ -33,7 +33,10 @@ export async function getAiConversation(conversationId, teamId) {
   return response.json();
 }
 
-export async function orchestrateAi(teamId, question, conversationHistory = [], aiConversationId, context = null) {
+export async function orchestrateAi(
+  teamId, question, conversationHistory = [], aiConversationId, context = null,
+  { timeoutMs = 300000, clientTurnId } = {}
+) {
   const token = getAuthToken();
   const url = `${API_HOST}/ai/orchestrate`;
   const headers = new Headers({
@@ -47,21 +50,36 @@ export async function orchestrateAi(teamId, question, conversationHistory = [], 
     question,
     conversationHistory,
     aiConversationId,
-    context
+    context,
+    // Echoed back in the "ai-orchestration-complete" socket event so the client
+    // can match a completion to the exact turn that issued it.
+    clientTurnId
   };
 
-  const response = await fetch(url, {
-    headers,
-    method: "POST",
-    body: JSON.stringify(body)
-  });
+  // Orchestration can run for minutes; without a deadline a dropped/idle
+  // connection (proxy/LB timeout) leaves the fetch hanging forever and the UI
+  // stuck on "computing". Abort after timeoutMs so the caller can recover (the
+  // answer is persisted server-side and also signalled over the socket).
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || "Failed to orchestrate AI");
+  try {
+    const response = await fetch(url, {
+      headers,
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || "Failed to orchestrate AI");
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
   }
-
-  return response.json();
 }
 
 export async function renameAiConversation(conversationId, teamId, title) {

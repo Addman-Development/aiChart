@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from "react";
 import {
   Button, Divider, Input, CircularProgress, Modal, Spacer, ModalHeader, ModalBody, ModalFooter, ModalContent, Chip, Table, TableHeader, TableColumn, TableBody, TableRow, TableCell,
-  Alert,
+  Alert, Switch,
 } from "@heroui/react";
 import toast, { Toaster } from "react-hot-toast";
-import { LuClipboardCheck, LuClipboardCopy, LuShieldCheck, LuTrash } from "react-icons/lu";
+import { LuBell, LuClipboardCheck, LuClipboardCopy, LuShieldCheck, LuTrash } from "react-icons/lu";
 
 import {
   updateUser, deleteUser, requestEmailUpdate, updateEmail, selectUser, get2faAppCode, verify2faApp, get2faMethods, remove2faMethod, changePassword
 } from "../../slices/user";
+import {
+  enablePushOnThisDevice, disablePushOnThisDevice, getDeviceStatus,
+} from "../../modules/pushNotifications";
 import { useTheme } from "../../modules/ThemeContext";
 import { useNavigate } from "react-router";
 import { useDispatch, useSelector } from "react-redux";
@@ -40,6 +43,9 @@ function ManageUser() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [pushPref, setPushPref] = useState(true);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushStatus, setPushStatus] = useState({ supported: true, permission: "default", subscribed: false });
 
   const userProp = useSelector(selectUser);
   const authMethods = useSelector((state) => state.user.auths);
@@ -70,6 +76,88 @@ function ManageUser() {
 
     setLoading(false);
     setUser({ name: userProp.name });
+  };
+
+  // Keep the toggle mirrored to the server-side master preference.
+  useEffect(() => {
+    setPushPref(userProp.pushNotificationsEnabled !== false);
+  }, [userProp.pushNotificationsEnabled]);
+
+  // Snapshot this device's push capability/permission/subscription for the hint.
+  useEffect(() => {
+    let active = true;
+    getDeviceStatus().then((status) => { if (active) setPushStatus(status); });
+    return () => { active = false; };
+  }, []);
+
+  const _refreshPushStatus = async () => {
+    const status = await getDeviceStatus();
+    setPushStatus(status);
+  };
+
+  const _pushHelperText = () => {
+    if (!pushStatus.supported) {
+      return "Push notifications aren't supported in this browser. On mobile, install the app to your home screen first.";
+    }
+    if (pushStatus.permission === "denied") {
+      return "Notifications are blocked for this site in your browser settings. Re-enable them there to receive push on this device.";
+    }
+    if (!pushPref) {
+      return "Push notifications are off. Turn them on to get alerts on your devices when Edison finishes a task.";
+    }
+    if (pushStatus.subscribed) {
+      return "This device is set up to receive push notifications.";
+    }
+    return "This device isn't set up yet — use “Enable on this device” below.";
+  };
+
+  const _toastPushResult = (result, okMessage) => {
+    if (result.ok) {
+      toast.success(okMessage);
+    } else if (result.reason === "denied") {
+      toast.error("Notifications are blocked in your browser settings");
+    } else if (result.reason === "not-configured") {
+      toast.error("Push notifications aren't available on this server");
+    } else if (result.reason === "unsupported" || result.reason === "no-sw") {
+      toast("This device can't receive push, but your other devices will.", { icon: "ℹ️" });
+    } else if (result.reason === "dismissed") {
+      toast("Notification permission was dismissed");
+    } else {
+      toast.error("Couldn't enable push on this device");
+    }
+  };
+
+  const _onTogglePush = async (selected) => {
+    setPushBusy(true);
+    setPushPref(selected); // optimistic
+    try {
+      if (selected) {
+        const result = await enablePushOnThisDevice();
+        await dispatch(updateUser({ user_id: userProp.id, data: { pushNotificationsEnabled: true } })).unwrap();
+        _toastPushResult(result, "Push notifications enabled");
+      } else {
+        await disablePushOnThisDevice();
+        await dispatch(updateUser({ user_id: userProp.id, data: { pushNotificationsEnabled: false } })).unwrap();
+        toast.success("Push notifications disabled");
+      }
+    } catch (e) {
+      setPushPref(!selected); // revert on persistence failure
+      toast.error("Couldn't update notification settings");
+    } finally {
+      await _refreshPushStatus();
+      setPushBusy(false);
+    }
+  };
+
+  const _onEnableThisDevice = async () => {
+    setPushBusy(true);
+    try {
+      const result = await enablePushOnThisDevice();
+      _toastPushResult(result, "This device is set up for push notifications");
+    } finally {
+      await _refreshPushStatus();
+      setPushBusy(false);
+    }
   };
 
   const _onUpdateUser = () => {
@@ -326,6 +414,53 @@ function ManageUser() {
           {successEmail ? "We sent you an email" : "Update email" }
         </Button>
       </div>
+
+      <Spacer y={4} />
+      <Divider />
+      <Spacer y={4} />
+
+      <div className="flex flex-col gap-1">
+        <div className="text-lg font-semibold font-tw flex items-center gap-2">
+          <LuBell size={18} /> Notifications
+        </div>
+        <div className="text-sm text-gray-500">
+          Receive push notifications on your devices when Edison finishes a task or something needs your attention.
+        </div>
+      </div>
+      <Spacer y={3} />
+      <div className="flex flex-row items-center gap-3">
+        <Switch
+          isSelected={pushPref}
+          isDisabled={pushBusy}
+          onValueChange={_onTogglePush}
+          size="sm"
+        >
+          Push notifications
+        </Switch>
+        {pushBusy && (
+          <CircularProgress size="sm" aria-label="Updating notification settings" className="max-w-min" />
+        )}
+      </div>
+      <Spacer y={1} />
+      <div className="text-xs text-foreground-500 max-w-md">
+        {_pushHelperText()}
+      </div>
+      {pushPref && pushStatus.supported && pushStatus.permission !== "denied" && !pushStatus.subscribed && (
+        <>
+          <Spacer y={2} />
+          <div>
+            <Button
+              size="sm"
+              variant="flat"
+              color="primary"
+              onPress={_onEnableThisDevice}
+              isLoading={pushBusy}
+            >
+              Enable on this device
+            </Button>
+          </div>
+        </>
+      )}
 
       <Spacer y={4} />
       <Divider />
