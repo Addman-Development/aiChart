@@ -14,6 +14,7 @@ const accessRequest = require("./AccessRequestRoute");
 const feedback = require("./FeedbackRoute");
 const notification = require("./NotificationRoute");
 const pushSubscription = require("./PushSubscriptionRoute");
+const embed = require("./EmbedRoute");
 
 module.exports = {
   team,
@@ -32,4 +33,5 @@ module.exports = {
   feedback,
   notification,
   pushSubscription,
+  embed,
 };
