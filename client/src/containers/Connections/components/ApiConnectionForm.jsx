@@ -95,6 +95,16 @@ function ApiConnectionForm(props) {
     const newTestResult = {};
     return dispatch(testRequest({ team_id: team.id, connection: data }))
       .then((response) => {
+        if (!response?.payload) {
+          // The request itself failed (network / proxy-gateway / TLS) before any
+          // response came back. Surface it instead of throwing on an undefined
+          // payload, which would leave the spinner stuck with no message shown.
+          newTestResult.status = "Failed";
+          newTestResult.body = `Could not reach the server to run the test — the request failed before any response came back (likely a network, proxy/gateway, or TLS issue, not a database error).${response?.error?.message ? ` (${response.error.message})` : ""}`;
+          setTestResult(newTestResult);
+          return Promise.resolve(newTestResult);
+        }
+
         newTestResult.status = response.payload.status;
         newTestResult.body = typeof response.payload.body === "object"
           ? JSON.stringify(response.payload.body, null, 2)

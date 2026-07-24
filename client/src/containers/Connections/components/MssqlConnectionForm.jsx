@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import {
-  Button, Input, Spacer, Chip, Tabs, Tab, Divider, Switch,
+  Button, Input, Spacer, Chip, Tabs, Tab, Divider, Switch, Select, SelectItem,
   Alert,
 } from "@heroui/react";
 import AceEditor from "react-ace";
@@ -16,7 +16,7 @@ import Container from "../../../components/Container";
 import Row from "../../../components/Row";
 import Text from "../../../components/Text";
 import { useTheme } from "../../../modules/ThemeContext";
-import { testRequest } from "../../../slices/connection";
+import { testRequest, getConnectionSchemas } from "../../../slices/connection";
 import { selectTeam } from "../../../slices/team";
 
 function MssqlConnectionForm(props) {
@@ -30,6 +30,9 @@ function MssqlConnectionForm(props) {
   const [errors, setErrors] = useState({});
   const [formStyle, setFormStyle] = useState("string");
   const [testResult, setTestResult] = useState(null);
+  const [availableSchemas, setAvailableSchemas] = useState([]);
+  const [schemasLoading, setSchemasLoading] = useState(false);
+  const [schemasError, setSchemasError] = useState(null);
 
   const { isDark } = useTheme();
   const dispatch = useDispatch();
@@ -55,10 +58,39 @@ function MssqlConnectionForm(props) {
     }
   };
 
+  const _onLoadSchemas = async () => {
+    setSchemasError(null);
+    setSchemasLoading(true);
+    try {
+      const res = await dispatch(getConnectionSchemas({ team_id: team.id, connection }));
+      if (Array.isArray(res.payload)) {
+        setAvailableSchemas(res.payload);
+        if (res.payload.length === 0) {
+          setSchemasError("No selectable schemas found on this connection.");
+        }
+      } else {
+        setSchemasError(res.error?.message || "Could not load schemas. Check the connection details and try again.");
+      }
+    } catch (e) {
+      setSchemasError("Could not load schemas. Check the connection details and try again.");
+    }
+    setSchemasLoading(false);
+  };
+
   const _onTestRequest = async (data) => {
     const newTestResult = {};
 
     const response = await dispatch(testRequest({ team_id: team.id, connection: data }));
+
+    if (!response?.payload) {
+      // The request itself failed (network / proxy-gateway / TLS) before any
+      // response came back. Surface it instead of throwing on an undefined
+      // payload, which would leave the spinner stuck with no message shown.
+      newTestResult.status = "Failed";
+      newTestResult.body = `Could not reach the server to run the test — the request failed before any response came back (likely a network, proxy/gateway, or TLS issue, not a database error).${response?.error?.message ? ` (${response.error.message})` : ""}`;
+      setTestResult(newTestResult);
+      return Promise.resolve(newTestResult);
+    }
 
     newTestResult.status = response.payload.status;
     newTestResult.body = typeof response.payload.body === "object"
@@ -309,6 +341,48 @@ function MssqlConnectionForm(props) {
             <Spacer x={1} />
             <Text>{"For security reasons, connect to your SQL Server database with read-only credentials"}</Text>
           </Row>
+        </div>
+
+        <Spacer y={4} />
+        <div>
+          <div className="text-sm font-medium mb-1">{"Schemas"}</div>
+          <div className="text-xs text-foreground-500 mb-2">
+            {"Restrict which database schemas this connection exposes to the AI and the schema browser. Leave empty to include all non-system schemas."}
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="bordered"
+              size="sm"
+              onClick={_onLoadSchemas}
+              isLoading={schemasLoading}
+            >
+              {availableSchemas.length > 0 ? "Reload schemas" : "Load available schemas"}
+            </Button>
+            {availableSchemas.length > 0 && (
+              <Select
+                variant="bordered"
+                label="Included schemas"
+                size="sm"
+                selectionMode="multiple"
+                selectedKeys={new Set(connection.selectedSchemas || [])}
+                onSelectionChange={(keys) => setConnection({ ...connection, selectedSchemas: Array.from(keys) })}
+                className="flex-1 min-w-[240px]"
+                aria-label="Select schemas to include"
+              >
+                {availableSchemas.map((s) => (
+                  <SelectItem key={s} textValue={s}>{s}</SelectItem>
+                ))}
+              </Select>
+            )}
+          </div>
+          {schemasError && (
+            <div className="text-xs text-danger mt-1">{schemasError}</div>
+          )}
+          {connection.selectedSchemas?.length > 0 && (
+            <div className="text-xs text-foreground-500 mt-1">
+              {`Including ${connection.selectedSchemas.length} schema${connection.selectedSchemas.length > 1 ? "s" : ""}: ${connection.selectedSchemas.join(", ")}`}
+            </div>
+          )}
         </div>
 
         {addError && (

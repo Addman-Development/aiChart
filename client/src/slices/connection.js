@@ -79,6 +79,29 @@ export const saveConnection = createAsyncThunk(
   }
 );
 
+// Fetch the list of schema names available on a SQL connection so the form can
+// offer them for selection. Sends the current (possibly unsaved) connection
+// params, mirroring testRequest.
+export const getConnectionSchemas = createAsyncThunk(
+  "connection/getConnectionSchemas",
+  async ({ team_id, connection }) => {
+    const token = getAuthToken();
+    const url = `${API_HOST}/team/${team_id}/connections/${connection.type}/schemas`;
+    const headers = new Headers({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    });
+    const body = JSON.stringify(connection);
+    const response = await fetch(url, { headers, method: "POST", body });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Failed to load schemas (${response.status})`);
+    }
+    return response.json();
+  }
+);
+
 export const addFilesToConnection = createAsyncThunk(
   "connection/addFilesToConnection",
   async ({ team_id, connection_id, files }) => {

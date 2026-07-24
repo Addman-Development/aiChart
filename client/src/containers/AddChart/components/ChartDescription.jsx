@@ -50,7 +50,7 @@ function ChartDescription(props) {
   };
 
   const _onCompleteTemplate = () => {
-    navigate(`/${teamId}/${projectId}/dashboard`);
+    navigate(`/dashboard/${projectId}`);
     setTimeout(() => {
       window.location.reload();
     }, 500);

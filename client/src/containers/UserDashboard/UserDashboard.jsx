@@ -95,11 +95,11 @@ function UserDashboard(props) {
 
         const welcome = new URLSearchParams(window.location.search).get("welcome");
         if (welcome) {
-          navigate(`/${selectedTeam?.id}/connection/new`);
+          navigate("/connections/new");
         }
       }
     }
-  }, [teamsLength]); // eslint-disable-line
+  }, [teamsLength]);
 
   const teamId = team?.id;
   const teamLoadRef = useRef(null);

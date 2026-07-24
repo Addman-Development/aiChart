@@ -34,6 +34,17 @@ async function _fetchRequest(options) {
     headers: { ...options.headers },
   };
 
+  // Optionally bound the request so an unreachable/slow host fails fast with a
+  // clean error instead of hanging (global fetch/undici has no default
+  // timeout). Callers that omit `timeout` keep the previous unbounded behavior
+  // (e.g. large data pulls); the connection *test* path sets a short bound.
+  let timeoutId = null;
+  if (options.timeout) {
+    const controller = new AbortController();
+    fetchOptions.signal = controller.signal;
+    timeoutId = setTimeout(() => controller.abort(), options.timeout);
+  }
+
   let url = options.url;
 
   // Handle query string parameters
@@ -69,7 +80,26 @@ async function _fetchRequest(options) {
     }
   }
 
-  const response = await fetch(url, fetchOptions);
+  let response;
+  try {
+    response = await fetch(url, fetchOptions);
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      const timeoutError = new Error(`Request timed out after ${options.timeout}ms`);
+      timeoutError.code = "ETIMEDOUT";
+      throw timeoutError;
+    }
+    // undici collapses network failures to a bare "fetch failed"; surface the
+    // underlying cause (ENOTFOUND / ECONNREFUSED / CERT_* …) so the caller and
+    // the user see a real reason instead of "fetch failed".
+    const reason = err?.cause?.message || err?.cause?.code || err?.message || String(err);
+    const netError = new Error(`Request failed: ${reason}`);
+    netError.cause = err;
+    if (err?.cause?.code) netError.code = err.cause.code;
+    throw netError;
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
   const body = await response.text();
 
   if (options.resolveWithFullResponse) {
@@ -350,9 +380,35 @@ class ConnectionController {
       .then(() => {
         return this.findById(id);
       })
+      .then((connection) => {
+        // For SQL connections, refresh the stored schema in the background so a
+        // changed schema allow-list takes effect immediately (the AI and schema
+        // browser read the stored `schema`). Best-effort: never block or fail
+        // the update on it.
+        if (connection && (connection.type === "postgres" || connection.type === "mssql")) {
+          this._refreshStoredSchema(connection).catch(() => {});
+        }
+        return connection;
+      })
       .catch((error) => {
         return new Promise((resolve, reject) => reject(error));
       });
+  }
+
+  async _refreshStoredSchema(connection) {
+    let dbConnection = null;
+    try {
+      dbConnection = await externalDbConnection(connection);
+      const schema = await this.getSchema(dbConnection, connection.selectedSchemas);
+      await db.Connection.update({ schema }, { where: { id: connection.id } });
+    } finally {
+      if (dbConnection) {
+        try {
+          if (dbConnection.sshTunnel) dbConnection.sshTunnel.close();
+          await dbConnection.close();
+        } catch (e) { /* ignore cleanup errors */ }
+      }
+    }
   }
 
   getConnectionUrl(id) {
@@ -422,6 +478,7 @@ class ConnectionController {
       method: "GET",
       headers: {},
       resolveWithFullResponse: true,
+      timeout: 15000, // bound the test so an unreachable host fails fast
     };
 
     let globalHeaders = connection.options;
@@ -516,12 +573,19 @@ class ConnectionController {
       });
   }
 
-  async getSchema(dbConnection) {
+  async getSchema(dbConnection, selectedSchemas = null) {
     const dialect = dbConnection.getDialect();
 
     // For MSSQL, use a single INFORMATION_SCHEMA query instead of N+1 describeTable calls
     if (dialect === "mssql") {
-      return this._getMssqlSchema(dbConnection);
+      return this._getMssqlSchema(dbConnection, selectedSchemas);
+    }
+
+    // For Postgres, enumerate ALL non-system schemas in one query. Sequelize's
+    // showAllTables() is hardcoded to the `public` schema and excludes views, so
+    // objects in any other schema (or any view/matview) would be invisible.
+    if (dialect === "postgres") {
+      return this._getPostgresSchema(dbConnection, selectedSchemas);
     }
 
     const tables = await dbConnection.getQueryInterface().showAllTables();
@@ -565,27 +629,107 @@ class ConnectionController {
     };
   }
 
-  async _getMssqlSchema(dbConnection) {
+  async _getPostgresSchema(dbConnection, selectedSchemas = null) {
+    // Enumerate ordinary/partitioned/foreign tables, views AND materialized
+    // views across every non-system schema. Sequelize's showAllTables() only
+    // looks at the `public` schema and excludes views, so anything elsewhere is
+    // invisible. Uses pg_catalog rather than information_schema because
+    // information_schema does not expose materialized views. Single query, so no
+    // N+1 describeTable round-trips.
+    // When the connection restricts to specific schemas, list only those;
+    // otherwise fall back to every non-system schema.
+    const hasFilter = Array.isArray(selectedSchemas) && selectedSchemas.length > 0;
+    const schemaClause = hasFilter
+      ? "AND n.nspname IN (:selectedSchemas)"
+      : `AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+         AND n.nspname NOT LIKE 'pg_toast%'
+         AND n.nspname NOT LIKE 'pg_temp%'`;
+    const results = await dbConnection.query(
+      `SELECT
+         n.nspname AS table_schema,
+         c.relname AS table_name,
+         c.relkind AS rel_kind,
+         c.reltuples AS approx_rows,
+         a.attname AS column_name,
+         format_type(a.atttypid, a.atttypmod) AS data_type
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+       WHERE c.relkind IN ('r', 'p', 'f', 'v', 'm')
+         AND a.attnum > 0
+         AND NOT a.attisdropped
+         ${schemaClause}
+       ORDER BY n.nspname, c.relname, a.attnum`,
+      {
+        type: Sequelize.QueryTypes.SELECT,
+        replacements: hasFilter ? { selectedSchemas } : {},
+      }
+    );
+
+    const tables = [];
+    const formattedSchema = {};
+    const rowCounts = {};
+    const seen = new Set();
+
+    for (const row of results) {
+      // Keep `public` objects unqualified (preserving existing behavior and any
+      // datasets already built against them); qualify everything else as
+      // schema.table so previously-hidden objects are addressable and names
+      // don't collide across schemas.
+      const fullName = row.table_schema === "public"
+        ? row.table_name
+        : `${row.table_schema}.${row.table_name}`;
+      if (!seen.has(fullName)) {
+        seen.add(fullName);
+        tables.push(fullName);
+        formattedSchema[fullName] = {};
+        // Approximate row-count hint from pg_catalog (no table scan). Reliable
+        // only for real tables ('r'/'p') and materialized views ('m'); plain
+        // views ('v') and foreign tables ('f') report null (unknown) rather than
+        // be mislabeled empty. On PG14+ reltuples is -1 for never-analyzed
+        // tables, which also maps to null. Lets the AI skip empty tables without
+        // hiding them (they light up as soon as they hold data).
+        const countable = row.rel_kind === "r" || row.rel_kind === "p" || row.rel_kind === "m";
+        const approx = Number(row.approx_rows);
+        rowCounts[fullName] = (countable && Number.isFinite(approx) && approx >= 0)
+          ? Math.round(approx)
+          : null;
+      }
+      formattedSchema[fullName][row.column_name] = row.data_type || "UNKNOWN";
+    }
+
+    return {
+      tables,
+      description: formattedSchema,
+      rowCounts,
+    };
+  }
+
+  async _getMssqlSchema(dbConnection, selectedSchemas = null) {
     let results;
+    const hasFilter = Array.isArray(selectedSchemas) && selectedSchemas.length > 0;
+    const replacements = hasFilter ? { selectedSchemas } : {};
 
     try {
-      // Try filtering out empty tables using sys.dm_db_partition_stats
-      // Include DATA_TYPE for date-column detection
+      // Annotate each table with its row count from sys.dm_db_partition_stats so
+      // the AI can avoid querying empty tables — without hiding them (they stay
+      // listed and become usable as soon as they hold data). Include DATA_TYPE
+      // for date-column detection.
       results = await dbConnection.query(
-        `SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE
+        `SELECT c.TABLE_SCHEMA, c.TABLE_NAME, c.COLUMN_NAME, c.DATA_TYPE, tbl.ROW_COUNT
          FROM INFORMATION_SCHEMA.COLUMNS c
          INNER JOIN (
-           SELECT s.name AS TABLE_SCHEMA, t.name AS TABLE_NAME
+           SELECT s.name AS TABLE_SCHEMA, t.name AS TABLE_NAME, SUM(ps.row_count) AS ROW_COUNT
            FROM sys.tables t
            INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
            INNER JOIN sys.dm_db_partition_stats ps
              ON t.object_id = ps.object_id AND ps.index_id IN (0, 1)
+           ${hasFilter ? "WHERE s.name IN (:selectedSchemas)" : ""}
            GROUP BY s.name, t.name
-           HAVING SUM(ps.row_count) > 0
-         ) populated ON c.TABLE_SCHEMA = populated.TABLE_SCHEMA
-                     AND c.TABLE_NAME = populated.TABLE_NAME
+         ) tbl ON c.TABLE_SCHEMA = tbl.TABLE_SCHEMA
+              AND c.TABLE_NAME = tbl.TABLE_NAME
          ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION`,
-        { type: Sequelize.QueryTypes.SELECT }
+        { type: Sequelize.QueryTypes.SELECT, replacements }
       );
     } catch (err) {
       logger.warn(
@@ -597,13 +741,15 @@ class ConnectionController {
         `SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
          FROM INFORMATION_SCHEMA.COLUMNS
          WHERE TABLE_NAME NOT LIKE 'sys%'
+           ${hasFilter ? "AND TABLE_SCHEMA IN (:selectedSchemas)" : ""}
          ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION`,
-        { type: Sequelize.QueryTypes.SELECT }
+        { type: Sequelize.QueryTypes.SELECT, replacements }
       );
     }
 
     const tables = [];
     const formattedSchema = {};
+    const rowCounts = {};
     const seen = new Set();
 
     for (const row of results) {
@@ -612,6 +758,9 @@ class ConnectionController {
         seen.add(fullName);
         tables.push(fullName);
         formattedSchema[fullName] = {};
+        // ROW_COUNT is present on the partition-stats query; the
+        // INFORMATION_SCHEMA fallback has no count, so it maps to null (unknown).
+        rowCounts[fullName] = row.ROW_COUNT != null ? Number(row.ROW_COUNT) : null;
       }
       formattedSchema[fullName][row.COLUMN_NAME] = row.DATA_TYPE || "UNKNOWN";
     }
@@ -619,14 +768,54 @@ class ConnectionController {
     return {
       tables,
       description: formattedSchema,
+      rowCounts,
     };
+  }
+
+  // List the schema names available on a SQL connection, so the connection form
+  // can offer them for selection. `data` is the raw connection params (same
+  // shape used by testRequest), so this works before a connection is saved.
+  async listSchemas(data) {
+    if (data.type !== "postgres" && data.type !== "mssql") {
+      return [];
+    }
+    let dbConnection = null;
+    try {
+      dbConnection = await externalDbConnection(data);
+      if (dbConnection.getDialect() === "mssql") {
+        const rows = await dbConnection.query(
+          `SELECT name FROM sys.schemas
+           WHERE name NOT IN ('sys', 'INFORMATION_SCHEMA', 'guest')
+             AND name NOT LIKE 'db[_]%'
+           ORDER BY name`,
+          { type: Sequelize.QueryTypes.SELECT }
+        );
+        return rows.map((r) => r.name);
+      }
+      const rows = await dbConnection.query(
+        `SELECT nspname FROM pg_catalog.pg_namespace
+         WHERE nspname NOT IN ('pg_catalog', 'information_schema')
+           AND nspname NOT LIKE 'pg_toast%'
+           AND nspname NOT LIKE 'pg_temp%'
+         ORDER BY nspname`,
+        { type: Sequelize.QueryTypes.SELECT }
+      );
+      return rows.map((r) => r.nspname);
+    } finally {
+      if (dbConnection) {
+        try {
+          if (dbConnection.sshTunnel) dbConnection.sshTunnel.close();
+          await dbConnection.close();
+        } catch (e) { /* ignore cleanup errors */ }
+      }
+    }
   }
 
   async testPostgres(data) {
     let sqlDb;
     try {
       sqlDb = await externalDbConnection(data);
-      const schema = await this.getSchema(sqlDb);
+      const schema = await this.getSchema(sqlDb, data.selectedSchemas);
 
       return Promise.resolve({
         success: true,
@@ -646,7 +835,7 @@ class ConnectionController {
     let sqlDb;
     try {
       sqlDb = await externalDbConnection(data);
-      const schema = await this.getSchema(sqlDb);
+      const schema = await this.getSchema(sqlDb, data.selectedSchemas);
 
       return { success: true, schema };
     } catch (err) {
@@ -896,7 +1085,7 @@ class ConnectionController {
       dbConnection = await externalDbConnection(connection);
 
       // Update schema in the background
-      this.getSchema(dbConnection)
+      this.getSchema(dbConnection, connection.selectedSchemas)
         .then((schema) => {
           db.Connection.update({ schema }, { where: { id } });
         });
@@ -946,7 +1135,7 @@ class ConnectionController {
       dbConnection = await externalDbConnection(connection);
 
       // Update schema in the background
-      this.getSchema(dbConnection)
+      this.getSchema(dbConnection, connection.selectedSchemas)
         .then((schema) => {
           db.Connection.update({ schema }, { where: { id } });
         })

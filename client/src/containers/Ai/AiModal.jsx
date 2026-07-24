@@ -60,6 +60,7 @@ function AiModal({ isOpen, onClose }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSocketReady, setIsSocketReady] = useState(false);
   const [progressEvents, setProgressEvents] = useState([]);
+  const [streamingResponse, setStreamingResponse] = useState("");
   const [localMessages, setLocalMessages] = useState([]);
   const [teamUsage, setTeamUsage] = useState(null);
   const [createdCharts, setCreatedCharts] = useState([]);
@@ -108,6 +109,8 @@ function AiModal({ isOpen, onClose }) {
     if (!isOpen) {
       turnRef.current = null;
       setIsLoading(false);
+      setStreamingResponse("");
+      setProgressEvents([]);
     }
   }, [isOpen]);
   const projects = useSelector(selectProjects);
@@ -416,7 +419,10 @@ function AiModal({ isOpen, onClose }) {
       if (!turn || turn.done) return; // no in-flight turn, or HTTP already settled it
       // Ignore completions that aren't for this client's current turn (another
       // tab's turn, or a delayed event from a previous turn in this tab).
-      if (data?.turnId != null && data.turnId !== turn.id) return;
+      // Strict match (consistent with handleToken): ignore completions whose
+      // turnId doesn't equal the active turn — including a null turnId from the
+      // suggestion-action path, which must not finalize an unrelated real turn.
+      if (data?.turnId !== turn.id) return;
       turn.done = true;
       const convId = data?.conversationId || turn.conversationId || conversationRef.current?.id;
       if (data?.error) {
@@ -427,22 +433,45 @@ function AiModal({ isOpen, onClose }) {
         // Leave a persistent in-thread error bubble (matches the HTTP error path).
         setLocalMessages(prev => [...prev, { role: "assistant", content: msg, isError: true }]);
         setProgressEvents([]);
+        setStreamingResponse("");
       } else {
-        _finalizeTurnFromServer(convId).catch(() => {});
+        _finalizeTurnFromServer(convId, { adoptIfNew: true }).catch(() => {});
       }
       setIsLoading(false);
+    };
+
+    // Live assistant text deltas and turn-boundary resets, streamed to the
+    // user's room. Registered here (not in the conversation-scoped effect) so it
+    // is active before the client joins a brand-new conversation's room —
+    // otherwise that conversation's first-turn answer wouldn't stream. Matched
+    // to the active turn via turnRef so stale / other-turn deltas are ignored.
+    const handleToken = (data) => {
+      const turn = turnRef.current;
+      if (!turn) return;
+      // Strict match: only the active turn's deltas render (fail closed — a
+      // missing/mismatched turnId is dropped rather than appended).
+      if (data?.turnId !== turn.id) return;
+      if (data?.reset) {
+        setStreamingResponse("");
+        return;
+      }
+      if (typeof data?.delta === "string") {
+        setStreamingResponse(prev => prev + data.delta);
+      }
     };
 
     initSocket();
     socketClient.on("conversation-created", handleConversationCreated);
     socketClient.on("conversation-updated", handleConversationUpdated);
     socketClient.on("ai-orchestration-complete", handleOrchestrationComplete);
+    socketClient.on("ai-token", handleToken);
 
     return () => {
       isMounted = false;
       socketClient.off("conversation-created", handleConversationCreated);
       socketClient.off("conversation-updated", handleConversationUpdated);
       socketClient.off("ai-orchestration-complete", handleOrchestrationComplete);
+      socketClient.off("ai-token", handleToken);
       // Note: We don't disconnect the socket here - it's a singleton that stays connected
       // This allows seamless reconnection when modal reopens
     };
@@ -587,18 +616,26 @@ function AiModal({ isOpen, onClose }) {
   // turn finishes correctly even if the long orchestrate HTTP response is lost.
   // Only swaps the displayed conversation when the user is still viewing it, so
   // a late completion can't hijack a conversation they've since navigated away from.
-  const _finalizeTurnFromServer = async (conversationId) => {
+  const _finalizeTurnFromServer = async (conversationId, { adoptIfNew = false } = {}) => {
     if (!conversationId) return;
     const updated = await getAiConversation(conversationId, team.id);
     if (updated?.conversation) {
       const viewing = conversationRef.current?.id;
-      // Only swap the displayed conversation when the user is still viewing this
-      // exact one — never adopt it onto a blank/New Conversation screen or a
-      // conversation they've navigated to since.
-      if (`${viewing}` === `${conversationId}`) {
+      // Swap in the displayed conversation when the user is still viewing this
+      // exact one. Additionally, for this client's own just-finished turn
+      // (adoptIfNew), adopt it when they're still on the temporary/new
+      // conversation they submitted from — the "conversation-created" event that
+      // normally assigns the real id may have been missed, which would otherwise
+      // strand the answer on a never-updating temporary conversation. We never
+      // hijack a *different* real conversation navigated to since: that fails
+      // both checks because `viewing` is then a non-matching real id.
+      const stillViewingThis = `${viewing}` === `${conversationId}`;
+      const onNewConversation = adoptIfNew && !viewing;
+      if (stillViewingThis || onNewConversation) {
         setConversation(updated.conversation);
         setLocalMessages([]);
         setProgressEvents([]);
+        setStreamingResponse("");
         // Refresh updated charts in the background — never gate the spinner on them.
         const updatedCharts = _getUpdatedChartIds(updated.conversation.full_history);
         updatedCharts.forEach(({ chartId, projectId }) => {
@@ -621,11 +658,6 @@ function AiModal({ isOpen, onClose }) {
     // the user leaves the tab while Edison is working.
     _maybeRequestNotifyPermission();
 
-    const userMessage = {
-      role: "user",
-      content: sourceQuestion.trim()
-    };
-
     // Prepare context object (only multiSelect goes to context)
     let context = null;
     if (selectedContext.multiSelect.length > 0) {
@@ -634,12 +666,21 @@ function AiModal({ isOpen, onClose }) {
 
     setIsLoading(true);
     setProgressEvents([]);
-    let currentQuestion = sourceQuestion.trim();
+    setStreamingResponse("");
 
-    // Append singleSelect to the question text
+    // Build the text actually sent to the AI: the typed question plus any
+    // selected quick-reply suggestion. The user bubble below shows this same
+    // text, so a suggestion-only submit (no typed text) renders the user's
+    // prompt instead of an empty bubble.
+    let currentQuestion = sourceQuestion.trim();
     if (selectedContext.singleSelect) {
       currentQuestion += (currentQuestion ? "\n\n" : "") + selectedContext.singleSelect.label;
     }
+
+    const userMessage = {
+      role: "user",
+      content: currentQuestion
+    };
     setQuestion("");
     setSelectedContext({
       multiSelect: [],
@@ -711,7 +752,7 @@ function AiModal({ isOpen, onClose }) {
       setIsLoading(false);
 
       // Settle canonical state (full_history + charts + sidebar) in the background.
-      _finalizeTurnFromServer(finishedConversationId).catch(() => {});
+      _finalizeTurnFromServer(finishedConversationId, { adoptIfNew: true }).catch(() => {});
     } catch (error) {
       if (myTurn.done) {
         // Already finalized by the socket completion event — ignore a late HTTP failure.
@@ -728,7 +769,7 @@ function AiModal({ isOpen, onClose }) {
             if (history.length && history[history.length - 1].role === "assistant") {
               myTurn.done = true;
               // Settle via the shared finalizer so charts + sidebar refresh too.
-              await _finalizeTurnFromServer(convId);
+              await _finalizeTurnFromServer(convId, { adoptIfNew: true });
               recovered = true;
             }
           } catch (e) { /* ignore — fall through to the notice */ }
@@ -754,6 +795,7 @@ function AiModal({ isOpen, onClose }) {
           setLocalMessages([]);
         }
         setProgressEvents([]);
+        setStreamingResponse("");
       }
     } finally {
       // Only act if this is still the active turn — a newer turn submitted after
@@ -775,6 +817,11 @@ function AiModal({ isOpen, onClose }) {
     setShowConvoSidebar(false);
     setLocalMessages([]);
     setProgressEvents([]);
+    setStreamingResponse("");
+    // Abandon any in-flight turn so its late tokens/completion (delivered to the
+    // always-joined user room) can't stream a stale bubble onto the conversation
+    // we're switching to.
+    turnRef.current = null;
     setCreatedCharts([]);
     setAddedToDashboard({});
     fetchedChartsRef.current.clear();
@@ -815,6 +862,10 @@ function AiModal({ isOpen, onClose }) {
         });
         setLocalMessages([]);
         setProgressEvents([]);
+        setStreamingResponse("");
+        // Abandon the in-flight turn so its late tokens/completion can't stream a
+        // stale bubble onto the fresh conversation.
+        turnRef.current = null;
         setCreatedCharts([]);
         fetchedChartsRef.current.clear();
       }
@@ -1744,6 +1795,13 @@ function AiModal({ isOpen, onClose }) {
                     </ReactMarkdown>
                   </div>
                 )}
+                {operations.length > 0
+                  && (!finalMessage || !finalMessage.content || !finalMessage.content.trim())
+                  && (!suggestions || suggestions.length === 0) && (
+                  <div className="text-sm text-foreground-500 italic p-1">
+                    Edison finished working but didn&apos;t return a written answer — it may have hit its step limit or repeated errors. Try rephrasing your question, or use Continue to pick up from here.
+                  </div>
+                )}
                 {suggestions && suggestions.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-3">
                     {suggestions.map((suggestion) => (
@@ -1762,6 +1820,51 @@ function AiModal({ isOpen, onClose }) {
                   </div>
                 )}
                 {_renderMessageActions(assistantMsg, isLastAssistantGroup)}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Live assistant answer being streamed token-by-token. Rendered as plain text
+  // (no markdown re-parse per token) with a blinking caret; the fully rendered,
+  // persisted message replaces it once the turn finalizes. streamingResponse is
+  // cleared on every turn-end / view-change path, so it never lingers as stale
+  // text — and keeping it visible until finalize swaps in the persisted answer
+  // avoids a blank flash during the finalize round-trip.
+  const _renderStreamingResponse = () => {
+    if (!streamingResponse) return null;
+    // Mirror _parseMessage's cleanup so the live text matches the final render:
+    // strip a cb-actions suggestions block (including a partial one still
+    // streaming in at the end) and a leading "# title" line, which the persisted
+    // render removes. Otherwise the bubble briefly shows raw JSON / markdown.
+    let text = streamingResponse
+      .replace(/```cb-actions[\s\S]*$/, "")
+      .replace(/cb-actions\s*\{[\s\S]*$/, "");
+    if (text.startsWith("# ")) {
+      const nl = text.indexOf("\n");
+      text = nl === -1 ? "" : text.slice(nl + 1);
+    }
+    text = text.replace(/^\s+/, "");
+    if (!text) return null;
+
+    return (
+      <div className="flex justify-center mb-4 px-2 sm:px-4">
+        <div className="w-full max-w-full sm:max-w-[90%]">
+          <div className="px-3 py-3 sm:px-6 sm:py-4">
+            <div className="flex items-start gap-3">
+              <Avatar
+                className="shrink-0 aspect-square" icon={<LuBrainCircuit size={16} className="text-background" />}
+                size="sm"
+                color="primary"
+              />
+              <div className="flex-1">
+                <div className="text-sm whitespace-pre-wrap">
+                  {text}
+                  <span className="inline-block w-[2px] h-4 align-middle ml-0.5 bg-foreground-500 animate-pulse" />
+                </div>
               </div>
             </div>
           </div>
@@ -2130,6 +2233,7 @@ function AiModal({ isOpen, onClose }) {
                         setConversation(null);
                         setLocalMessages([]);
                         setProgressEvents([]);
+                        setStreamingResponse("");
                         setCreatedCharts([]);
                         fetchedChartsRef.current.clear();
                         // Abandon any in-flight turn so its late completion can't
@@ -2361,7 +2465,8 @@ function AiModal({ isOpen, onClose }) {
                         </div>
                       ))}
                       {_renderProgressEvents()}
-                      {isLoading && progressEvents.length === 0 && (
+                      {_renderStreamingResponse()}
+                      {isLoading && progressEvents.length === 0 && !streamingResponse && (
                         <div className="flex justify-center mb-4 px-2 sm:px-4">
                           <div className="w-full max-w-full sm:max-w-[90%]">
                             <div className="px-4 py-3">
@@ -2390,7 +2495,8 @@ function AiModal({ isOpen, onClose }) {
                         </div>
                       )}
                       {_renderProgressEvents()}
-                      {isLoading && progressEvents.length === 0 && (
+                      {_renderStreamingResponse()}
+                      {isLoading && progressEvents.length === 0 && !streamingResponse && (
                         <div className="flex justify-center mb-4 px-2 sm:px-4">
                           <div className="w-full max-w-full sm:max-w-[90%]">
                             <div className="px-4 py-3">

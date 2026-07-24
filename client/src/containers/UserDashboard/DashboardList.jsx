@@ -356,7 +356,7 @@ function DashboardList() {
                         </Button>
                       </Tooltip>
                     )}
-                    <Link to={`/${team.id}/${project.id}/dashboard`} className="cursor-pointer flex flex-row items-center select-none">
+                    <Link to={`/dashboard/${project.id}`} className="cursor-pointer flex flex-row items-center select-none">
                       <span className={"text-foreground font-medium"}>{project.name}</span>
                     </Link>
                   </div>

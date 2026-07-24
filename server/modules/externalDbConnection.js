@@ -98,6 +98,22 @@ module.exports = async (connection) => {
           break;
       }
     }
+
+    // Bound connection establishment and pool acquisition for Postgres-family
+    // dialects so an unreachable/firewalled host fails fast (~15s) instead of
+    // hanging on the OS TCP timeout (~2min) — which the reverse proxy would cut
+    // off as an opaque 504 before a clean driver error can be returned. (MSSQL
+    // sets its own connect/request timeouts above.) The branches below layer
+    // `ssl` onto this dialectOptions object, so they must not replace it.
+    connectionConfig.pool = {
+      max: 5,
+      min: 0,
+      acquire: 20000,
+      idle: 10000,
+    };
+    connectionConfig.dialectOptions = {
+      connectionTimeoutMillis: 15000,
+    };
   }
 
   if (connectionString && dialect === "mssql") {
@@ -152,19 +168,15 @@ module.exports = async (connection) => {
 
     newConnectionString = `${protocol}${csUsername}:${csPassword}${hostAndOpt}`;
 
-    connectionConfig.dialectOptions = {
-      ssl: sslOptions,
-    };
+    connectionConfig.dialectOptions.ssl = sslOptions;
 
     // check if a postgres connection needs SSL
     if (newConnectionString.indexOf("sslmode=require") > -1 && dialect === "postgres" && !connection.ssl) {
       newConnectionString = newConnectionString.replace("?sslmode=require", "");
       newConnectionString = newConnectionString.replace("&sslmode=require", "");
-      connectionConfig.dialectOptions = {
-        ssl: {
-          require: true,
-          rejectUnauthorized: false,
-        },
+      connectionConfig.dialectOptions.ssl = {
+        require: true,
+        rejectUnauthorized: false,
       };
     }
 
@@ -172,9 +184,7 @@ module.exports = async (connection) => {
   // else just connect with each field from the form
   } else {
     if (sslOptions && dialect !== "mssql") {
-      connectionConfig.dialectOptions = {
-        ssl: sslOptions,
-      };
+      connectionConfig.dialectOptions.ssl = sslOptions;
     }
 
     sequelize = new Sequelize(name, username, password, connectionConfig);

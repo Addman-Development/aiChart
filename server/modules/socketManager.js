@@ -1,8 +1,35 @@
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/redis-adapter");
 const Redis = require("ioredis");
+const jwt = require("jsonwebtoken");
 const { getRedisOptions } = require("../redisConnection");
+const settings = require("../settings");
+const db = require("../models/models");
 const logger = require("./logger").child({ module: "socketManager" });
+
+// Verify a client-supplied auth token the same way the HTTP verifyToken
+// middleware does (encryptionKey first, then the legacy secret) and return the
+// user id it encodes, or null. The socket derives identity from this signed
+// token instead of trusting a client-claimed userId — otherwise any logged-in
+// user could emit authenticate with a victim's userId, join their room, and
+// receive their private streamed AI answers and notifications. Blacklist
+// revocation stays enforced at the HTTP layer; skipped here to avoid a DB
+// round-trip on every (re)connect.
+function verifyAuthToken(token) {
+  if (!token || typeof token !== "string") return null;
+  let decoded;
+  try {
+    decoded = jwt.verify(token, settings.encryptionKey);
+  } catch (e) { /* fall through to the legacy secret */ }
+  if (!decoded?.id) {
+    try {
+      decoded = jwt.verify(token, settings.secret);
+    } catch (e) {
+      decoded = null;
+    }
+  }
+  return decoded?.id || null;
+}
 
 /**
  * Socket.IO Manager for Edison
@@ -41,10 +68,17 @@ class SocketManager {
       path: "/api/socket.io"
     });
 
-    // Try to set up Redis adapter for cross-process communication
-    await this.setupRedisAdapter();
-
+    // Register connection/auth handling FIRST so realtime auth never depends on
+    // Redis being reachable. The default in-memory adapter is active from
+    // construction, so clients can connect and authenticate immediately.
     this.setupConnectionHandling();
+
+    // Attach the Redis adapter for cross-process delivery in the background.
+    // This must never block or hang startup: if Redis is unreachable we log and
+    // continue on the in-memory adapter (correct for a single-instance deploy).
+    this.setupRedisAdapter().catch((err) => {
+      logger.warn({ err }, "Redis adapter setup failed; continuing with in-memory adapter");
+    });
   }
 
   async setupRedisAdapter() {
@@ -57,12 +91,19 @@ class SocketManager {
         return;
       }
 
-      // Create Redis clients for pub/sub with proper error handling
+      // Create Redis clients for pub/sub with proper error handling.
+      // connectTimeout/commandTimeout are essential: without them a dead
+      // endpoint that still accepts TCP (a stale ssh -L / kubectl port-forward,
+      // or a DNS-up-but-service-down host) leaves the ready-check INFO waiting
+      // forever, so connect() never settles and startup hangs. Bounding both
+      // guarantees connect() rejects and the catch below falls back to memory.
       this.pubClient = new Redis({
         ...redisConfig,
         lazyConnect: true, // Don't connect immediately, we'll connect explicitly
         maxRetriesPerRequest: null, // Required for adapter
         enableReadyCheck: true,
+        connectTimeout: 10000, // bound SYN-dropped / host-unreachable
+        commandTimeout: 10000, // bound the ready-check INFO — the actual hang fix
         retryStrategy(times) {
           const delay = Math.min(times * 50, 2000);
           return delay;
@@ -96,11 +137,31 @@ class SocketManager {
         });
       }
 
-      // Connect both clients and wait for them to be ready
-      await Promise.all([
-        this.pubClient.connect(),
-        this.subClient.connect()
-      ]);
+      // Connect both clients and wait for them to be ready. Guard with an
+      // overall deadline as belt-and-suspenders: even if a client-level timeout
+      // is ever missed, startup can never wedge on a hung Redis handshake.
+      const pubConnect = this.pubClient.connect();
+      const subConnect = this.subClient.connect();
+      // Attach no-op catches so that if the deadline below wins the race, the
+      // still-pending connect() promises (which reject once we disconnect in the
+      // catch) cannot surface as unhandled rejections.
+      pubConnect.catch(() => {});
+      subConnect.catch(() => {});
+
+      let deadlineTimer;
+      try {
+        await Promise.race([
+          Promise.all([pubConnect, subConnect]),
+          new Promise((_, reject) => {
+            deadlineTimer = setTimeout(
+              () => reject(new Error("Redis adapter connect timed out")),
+              8000
+            );
+          }),
+        ]);
+      } finally {
+        clearTimeout(deadlineTimer);
+      }
 
       // Use Redis adapter for cross-process communication with recommended options
       this.io.adapter(createAdapter(this.pubClient, this.subClient, {
@@ -127,10 +188,13 @@ class SocketManager {
   setupConnectionHandling() {
     this.io.on("connection", (socket) => {
       // Authentication middleware
-      socket.on("authenticate", (data) => {
-        const { userId, teamId } = data;
+      socket.on("authenticate", async (data) => {
+        // Derive the user id from the signed token — never trust a client-claimed
+        // userId (that would let any logged-in user join another user's room).
+        const userId = verifyAuthToken(data?.token);
+        const { teamId } = data;
         if (!userId) {
-          socket.emit("authenticated", { success: false, error: "User ID required" });
+          socket.emit("authenticated", { success: false, error: "Unauthorized" });
           return;
         }
 
@@ -145,20 +209,44 @@ class SocketManager {
         this.activeConnections.get(userId).add(socket.id);
         // eslint-disable-next-line no-param-reassign
         socket.userId = userId;
-        // eslint-disable-next-line no-param-reassign
-        socket.teamId = teamId;
 
-        // Join team room for team-wide broadcasts
-        if (teamId) {
-          socket.join(`team:${teamId}`);
-          this.addToRoom(`team:${teamId}`, socket.id);
-        }
-
-        // Join user room for private messages
+        // Join user room for private messages. Safe unconditionally: the id came
+        // from the verified token, so a socket can only ever join its own room.
         socket.join(`user:${userId}`);
         this.addToRoom(`user:${userId}`, socket.id);
 
+        // Acknowledge auth now — the token alone proves identity, so this must
+        // NOT wait on (or fail with) the app DB. The team-room join below is a
+        // best-effort follow-up; if the DB is slow/down, private/user events
+        // (AI streaming, per-user notifications) keep flowing regardless.
         socket.emit("authenticated", { success: true });
+
+        // Join the team room only after confirming the user belongs to the team.
+        // Membership isn't encoded in the token, so verify it against the app DB
+        // — otherwise an authenticated user could receive another team's
+        // broadcasts by asserting its id. A lookup failure degrades to "no team
+        // room" rather than affecting auth. (A team broadcast in the brief window
+        // before the join is missed; team events aren't latency-critical and the
+        // client re-fetches on load.)
+        if (teamId) {
+          let isMember = false;
+          try {
+            const role = await db.TeamRole.findOne({
+              where: { team_id: teamId, user_id: userId },
+            });
+            isMember = Boolean(role);
+          } catch (err) {
+            logger.warn({ err, userId, teamId }, "Socket team-membership check failed; skipping team room");
+          }
+          // The socket may have disconnected during the await; join() is then a
+          // harmless no-op.
+          if (isMember) {
+            // eslint-disable-next-line no-param-reassign
+            socket.teamId = teamId;
+            socket.join(`team:${teamId}`);
+            this.addToRoom(`team:${teamId}`, socket.id);
+          }
+        }
       });
 
       // Handle conversation room joining
@@ -236,6 +324,16 @@ class SocketManager {
       data,
       timestamp: new Date().toISOString()
     });
+  }
+
+  // Emit an incremental assistant text delta (or a { reset: true } turn
+  // boundary) for live streaming in the UI. Sent to the USER's room (which is
+  // always joined once authenticated) rather than the conversation room, so it
+  // works even before the client has joined a brand-new conversation's room.
+  // Payload: { conversationId, turnId, delta } or { conversationId, turnId, reset }.
+  emitToken(userId, data = {}) {
+    if (!this.io) return; // Skip if not initialized
+    this.io.to(`user:${userId}`).emit("ai-token", data);
   }
 
   // Emit to specific user

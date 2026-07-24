@@ -1,3 +1,9 @@
+# Explicit project name so Compose never has to derive it from the directory
+# path (which is reached via a symlink here, triggering the "loaded without an
+# explicit name from a symlink" warning). Kept as "aichart" — the name Compose
+# was already deriving — so no networks/volumes/containers get renamed.
+name: aichart
+
 services:
   aichart:
     image: addmangroup/smart-chart:latest

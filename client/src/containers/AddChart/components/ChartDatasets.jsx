@@ -286,7 +286,7 @@ function ChartDatasets(props) {
                           variant="ghost"
                           endContent={<LuExternalLink size={16} />}
                           as={Link}
-                          to={`/${team.id}/dataset/${dataset.id}`}
+                          to={`/datasets/${dataset.id}`}
                           target="_blank"
                         >
                           Edit

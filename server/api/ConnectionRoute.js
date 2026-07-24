@@ -498,6 +498,20 @@ module.exports = (app) => {
   // -------------------------------------------------
 
   /*
+  ** Route to list the schemas available on a SQL connection (for schema selection)
+  */
+  app.post("/team/:team_id/connections/:type/schemas", verifyToken, checkPermissions("readOwn"), (req, res) => {
+    return connectionController.listSchemas({ ...req.body, type: req.params.type })
+      .then((schemas) => {
+        return res.status(200).send(schemas);
+      })
+      .catch((err) => {
+        return res.status(400).send(err.message || err);
+      });
+  });
+  // -------------------------------------------------
+
+  /*
   ** Route to test any connection that need file (like SSL certificates)
   */
   app.post("/team/:team_id/connections/:type/test/files", verifyToken, checkPermissions("readOwn"), upload.any(), (req, res) => {

@@ -283,6 +283,26 @@ module.exports = (sequelize, DataTypes) => {
         }
       },
     },
+    // Optional allow-list of DB schemas (Postgres/MSSQL) this connection
+    // exposes. Empty/null = all non-system schemas (default). Plain JSON array
+    // of schema names, stored like `schema`/`project_ids` (not encrypted).
+    selectedSchemas: {
+      type: DataTypes.TEXT,
+      set(val) {
+        try {
+          return this.setDataValue("selectedSchemas", JSON.stringify(val));
+        } catch (e) {
+          return this.setDataValue("selectedSchemas", val);
+        }
+      },
+      get() {
+        try {
+          return JSON.parse(this.getDataValue("selectedSchemas"));
+        } catch (e) {
+          return this.getDataValue("selectedSchemas");
+        }
+      },
+    },
     useSsh: {
       type: DataTypes.BOOLEAN,
       defaultValue: false,

@@ -57,7 +57,12 @@
       "Bash(echo \"EXIT=$?\")",
       "Bash(bash -n ../entrypoint.sh)",
       "Bash(bash -n entrypoint.sh)",
-      "Bash(sort -t: -k1)"
+      "Bash(sort -t: -k1)",
+      "Bash(echo \"=====Redis.js connect\\(\\) =====\")",
+      "Bash(node -e ' *)",
+      "Bash(echo \"=====socket.js adapter refs=====\")",
+      "Bash(echo \"=====socket.subEvents\\(\\)=====\")",
+      "Bash(sed -n '/subEvents\\(\\) {/,/^    }/p' C:/Users/ali.bahar/Documents/github/aiChart/node_modules/.bun/socket.io-client@4.8.3/node_modules/socket.io-client/build/cjs/socket.js)"
     ]
   }
 }

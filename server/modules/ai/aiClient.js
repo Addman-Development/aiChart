@@ -20,6 +20,15 @@ const aiProvider = (process.env.CB_AI_PROVIDER || "anthropic").toLowerCase();
 const aiKey = process.env.CB_AI_API_KEY || process.env.CB_OPENAI_API_KEY;
 const aiModel = process.env.CB_AI_MODEL || process.env.CB_OPENAI_MODEL || "claude-sonnet-4-20250514";
 const aiBaseUrl = process.env.CB_AI_BASE_URL;
+// Max output tokens per response. Anthropic requires max_tokens, and the old
+// hardcoded 8192 truncated long answers. Set CB_AI_MAX_TOKENS to the configured
+// model's max output (128000 for Claude Opus/Sonnet, 64000 for Haiku 4.5); it
+// must not exceed the model's limit or the API returns a 400. The 32000
+// fallback is a safe, generous default for any current model when the env var
+// is unset. NOTE: these are non-streaming requests — very large values rely on
+// the SDK auto-extending its HTTP timeout; streaming is preferable for outputs
+// that routinely approach the ceiling.
+const aiMaxTokens = Number(process.env.CB_AI_MAX_TOKENS) || 32000;
 
 // ── Anthropic → OpenAI format converters ────────────────────────────────────
 
@@ -140,7 +149,7 @@ function buildAnthropicClient() {
             model: params.model || aiModel,
             system: systemPrompt || undefined,
             messages,
-            max_tokens: params.max_tokens || 8192,
+            max_tokens: params.max_tokens || aiMaxTokens,
           };
 
           if (tools?.length) {
@@ -154,7 +163,20 @@ function buildAnthropicClient() {
             }
           }
 
-          const response = await anthropic.messages.create(requestParams);
+          // Stream internally and assemble the final message. Streaming keeps
+          // the connection alive with events, so a large max_tokens (up to the
+          // model's 128k ceiling) can't trip the SDK's HTTP idle timeout the
+          // way a long non-streaming request would. `finalMessage()` returns
+          // the same Message shape `create()` did, so callers are unaffected.
+          const stream = anthropic.messages.stream(requestParams);
+          // Forward incremental text deltas to an optional caller callback (for
+          // live UI streaming). Errors in the callback must never break the run.
+          if (params.onToken) {
+            stream.on("text", (delta) => {
+              try { params.onToken(delta); } catch (e) { /* ignore streaming callback errors */ }
+            });
+          }
+          const response = await stream.finalMessage();
           return convertResponse(response);
         },
       },
@@ -166,7 +188,36 @@ function buildLitellmClient() {
   const OpenAI = require("openai");
   const clientOptions = { apiKey: aiKey };
   if (aiBaseUrl) clientOptions.baseURL = aiBaseUrl;
-  return new OpenAI(clientOptions);
+  const openai = new OpenAI(clientOptions);
+
+  // Wrap chat.completions.create so requests default to aiMaxTokens (callers
+  // don't pass max_tokens) and stream internally, assembling the final
+  // completion via finalChatCompletion(). Streaming avoids HTTP idle timeouts
+  // on large outputs; the returned shape matches a non-streaming completion.
+  // An explicit params.max_tokens still wins; include_usage preserves token
+  // accounting across the stream.
+  return {
+    chat: {
+      completions: {
+        create: (params) => {
+          // onToken is a local streaming hook, not an API param — strip it
+          // before forwarding the rest to the OpenAI/LiteLLM endpoint.
+          const { onToken, ...rest } = params;
+          const stream = openai.chat.completions.stream({
+            max_tokens: aiMaxTokens,
+            stream_options: { include_usage: true },
+            ...rest,
+          });
+          if (onToken) {
+            stream.on("content", (delta) => {
+              try { onToken(delta); } catch (e) { /* ignore streaming callback errors */ }
+            });
+          }
+          return stream.finalChatCompletion();
+        },
+      },
+    },
+  };
 }
 
 let aiClient = null;

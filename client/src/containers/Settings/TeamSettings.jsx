@@ -109,7 +109,7 @@ function TeamSettings() {
     if (remainingTeams.length > 0) {
       dispatch(saveActiveTeam(remainingTeams[0]));
       toast.success("Team deleted. Switched to another team.");
-      navigate(`/${remainingTeams[0].id}/dashboard`);
+      navigate("/");
     } else {
       navigate("/");
     }

@@ -103,7 +103,7 @@ async function getOrchestration(
   }
 
   try {
-    const orchestration = await orchestrate(teamId, question, fullHistory, conversation, context);
+    const orchestration = await orchestrate(teamId, question, fullHistory, conversation, context, { clientTurnId, userId });
 
     const finalMessage = orchestration.message;
     const isNewConversation = !conversation || conversation.message_count === 0;

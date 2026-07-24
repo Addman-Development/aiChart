@@ -8,8 +8,10 @@ const logger = require("../modules/logger").child({ module: "api:FeedbackRoute" 
 
 // The ADDMAN platform endpoint that ultimately stores the feedback. Overridable
 // via env so non-prod deployments can point at a different platform instance.
+// NOTE: keep the trailing slash — the platform 308-redirects the slashless path.
+// The "/home" prefix was dropped platform-side (2026-07), so it's gone here too.
 const PLATFORM_FEEDBACK_URL = process.env.PLATFORM_FEEDBACK_URL
-  || "https://aos.addmangroup.com/home/api/feedback";
+  || "https://aos.addmangroup.com/api/feedback/";
 
 const VALID_CATEGORIES = ["bug", "idea", "other"];
 const MAX_MESSAGE_LENGTH = 4000;
@@ -134,6 +136,15 @@ module.exports = (app) => {
           error: (data && data.error) || "The platform rejected your session. Please sign in again and retry.",
           reauthRequired: true,
         });
+      }
+
+      // A 404 from the platform is an upstream misconfiguration (wrong or
+      // undeployed endpoint), not a missing route here. Relaying it verbatim
+      // makes it look like our own /feedback endpoint 404'd; surface a clear
+      // 502 instead and log the real upstream response so ops can find it.
+      if (response.status === 404) {
+        logger.error({ upstreamStatus: 404, url: PLATFORM_FEEDBACK_URL, body: data }, "platform feedback endpoint returned 404");
+        return res.status(502).json({ error: "The feedback service is temporarily unavailable. Please try again later." });
       }
 
       return res.status(response.status).json(data);

@@ -555,6 +555,10 @@ ${ENTITY_CREATION_RULES}
      * Call run_query to execute the SQL and get results
      * Summarize the results
      * **DEFAULT: Always create a temporary preview chart to show the results visually**
+   - **Handling empty or missing data (IMPORTANT — protects your limited step budget):**
+     * A query returning 0 rows means that table/filter simply has no data — it is NOT an error. Do not re-run the same table with only minor variations hoping data appears.
+     * If an expected table (e.g. invoice, sales_order, ar_transaction) is empty, review the get_schema output for an alternate source — a related fact/transaction table (e.g. shipment) — BEFORE issuing more queries. One careful look at the schema beats many blind queries.
+     * You have a limited number of tool steps per turn. If several queries in a row return no usable data, STOP exploring: give your best partial answer (and a chart from whatever data you did find), state plainly which tables were empty and which source you used, and ask the user for their preferred data source. Never silently burn through your steps and end with no answer.
 
 2. When creating charts - CRITICAL CHART PLACEMENT RULES:
    
@@ -962,8 +966,10 @@ async function buildSemanticLayer(teamId) {
 async function orchestrate(
   teamId, question, conversationHistory = [], conversation = null, context = null, options = {}
 ) {
-  // Extract optional tool progress callback
-  const { toolProgressCallback } = options;
+  // Extract optional tool progress callback, the client's turn id (used to tag
+  // streamed token deltas so the client can match them to the active turn), and
+  // the user id (streamed deltas go to the user's room — always joined).
+  const { toolProgressCallback, clientTurnId, userId } = options;
   if (!aiClient) {
     throw new Error("OpenAI client is not initialized. Please check your environment variables.");
   }
@@ -973,6 +979,33 @@ async function orchestrate(
     teamId,
   });
   const orchestrateStartedAt = Date.now();
+
+  // Stream assistant text deltas to the user's room as the model generates them
+  // (live typing in the UI), tagged with the client turn id so the client
+  // ignores stale deltas from a previous turn. `streamReset` sends a turn
+  // boundary so the client starts a fresh live bubble at each model call
+  // (clearing any pre-tool narration once tools run).
+  const canStream = Boolean(userId && conversation?.id);
+  const streamReset = () => {
+    if (canStream) {
+      socketManager.emitToken(userId, {
+        conversationId: conversation.id,
+        turnId: clientTurnId,
+        reset: true,
+      });
+    }
+  };
+  const onToken = canStream
+    ? (delta) => {
+      if (delta) {
+        socketManager.emitToken(userId, {
+          conversationId: conversation.id,
+          turnId: clientTurnId,
+          delta,
+        });
+      }
+    }
+    : undefined;
 
   // Sanitize conversation history to ensure OpenAI API compliance
   // This removes any assistant messages with tool_calls that don't have complete tool responses
@@ -1073,11 +1106,13 @@ async function orchestrate(
 
   // Initial API call
   const startTime1 = Date.now();
+  streamReset();
   let response = await aiClient.chat.completions.create({
     model: aiModel,
     messages,
     tools,
     tool_choice: "auto",
+    onToken,
   });
   const elapsedMs1 = Date.now() - startTime1;
 
@@ -1105,8 +1140,17 @@ async function orchestrate(
 
   const updatedMessages = [...messages];
   let assistantMessage = response.choices[0].message;
-  const maxIterations = 10; // Prevent infinite loops
+  // Bound the tool loop. Higher gives exploratory questions (e.g. hunting for
+  // the right table when the obvious ones are empty) room to finish in a single
+  // turn instead of exhausting the budget and needing a "Continue". Overridable
+  // via env; the failure-breaker + forced-final-completion cap the downside.
+  const maxIterations = Number(process.env.CB_AI_MAX_ITERATIONS) || 15;
   let iterations = 0;
+  // Break out early if tools keep failing, so we don't burn every iteration on
+  // a doomed retry loop (e.g. a query that always errors because the tables are
+  // in a schema the model isn't naming) and end the turn with no answer.
+  let consecutiveErrorIterations = 0;
+  const maxConsecutiveErrorIterations = 3;
 
   // Handle tool calls in a loop
   while (
@@ -1249,14 +1293,38 @@ async function orchestrate(
       };
     }
 
+    // If every tool call in this iteration errored, count it. After a few such
+    // iterations in a row, stop looping and let the forced final completion
+    // (below the loop) explain what went wrong, rather than retrying until
+    // maxIterations and returning no answer at all. A single failure among
+    // successes — or a recovery iteration (e.g. get_schema then retry) — resets
+    // the counter, so legitimate multi-step turns are unaffected.
+    const allToolsFailed = toolResults.length > 0 && toolResults.every((r) => {
+      try {
+        return Boolean(JSON.parse(r.content)?.error);
+      } catch (e) {
+        return false;
+      }
+    });
+    consecutiveErrorIterations = allToolsFailed ? consecutiveErrorIterations + 1 : 0;
+    if (consecutiveErrorIterations >= maxConsecutiveErrorIterations) {
+      log.warn(
+        { iterations, consecutiveErrorIterations },
+        "Breaking orchestration loop: tool calls failing repeatedly"
+      );
+      break;
+    }
+
     // Get next response from AI
     const startTime = Date.now();
+    streamReset();
     // eslint-disable-next-line no-await-in-loop
     response = await aiClient.chat.completions.create({
       model: aiModel,
       messages: updatedMessages,
       tools,
       tool_choice: "auto",
+      onToken,
     });
     const elapsedMs = Date.now() - startTime;
 
@@ -1283,6 +1351,56 @@ async function orchestrate(
     }, "Orchestrator AI turn complete");
 
     assistantMessage = response.choices[0].message;
+  }
+
+  // If the loop ended without a natural-language answer — the model hit the
+  // iteration cap (or the failure breaker) while still wanting tools, or its
+  // final turn carried only tool calls — force one last, tool-free completion so
+  // it must summarize what it found or explain why it could not finish. Tools
+  // are intentionally omitted (rather than tool_choice: "none") so this works
+  // across OpenAI-compatible and Anthropic backends. Without this, the caller
+  // would receive an empty message and the user would see the tool trace with
+  // no answer.
+  if (!assistantMessage.content || !assistantMessage.content.trim()) {
+    try {
+      const startTimeFinal = Date.now();
+      streamReset();
+      const finalResponse = await aiClient.chat.completions.create({
+        model: aiModel,
+        messages: [
+          ...updatedMessages,
+          {
+            role: "user",
+            content: "Based on the tool results above, give me a clear final answer. Do not call any more tools. If you could not complete the request, briefly explain what went wrong and what I could try next.",
+          },
+        ],
+        onToken,
+      });
+      const elapsedMsFinal = Date.now() - startTimeFinal;
+      if (finalResponse.usage) {
+        usageRecords.push({
+          model: aiModel,
+          prompt_tokens: finalResponse.usage.prompt_tokens || 0,
+          completion_tokens: finalResponse.usage.completion_tokens || 0,
+          total_tokens: finalResponse.usage.total_tokens || 0,
+          elapsed_ms: elapsedMsFinal,
+        });
+      }
+      const forcedContent = finalResponse.choices?.[0]?.message?.content;
+      if (forcedContent && forcedContent.trim()) {
+        assistantMessage = { role: "assistant", content: forcedContent };
+      }
+    } catch (finalErr) {
+      log.warn({ err: finalErr }, "Forced final completion failed after tool loop");
+    }
+  }
+
+  // Absolute backstop: never hand the caller an empty answer.
+  if (!assistantMessage.content || !assistantMessage.content.trim()) {
+    assistantMessage = {
+      role: "assistant",
+      content: "I wasn't able to complete that request — I kept running into problems while working through it. Please try rephrasing your question, or double-check that the relevant data source is connected and its tables are accessible.",
+    };
   }
 
   // Add final assistant message

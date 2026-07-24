@@ -7,15 +7,13 @@ module.exports = (app) => {
 
   /*
   ** Public: expose this deployment's VAPID public key so the browser can
-  ** subscribe. The public key is not a secret. Returns 404 when push is not
-  ** configured so the client can cleanly treat the feature as unavailable.
+  ** subscribe. The public key is not a secret. Always responds 200 with
+  ** publicKey:null when push isn't configured, so the client treats the feature
+  ** as unavailable WITHOUT the browser logging a console 404 for a feature that
+  ** is intentionally disabled on this deployment.
   */
   app.get("/push/vapid", (req, res) => {
-    const publicKey = pushService.getPublicKey();
-    if (!publicKey) {
-      return res.status(404).send({ message: "Push notifications are not configured" });
-    }
-    return res.status(200).send({ publicKey });
+    return res.status(200).send({ publicKey: pushService.getPublicKey() || null });
   });
   // --------------------------------------
 

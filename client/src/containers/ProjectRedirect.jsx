@@ -22,7 +22,7 @@ function ProjectRedirect() {
       dispatch(getProject({ project_id: params.projectId, active: true }))
         .then((project) => {
           if (project?.payload) {
-            navigate(`/${project.payload.team_id}/${project.payload.id}/dashboard`);
+            navigate(`/dashboard/${project.payload.id}`);
           } else {
             navigate("/");
           }

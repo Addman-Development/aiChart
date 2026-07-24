@@ -46,7 +46,13 @@ const feedbackRoute = require("../../api/FeedbackRoute.js");
 const buildApp = () => {
   const app = express();
   app.use(json());
-  feedbackRoute(app);
+  // Mirror production: route files register bare sub-paths (e.g. "/feedback")
+  // and the whole API is mounted once under /api (server/index.js), so requests
+  // arrive at /api/feedback. Mounting on a sub-app keeps these tests aligned
+  // with the real URL scheme.
+  const api = express();
+  feedbackRoute(api);
+  app.use("/api", api);
   return app;
 };
 
@@ -232,5 +238,20 @@ describe("Feedback API", () => {
       .expect(502);
 
     expect(res.body).toEqual({ error: "upstream down" });
+  });
+
+  it("maps an upstream 404 to a 502 with a clear message (not a bare 404)", async () => {
+    getFreshAccessToken.mockResolvedValue("kc-access-token");
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      status: 404,
+      text: async () => JSON.stringify({ error: "not found" }),
+    })));
+
+    const res = await request(app)
+      .post("/api/feedback")
+      .send({ category: "bug", message: "where does this go" })
+      .expect(502);
+
+    expect(res.body.error).toMatch(/temporarily unavailable/i);
   });
 });

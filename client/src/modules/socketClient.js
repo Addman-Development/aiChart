@@ -1,5 +1,6 @@
 import { io } from "socket.io-client";
 import { API_HOST } from "../config/settings";
+import { getAuthToken } from "./auth";
 
 // API_HOST carries the API's explicit mount path (e.g. "/api"); the gateway
 // forwards it to the server untouched. io() treats a URL pathname as a
@@ -37,13 +38,15 @@ class SocketClient {
    * @returns {Promise<void>}
    */
   async connect(userId, teamId) {
-    // If already connected with same credentials, reuse connection
+    // Reuse a healthy, authenticated connection for the same credentials.
     if (this.socket?.connected && this.isAuthenticated && this.userId === userId && this.teamId === teamId) {
       return Promise.resolve();
     }
 
-    // Disconnect existing socket if credentials changed
-    if (this.socket && (this.userId !== userId || this.teamId !== teamId)) {
+    // Otherwise tear down any existing socket before creating a new one:
+    // io(..., { forceNew: true }) below would orphan it, leaking a client that
+    // keeps reconnecting in the background.
+    if (this.socket) {
       this.disconnect();
     }
 
@@ -51,9 +54,35 @@ class SocketClient {
     this.teamId = teamId;
 
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(new Error("Socket connection timeout"));
-      }, 10000);
+      // `settled` gates the returned promise so the persistent socket handlers
+      // below (which also run on every later reconnect) can only resolve/reject
+      // the *initial* connect once.
+      let settled = false;
+      let authTimer = null;
+
+      const clearAuthTimer = () => {
+        if (authTimer) {
+          clearTimeout(authTimer);
+          authTimer = null;
+        }
+      };
+      const fail = (error) => {
+        clearAuthTimer();
+        if (settled) return;
+        settled = true;
+        // Do NOT close the socket here: socket.io keeps retrying in the
+        // background, so realtime can still recover for callers that ignore
+        // this rejection (e.g. the notifications bell) even though the initial
+        // attempt is reported as failed.
+        reject(error);
+      };
+      const succeed = () => {
+        clearAuthTimer();
+        this.isAuthenticated = true;
+        if (settled) return;
+        settled = true;
+        resolve();
+      };
 
       this.socket = io(_socketOrigin, {
         withCredentials: true,
@@ -70,23 +99,55 @@ class SocketClient {
         forceNew: true,
       });
 
-      // Handle connection
+      // Fires on the initial connection AND on every reconnection (the
+      // manager-level "reconnect" event is NOT forwarded to the socket in
+      // socket.io-client v4), so re-auth and room-rejoin must live here.
       this.socket.on("connect", () => {
-        // Authenticate immediately after connect
-        this.socket.emit("authenticate", { userId, teamId });
+        // Bound only the auth round-trip, and only for the initial connect:
+        // transport is up, we are now waiting on the server's "authenticated".
+        if (!settled && !authTimer) {
+          authTimer = setTimeout(() => {
+            const error = new Error(
+              "Socket authentication timeout: connected but the server never authenticated"
+            );
+            error.code = "SOCKET_AUTH_TIMEOUT";
+            fail(error);
+          }, 10000);
+        }
+
+        // Pass the signed auth token so the server derives our identity from it
+        // rather than trusting the client-supplied userId (prevents joining
+        // another user's private room). userId/teamId stay for room membership.
+        this.socket.emit("authenticate", { userId, teamId, token: getAuthToken() });
+
+        // Rejoin any conversation rooms (a no-op on the first connect, since
+        // none are joined yet; essential after a reconnect).
+        this.conversationRooms.forEach((conversationId) => {
+          this.socket.emit("join-conversation", { conversationId });
+        });
       });
 
-      // Handle successful authentication
-      this.socket.once("authenticated", () => {
-        clearTimeout(timeout);
-        this.isAuthenticated = true;
-        resolve();
+      // Server's authentication result. Kept as `on` (not `once`) so state stays
+      // correct across reconnections.
+      this.socket.on("authenticated", (res) => {
+        if (res && res.success === false) {
+          this.isAuthenticated = false;
+          const error = new Error(res.error || "Socket authentication rejected by server");
+          error.code = "SOCKET_AUTH_REJECTED";
+          fail(error);
+          return;
+        }
+        succeed();
       });
 
-      // Handle connection errors
-      this.socket.on("connect_error", (error) => {
-        clearTimeout(timeout);
-        reject(error);
+      // Transport-level failure: cannot reach the server, or the handshake/CORS
+      // was rejected. Distinct from an auth timeout so field logs are legible.
+      this.socket.on("connect_error", (err) => {
+        if (settled) return; // ignore transient errors during later reconnects
+        const error = new Error(`Socket transport failed: ${err?.message || err}`);
+        error.code = "SOCKET_CONNECT_ERROR";
+        error.cause = err;
+        fail(error);
       });
 
       // Handle disconnection
@@ -96,17 +157,6 @@ class SocketClient {
         if (reason === "io server disconnect") {
           this.socket.connect();
         }
-      });
-
-      // Handle reconnection
-      this.socket.on("reconnect", () => {
-        // Re-authenticate after reconnection
-        this.socket.emit("authenticate", { userId, teamId });
-        
-        // Rejoin all conversation rooms
-        this.conversationRooms.forEach((conversationId) => {
-          this.socket.emit("join-conversation", { conversationId });
-        });
       });
     });
   }
