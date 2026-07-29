@@ -5,6 +5,8 @@ module.exports = (chart, team = {}) => ({
   subType: chart.subType,
   chartDataUpdated: chart.chartDataUpdated,
   chartData: chart.chartData,
+  // Markdown text widgets have no dataset — their body lives in `content`.
+  content: chart.content,
   ChartDatasetConfigs: chart.ChartDatasetConfigs,
   mode: chart.mode,
   chartSize: chart.chartSize,
