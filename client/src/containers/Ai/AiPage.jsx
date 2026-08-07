@@ -1,43 +1,31 @@
 import React, { useEffect, useState, useRef } from "react"
-import PropTypes from "prop-types"
-import { Modal, ModalContent, ModalBody, ModalHeader, ModalFooter, Avatar, Spacer, Input, Button, Accordion, AccordionItem, Divider, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
-import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuPlus, LuChevronDown, LuLoader, LuTrash2, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuSlack, LuLayoutDashboard, LuPencil, LuCheck, LuX, LuThumbsUp, LuThumbsDown, LuRefreshCw, LuPlay, LuGitFork, LuShare2, LuUsers } from "react-icons/lu"
+import { useDebounce } from "react-use";
+import { Modal, ModalContent, ModalBody, ModalHeader, ModalFooter, Avatar, Input, Button, Kbd, Popover, PopoverTrigger, PopoverContent, Code, Chip, Tooltip, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, CircularProgress, Listbox, ListboxItem } from "@heroui/react"
+import { LuArrowRight, LuBrainCircuit, LuClock, LuMessageSquare, LuChevronDown, LuLoader, LuCoins, LuEllipsis, LuWrench, LuAtSign, LuLayoutGrid, LuPlug, LuDatabase, LuLayoutDashboard, LuCheck, LuX, LuThumbsUp, LuThumbsDown, LuRefreshCw, LuPlay, LuShare2, LuUsers, LuArchive, LuTrash2, LuStar } from "react-icons/lu"
 import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useParams } from "react-router";
+import { useParams, useNavigate, useLocation } from "react-router";
 
-import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage, submitAiMessageFeedback, forkAiConversation } from "../../api/ai";
+import { getAiConversation, getAiConversations, orchestrateAi, deleteAiConversation, renameAiConversation, getAiUsage, submitAiMessageFeedback, forkAiConversation, setAiConversationArchived, setAiConversationStarred, bulkUpdateAiConversations } from "../../api/ai";
 import { selectTeam, selectTeamMembers, getTeamMembers } from "../../slices/team";
 import { selectUser } from "../../slices/user";
-import { getChart, moveChartToDashboard, runQuery } from "../../slices/chart";
+import { getChart, moveChartToDashboard, runQuery, getProjectCharts } from "../../slices/chart";
 import Chart from "../Chart/Chart";
 import { selectProjects } from "../../slices/project";
 import { selectConnections } from "../../slices/connection";
 import { selectDatasetsNoDrafts } from "../../slices/dataset";
 import { createNotification } from "../../slices/notification";
-import { selectAiPendingConversationId, setAiPendingConversationId } from "../../slices/ui";
 import isMac from "../../modules/isMac";
 import socketClient from "../../modules/socketClient";
 import { SITE_HOST } from "../../config/settings";
 import useIsMobile from "../../modules/useIsMobile";
 import { cn } from "../../modules/utils";
-
-function formatDate(date) {
-  return new Date(date).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatTokens(tokens) {
-  if (!tokens || tokens === 0) return "0";
-  if (tokens >= 1000000) return `${(tokens / 1000000).toFixed(1)}M`;
-  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`;
-  return tokens.toString();
-}
+import { EDISON_PATH, parseContextFromPath } from "../../modules/edisonNav";
+import ConversationActionsMenu from "./ConversationActionsMenu";
+import ConversationList from "./ConversationList";
+import { formatDate, formatTokens, CONVERSATIONS_PAGE_SIZE } from "./conversationUtils";
 
 const components = {
   code: ({ children }) => {
@@ -53,7 +41,15 @@ const components = {
   }
 };
 
-function AiModal({ isOpen, onClose }) {
+/**
+ * The Edison AI chat, rendered as a full-viewport page at /edison.
+ *
+ * Routing contract:
+ *   /edison                    -> resolves to the last active conversation
+ *   /edison/:conversationId    -> that conversation
+ *   /edison/new                -> a fresh, unsaved conversation
+ */
+function AiPage() {
   const [question, setQuestion] = useState("");
   const [conversations, setConversations] = useState([]);
   const [conversation, setConversation] = useState(null);
@@ -77,10 +73,37 @@ function AiModal({ isOpen, onClose }) {
   const [shareModalConversationId, setShareModalConversationId] = useState(null);
   const [shareTargetUserId, setShareTargetUserId] = useState(null);
   const [shareLoading, setShareLoading] = useState(false);
-  // On phones the conversations list is an off-canvas drawer inside the modal.
+  // On phones the conversations list is an off-canvas drawer over the chat.
   const [showConvoSidebar, setShowConvoSidebar] = useState(false);
+  // True until /edison (no id) has resolved to a conversation, so the chat pane
+  // shows a spinner rather than briefly flashing the "new conversation" state.
+  const [isResolvingRoute, setIsResolvingRoute] = useState(true);
+
+  // --- conversation history: filters / search / pagination ---
+  // Statuses is a set so Active and Archived can be shown together.
+  const [conversationStatuses, setConversationStatuses] = useState(["active"]);
+  const [starredOnly, setStarredOnly] = useState(false);
+  const [conversationSearch, setConversationSearch] = useState(""); // raw input value
+  const [conversationQuery, setConversationQuery] = useState(""); // debounced; drives the fetch
+  const [conversationsTotal, setConversationsTotal] = useState(0);
+  const [conversationCounts, setConversationCounts] = useState({
+    active: 0, archived: 0, starred: 0,
+  });
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
+  const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
+
+  // --- bulk selection ---
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedConversationIds, setSelectedConversationIds] = useState(() => new Set());
+  const [isBulkBusy, setIsBulkBusy] = useState(false);
+
+  // --- destructive-action confirmations ---
+  const [conversationToDelete, setConversationToDelete] = useState(null);
+  const [isDeletingConversation, setIsDeletingConversation] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   const params = useParams();
+  const navigate = useNavigate();
   const team = useSelector(selectTeam);
   const user = useSelector(selectUser);
   const teamMembers = useSelector(selectTeamMembers);
@@ -88,31 +111,65 @@ function AiModal({ isOpen, onClose }) {
   const inputRef = useRef(null);
   const dispatch = useDispatch();
   const isMobile = useIsMobile();
-  const aiPendingConversationId = useSelector(selectAiPendingConversationId);
-  // Track the live "is the panel open?" value for async completion handlers,
-  // since _onAskAi captures `isOpen` at call time.
-  const isOpenRef = useRef(isOpen);
-  useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
+
+  // The conversation to show comes from the URL. "new" is the sentinel for a
+  // fresh unsaved chat; undefined means "resolve the last active one".
+  const routeConversationId = params?.conversationId;
+  const isNewRoute = routeConversationId === "new";
+
+  const location = useLocation();
+  // Where the user came from, so Back can return there and context chips can be
+  // pre-seeded. Captured once — later in-page navigations replace location.state.
+  const originRef = useRef(location.state?.from || null);
+  const originContext = useRef(parseContextFromPath(originRef.current)).current;
+
+  const _onExit = () => {
+    const target = originRef.current || "/";
+    // Edison can create or update charts, so a dashboard we're returning to may
+    // be stale. (This used to hang off the modal's onClose in Main.jsx.)
+    const dashboardMatch = target.match(/\/dashboard\/(\d+)/);
+    if (dashboardMatch) {
+      dispatch(getProjectCharts({ project_id: dashboardMatch[1] }));
+    }
+    navigate(target);
+  };
+
+  // Whether the user is looking at this page. Async completion handlers use it
+  // to decide between rendering the answer and raising a notification; unlike
+  // the old modal this component unmounts when you navigate away, so the
+  // cleanup below is what makes "I left the chat" observable to an in-flight
+  // turn whose fetch closure outlives the unmount.
+  const isOpenRef = useRef(true);
+  useEffect(() => {
+    isOpenRef.current = true;
+    return () => { isOpenRef.current = false; };
+  }, []);
   const fetchedChartsRef = useRef(new Set());
   // Mirror the current conversation into a ref so socket handlers (attached once
   // per open) can read the latest value without stale closures.
   const conversationRef = useRef(null);
   useEffect(() => { conversationRef.current = conversation; }, [conversation]);
+  // Same mirroring trick for the list, so loadConversations() is safe to call
+  // from socket handlers (registered once per open) without a stale closure.
+  const conversationsRef = useRef([]);
+  useEffect(() => { conversationsRef.current = conversations; }, [conversations]);
+  const listParamsRef = useRef({ statuses: ["active"], starred: false, query: "" });
+  useEffect(() => {
+    listParamsRef.current = {
+      statuses: conversationStatuses, starred: starredOnly, query: conversationQuery,
+    };
+  }, [conversationStatuses, starredOnly, conversationQuery]);
+  // Monotonic request id: only the newest list request may commit its result.
+  // Guards against a slow search/tab response overwriting fresher data.
+  const listRequestIdRef = useRef(0);
+  // Whether the URL has been resolved into a conversation at least once. The
+  // first resolution must not wipe the context chips seeded from the page the
+  // user came from; later switches between conversations should start clean.
+  const didInitialResolveRef = useRef(false);
   // Tracks the in-flight orchestration turn. Completion is driven by whichever
   // of (HTTP response | "ai-orchestration-complete" socket event) lands first;
   // the other becomes a no-op via the `done` flag.
   const turnRef = useRef(null);
-  // The modal component stays mounted across open/close, so when it closes,
-  // abandon any in-flight turn and clear the spinner — otherwise a stale
-  // completion could surface against a fresh reopen.
-  useEffect(() => {
-    if (!isOpen) {
-      turnRef.current = null;
-      setIsLoading(false);
-      setStreamingResponse("");
-      setProgressEvents([]);
-    }
-  }, [isOpen]);
   const projects = useSelector(selectProjects);
   const connections = useSelector(selectConnections);
   const datasets = useSelector(selectDatasetsNoDrafts);
@@ -182,12 +239,10 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
-  // When the modal opens, verify that cloned charts still exist on their
-  // target dashboards. If a clone was deleted (shelved back to ghost),
-  // its project_id will no longer match — reset to "Add to Dashboard".
+  // On mount, verify that cloned charts still exist on their target dashboards.
+  // If a clone was deleted (shelved back to ghost), its project_id will no
+  // longer match — reset to "Add to Dashboard".
   useEffect(() => {
-    if (!isOpen) return;
-
     const entries = Object.entries(addedToDashboard);
     if (entries.length === 0) return;
 
@@ -220,7 +275,7 @@ function AiModal({ isOpen, onClose }) {
     };
 
     verify();
-  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch chart data for the AI chat.  Uses the ghost project as the
   // project_id in the API call because ghost projects bypass the per-project
@@ -372,7 +427,7 @@ function AiModal({ isOpen, onClose }) {
 
   // Initialize Socket.IO connection
   useEffect(() => {
-    if (!isOpen || !user?.id || !team?.id) return;
+    if (!user?.id || !team?.id) return;
 
     let isMounted = true;
 
@@ -395,18 +450,44 @@ function AiModal({ isOpen, onClose }) {
       if (data?.conversationId) {
         socketClient.joinConversation(data.conversationId);
         setConversation(prev => prev ? { ...prev, id: data.conversationId, isTemporary: false } : null);
+        // Put the real id in the URL so a refresh keeps this chat, and Back
+        // doesn't land on the now-stale /edison/new.
+        navigate(`${EDISON_PATH}/${data.conversationId}`, { replace: true, state: location.state });
+        // A brand-new conversation is active, unstarred and unfiltered. If the
+        // user has filters or a search on, reset them so their own new chat isn't
+        // invisible — these setters trip the fetch effect, and are a no-op
+        // re-render when the defaults are already in place.
+        setConversationStatuses(["active"]);
+        setStarredOnly(false);
+        setConversationSearch("");
+        setConversationQuery("");
+        // Optimistic bump so the filter count is right before the next fetch lands.
+        setConversationCounts(prev => ({ ...prev, active: prev.active + 1 }));
+        // A fresh chat while mid-multi-select is incoherent.
+        _exitSelectionMode();
       }
     };
 
     // Set up conversation-updated listener (e.g. title generated async)
     const handleConversationUpdated = (data) => {
       if (data?.conversationId && data?.title) {
+        // Read from the mirror BEFORE the setter: React 18 StrictMode double-
+        // invokes updaters, so a flag set inside one is not trustworthy.
+        const isLoadedRow = conversationsRef.current.some(
+          c => `${c.id}` === `${data.conversationId}`
+        );
         setConversations(prev => prev.map(c =>
           c.id === data.conversationId ? { ...c, title: data.title } : c
         ));
         setConversation(prev =>
           prev?.id === data.conversationId ? { ...prev, title: data.title } : prev
         );
+        // Not on the loaded page (filtered out, or not paged in yet). Only worth
+        // a refetch when it's the conversation they're actually looking at, so
+        // the generated title replaces "New Conversation" in the list too.
+        if (!isLoadedRow && `${conversationRef.current?.id}` === `${data.conversationId}`) {
+          _refreshConversationList().catch(() => {});
+        }
       }
     };
 
@@ -472,50 +553,122 @@ function AiModal({ isOpen, onClose }) {
       socketClient.off("conversation-updated", handleConversationUpdated);
       socketClient.off("ai-orchestration-complete", handleOrchestrationComplete);
       socketClient.off("ai-token", handleToken);
-      // Note: We don't disconnect the socket here - it's a singleton that stays connected
-      // This allows seamless reconnection when modal reopens
+      // Note: We don't disconnect the socket here - it's a singleton that stays
+      // connected. This allows seamless reconnection when the page remounts.
     };
-  }, [isOpen, user?.id, team?.id]);
+  }, [user?.id, team?.id]);
 
-  // Load conversations when modal opens
+  // Single source of fetching for the history list: mounting, the team
+  // resolving, a tab switch or a settled search all refetch page 1.
   useEffect(() => {
-    if (isOpen) {
-      loadConversations();
-      // check the route params and add project and chart id to the context
-      const projectId = parseInt(params?.projectId, 10);
-      const chartId = parseInt(params?.chartId, 10);
-      const connectionId = parseInt(params?.connectionId, 10);
-      const datasetId = parseInt(params?.datasetId, 10);
+    if (!team?.id) return;
+    loadConversations({ reset: true });
+  }, [team?.id, conversationStatuses, starredOnly, conversationQuery]);
 
-      if (projectId && selectedContext?.multiSelect?.find(e => e.id === projectId) === undefined) {
-        const project = projects.find(p => p.id === projectId);
-        const projectLabel = `Project: ${project?.name}`;
-        setSelectedContext(prev => ({ ...prev, multiSelect: [...prev.multiSelect, { id: projectId, entity_type: "project", label: projectLabel }] }));
-      }
-      if (chartId && selectedContext?.multiSelect?.find(e => e.id === chartId) === undefined) {
-        const chartLabel = `Chart ID: ${chartId}`;
-        setSelectedContext(prev => ({ ...prev, multiSelect: [...prev.multiSelect, { id: chartId, entity_type: "chart", label: chartLabel }] }));
-      }
-      if (connectionId && selectedContext?.multiSelect?.find(e => e.id === connectionId) === undefined) {
-        const connection = connections.find(c => c.id === connectionId);
-        const connectionLabel = `Connection: ${connection?.name} (${connection?.type})`;
-        setSelectedContext(prev => ({ ...prev, multiSelect: [...prev.multiSelect, { id: connectionId, entity_type: "connection", label: connectionLabel }] }));
-      }
-      if (datasetId && selectedContext?.multiSelect?.find(e => e.id === datasetId) === undefined) {
-        const dataset = datasets.find(d => d.id === datasetId);
-        const datasetLabel = `Dataset: ${dataset?.legend || dataset?.name}`;
-        setSelectedContext(prev => ({ ...prev, multiSelect: [...prev.multiSelect, { id: datasetId, entity_type: "dataset", label: datasetLabel }] }));
-      }
-    }
-  }, [isOpen]);
+  // Debounce the search box into the value that actually drives the fetch.
+  // Trimmed so a trailing space isn't treated as a new query.
+  useDebounce(() => {
+    setConversationQuery(conversationSearch.trim());
+  }, 300, [conversationSearch]);
 
-  // Deep-link: when a notification opens the modal straight to a conversation.
+  // Resolve the URL into the open conversation. The URL is the single source of
+  // truth: clicking a row navigates, and this effect does the loading.
   useEffect(() => {
-    if (isOpen && aiPendingConversationId) {
-      _onSelectConversation(aiPendingConversationId);
-      dispatch(setAiPendingConversationId(null));
+    if (!team?.id) return undefined;
+    let cancelled = false;
+
+    const resolveRoute = async () => {
+      // /edison/new — a fresh, unsaved chat.
+      if (isNewRoute) {
+        _resetToNewConversation();
+        setIsResolvingRoute(false);
+        didInitialResolveRef.current = true;
+        return;
+      }
+
+      // /edison/:conversationId — load it, unless it's already on screen (which
+      // is the case right after we create one and rewrite the URL).
+      if (routeConversationId) {
+        setIsResolvingRoute(false);
+        if (`${conversationRef.current?.id}` !== `${routeConversationId}`) {
+          await _onSelectConversation(routeConversationId, {
+            preserveContext: !didInitialResolveRef.current,
+          });
+        }
+        didInitialResolveRef.current = true;
+        return;
+      }
+
+      // /edison — auto-load the last active conversation. The list is ordered
+      // by updatedAt DESC, so one row is all we need.
+      try {
+        const data = await getAiConversations(team.id, { limit: 1, offset: 0, archived: false });
+        if (cancelled) return;
+        const lastActive = data?.conversations?.[0];
+        if (lastActive) {
+          // replace: true so Back doesn't bounce through the bare /edison.
+          navigate(`${EDISON_PATH}/${lastActive.id}`, { replace: true, state: location.state });
+          return;
+        }
+        // Nothing to open (new user, or everything archived) — show the composer.
+        _resetToNewConversation();
+        didInitialResolveRef.current = true;
+      } catch (error) {
+        if (!cancelled) toast.error(error.message);
+      } finally {
+        if (!cancelled) setIsResolvingRoute(false);
+      }
+    };
+
+    resolveRoute();
+    return () => { cancelled = true; };
+  }, [team?.id, routeConversationId]);
+
+  // Row clicks and the New Conversation button both go through the URL.
+  const _onNavigateToConversation = (conversationId) => {
+    setShowConvoSidebar(false);
+    if (`${conversationId}` === `${conversationRef.current?.id}`) return;
+    navigate(`${EDISON_PATH}/${conversationId}`, { state: location.state });
+  };
+
+  const _onStartNewConversation = () => {
+    setShowConvoSidebar(false);
+    navigate(`${EDISON_PATH}/new`, { state: location.state });
+  };
+
+  // Seed context chips from wherever the user opened Edison from.
+  //
+  // This page has its own route, so it can't read the dashboard/dataset params
+  // off the URL any more — the entry points pass the path they left behind in
+  // navigation state instead (see openEdison in modules/edisonNav.js).
+  useEffect(() => {
+    const { projectId, chartId, connectionId, datasetId } = originContext;
+
+    // De-duplicates inside the updater rather than against the effect's closure:
+    // with [] deps, StrictMode's double-invoke would otherwise read a stale
+    // multiSelect both times and append the same chip twice (duplicate React key).
+    const addContext = (entity) => setSelectedContext((prev) => (
+      prev.multiSelect.some((e) => e.id === entity.id && e.entity_type === entity.entity_type)
+        ? prev
+        : { ...prev, multiSelect: [...prev.multiSelect, entity] }
+    ));
+
+    if (projectId) {
+      const project = projects.find(p => p.id === projectId);
+      addContext({ id: projectId, entity_type: "project", label: `Project: ${project?.name}` });
     }
-  }, [isOpen, aiPendingConversationId]);
+    if (chartId) {
+      addContext({ id: chartId, entity_type: "chart", label: `Chart ID: ${chartId}` });
+    }
+    if (connectionId) {
+      const connection = connections.find(c => c.id === connectionId);
+      addContext({ id: connectionId, entity_type: "connection", label: `Connection: ${connection?.name} (${connection?.type})` });
+    }
+    if (datasetId) {
+      const dataset = datasets.find(d => d.id === datasetId);
+      addContext({ id: datasetId, entity_type: "dataset", label: `Dataset: ${dataset?.legend || dataset?.name}` });
+    }
+  }, []);
 
   // Join conversation room when conversation changes
   useEffect(() => {
@@ -542,15 +695,147 @@ function AiModal({ isOpen, onClose }) {
     };
   }, [isSocketReady, conversation?.id]);
 
-  const loadConversations = async () => {
+  /**
+   * Fetch a page of the history list.
+   *
+   * `reset` replaces the list (page 1); otherwise the next page is appended.
+   * There is deliberately no `offset` state — it's derived from the current list
+   * length, so an optimistic removal can never desync it from the server's
+   * paging. The corollary is that every mutation must refetch rather than splice.
+   *
+   * `silent` skips the loading flag, for background refreshes that shouldn't
+   * flash a skeleton over an already-populated list.
+   */
+  const loadConversations = async ({ reset = true, silent = false, limit } = {}) => {
+    if (!team?.id) return;
+    const requestId = listRequestIdRef.current + 1;
+    listRequestIdRef.current = requestId;
+    const { statuses, starred, query } = listParamsRef.current;
+    const offset = reset ? 0 : conversationsRef.current.length;
+    const pageSize = limit || CONVERSATIONS_PAGE_SIZE;
+
+    if (reset) {
+      if (!silent) setIsLoadingConversations(true);
+    } else {
+      setIsLoadingMoreConversations(true);
+    }
+
     try {
-      const data = await getAiConversations(team.id);
-      setConversations(data.conversations);
+      const data = await getAiConversations(team.id, {
+        limit: pageSize,
+        offset,
+        statuses,
+        starred,
+        search: query,
+      });
+      // A newer tab switch / search / page request has been issued since this
+      // one left — drop the response so it can't overwrite fresher data.
+      if (requestId !== listRequestIdRef.current) return;
+
+      const page = data.conversations || [];
+      setConversations((prev) => {
+        if (reset) return page;
+        // Second belt against duplicate keys if page boundaries shifted.
+        const seen = new Set(prev.map((c) => `${c.id}`));
+        return [...prev, ...page.filter((c) => !seen.has(`${c.id}`))];
+      });
+      setConversationsTotal(data.total ?? page.length);
+      setConversationCounts({
+        active: data.activeCount ?? 0,
+        archived: data.archivedCount ?? 0,
+        starred: data.starredCount ?? 0,
+      });
       // load usage in the background
       loadTeamUsage();
     } catch (error) {
+      if (requestId !== listRequestIdRef.current) return;
       toast.error(error.message);
+    } finally {
+      // Guarded too, so a stale response can't clear a live spinner.
+      if (requestId === listRequestIdRef.current) {
+        setIsLoadingConversations(false);
+        setIsLoadingMoreConversations(false);
+      }
     }
+  };
+
+  /**
+   * Refetch from offset 0 but keep as many rows as the user had already paged
+   * in, so a background refresh (a finished turn, an archive, a delete) doesn't
+   * collapse a deep list back to a single page.
+   */
+  const _refreshConversationList = () => loadConversations({
+    reset: true,
+    silent: true,
+    limit: Math.max(CONVERSATIONS_PAGE_SIZE, conversationsRef.current.length),
+  });
+
+  const _onLoadMoreConversations = () => {
+    if (isLoadingMoreConversations || isLoadingConversations) return;
+    if (conversationsRef.current.length >= conversationsTotal) return;
+    loadConversations({ reset: false });
+  };
+
+  const _exitSelectionMode = () => {
+    setSelectionMode(false);
+    setSelectedConversationIds(new Set());
+  };
+
+  // Shared by every filter change: the visible set is about to change, so drop
+  // the current rows, any selection and any in-progress rename. The search term
+  // is deliberately KEPT — "I searched X, is it archived?" is the main reason to
+  // touch these filters.
+  const _resetListForFilterChange = () => {
+    setConversations([]);
+    setConversationsTotal(0);
+    _exitSelectionMode();
+    _onCancelRename();
+  };
+
+  // Computed outside setState on purpose: this decides whether to reset the list
+  // as a side effect, and StrictMode double-invokes updaters.
+  const _onToggleConversationStatus = (status, checked) => {
+    const next = checked
+      ? [...new Set([...conversationStatuses, status])]
+      : conversationStatuses.filter((s) => s !== status);
+
+    // Never leave both unchecked: the server would silently fall back to
+    // active-only and the dropdown would then disagree with the list.
+    if (next.length === 0) return;
+
+    // Stable order so the array identity only changes on a real edit (it's a
+    // dependency of the fetch effect).
+    const ordered = ["active", "archived"].filter((s) => next.includes(s));
+    const unchanged = ordered.length === conversationStatuses.length
+      && ordered.every((s, i) => s === conversationStatuses[i]);
+    if (unchanged) return;
+
+    _resetListForFilterChange();
+    setConversationStatuses(ordered);
+  };
+
+  const _onToggleStarredOnly = (checked) => {
+    if (checked === starredOnly) return;
+    _resetListForFilterChange();
+    setStarredOnly(checked);
+  };
+
+  const _onChangeConversationSearch = (value) => {
+    setConversationSearch(value);
+    _onCancelRename();
+  };
+
+  const _onToggleSelectConversation = (id) => {
+    setSelectedConversationIds((prev) => {
+      // Must be a new Set — mutating in place would not re-render.
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const _onToggleAllLoadedConversations = (checked) => {
+    setSelectedConversationIds(checked ? new Set(conversations.map((c) => c.id)) : new Set());
   };
 
   const loadTeamUsage = async () => {
@@ -644,7 +929,8 @@ function AiModal({ isOpen, onClose }) {
         });
       }
     }
-    loadConversations();
+    // Depth-preserving so a finished turn doesn't collapse a deeply paged list.
+    _refreshConversationList().catch(() => {});
   };
 
   const _onAskAi = async (e, overrideQuestion) => {
@@ -812,7 +1098,7 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
-  const _onSelectConversation = async (conversationId) => {
+  const _onSelectConversation = async (conversationId, { preserveContext = false } = {}) => {
     // Reset state for clean viewing
     setShowConvoSidebar(false);
     setLocalMessages([]);
@@ -825,11 +1111,15 @@ function AiModal({ isOpen, onClose }) {
     setCreatedCharts([]);
     setAddedToDashboard({});
     fetchedChartsRef.current.clear();
-    setSelectedContext({
-      multiSelect: [],
-      singleSelect: null
-    });
-    setContextSearch("");
+    // Switching conversations starts with a clean context, but the very first
+    // load must keep the chips seeded from the page the user opened Edison from.
+    if (!preserveContext) {
+      setSelectedContext({
+        multiSelect: [],
+        singleSelect: null
+      });
+      setContextSearch("");
+    }
     setIsLoading(true);
     
     try {
@@ -846,36 +1136,156 @@ function AiModal({ isOpen, onClose }) {
     }
   };
 
-  const _onDeleteConversation = async (conversationId) => {
+  /**
+   * Swap the chat pane for a fresh, unsaved conversation. Used whenever the
+   * conversation being viewed goes away (single delete, bulk delete).
+   */
+  const _resetToNewConversation = () => {
+    setConversation({
+      title: "New Conversation",
+      full_history: [],
+      createdAt: new Date().toISOString(),
+      message_count: 0,
+      isTemporary: true,
+    });
+    setLocalMessages([]);
+    setProgressEvents([]);
+    setStreamingResponse("");
+    // Abandon the in-flight turn so its late tokens/completion can't stream a
+    // stale bubble onto the fresh conversation.
+    turnRef.current = null;
+    setCreatedCharts([]);
+    fetchedChartsRef.current.clear();
+  };
+
+  // Delete is irreversible, so it goes through a confirmation modal rather than
+  // firing straight off the dropdown item.
+  const _onRequestDeleteConversation = (conv) => setConversationToDelete(conv);
+
+  const _onDeleteConversation = async () => {
+    const target = conversationToDelete;
+    if (!target?.id) return;
+
+    setIsDeletingConversation(true);
     try {
-      await deleteAiConversation(conversationId, team.id);
+      await deleteAiConversation(target.id, team.id);
       toast.success("Conversation deleted");
 
-      // If we deleted the current conversation, reset to a fresh chat (stay in chat view)
-      if (conversation?.id === conversationId) {
-        setConversation({
-          title: "New Conversation",
-          full_history: [],
-          createdAt: new Date().toISOString(),
-          message_count: 0,
-          isTemporary: true,
-        });
-        setLocalMessages([]);
-        setProgressEvents([]);
-        setStreamingResponse("");
-        // Abandon the in-flight turn so its late tokens/completion can't stream a
-        // stale bubble onto the fresh conversation.
-        turnRef.current = null;
-        setCreatedCharts([]);
-        fetchedChartsRef.current.clear();
+      // Navigating rather than just resetting keeps the URL off the dead id, so
+      // a refresh doesn't try to load a conversation that no longer exists.
+      if (`${conversation?.id}` === `${target.id}`) {
+        navigate(`${EDISON_PATH}/new`, { replace: true, state: location.state });
       }
 
-      // Reload conversations list
-      await loadConversations();
+      setConversationToDelete(null);
+      await _refreshConversationList();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsDeletingConversation(false);
+    }
+  };
+
+  // Archive is reversible in one click from a tab that's on screen, so it needs
+  // no confirmation. The open conversation is deliberately NOT reset — it stays
+  // fully usable and just gains an "Archived" chip.
+  const _onSetConversationArchived = async (conversationId, archived) => {
+    try {
+      await setAiConversationArchived(conversationId, team.id, archived);
+      toast.success(archived ? "Conversation archived" : "Conversation restored");
+      setConversation((prev) => (
+        `${prev?.id}` === `${conversationId}` ? { ...prev, archived } : prev
+      ));
+      await _refreshConversationList();
     } catch (error) {
       toast.error(error.message);
     }
   };
+
+  /**
+   * Star/unstar. Optimistic because the star is a direct-manipulation control and
+   * should feel instant; the refresh behind it re-sorts so the row actually moves
+   * to (or leaves) the pinned block at the top.
+   */
+  const _onToggleConversationStar = async (conversationId, starred) => {
+    const patch = (list) => list.map((c) => (
+      `${c.id}` === `${conversationId}` ? { ...c, starred } : c
+    ));
+    setConversations(patch);
+    setConversation((prev) => (
+      `${prev?.id}` === `${conversationId}` ? { ...prev, starred } : prev
+    ));
+    setConversationCounts((prev) => ({
+      ...prev,
+      starred: Math.max(0, prev.starred + (starred ? 1 : -1)),
+    }));
+
+    try {
+      await setAiConversationStarred(conversationId, team.id, starred);
+      await _refreshConversationList();
+    } catch (error) {
+      toast.error(error.message);
+      // Roll the optimistic update back.
+      setConversations((list) => list.map((c) => (
+        `${c.id}` === `${conversationId}` ? { ...c, starred: !starred } : c
+      )));
+      setConversation((prev) => (
+        `${prev?.id}` === `${conversationId}` ? { ...prev, starred: !starred } : prev
+      ));
+      setConversationCounts((prev) => ({
+        ...prev,
+        starred: Math.max(0, prev.starred + (starred ? -1 : 1)),
+      }));
+    }
+  };
+
+  const _onArchiveConversation = (conversationId) => (
+    _onSetConversationArchived(conversationId, true)
+  );
+
+  const _onUnarchiveConversation = (conversationId) => (
+    _onSetConversationArchived(conversationId, false)
+  );
+
+  const _runBulkConversationAction = async (action, verbPast) => {
+    const ids = Array.from(selectedConversationIds);
+    if (!ids.length) return;
+
+    setIsBulkBusy(true);
+    try {
+      const result = await bulkUpdateAiConversations(team.id, ids, action);
+      const affected = result?.affected ?? ids.length;
+      const skipped = result?.skipped?.length || 0;
+      if (skipped) {
+        toast.success(`${verbPast} ${affected} of ${ids.length} conversations`);
+      } else {
+        toast.success(`${verbPast} ${affected} ${affected === 1 ? "conversation" : "conversations"}`);
+      }
+
+      const openId = conversationRef.current?.id;
+      const hitOpen = openId && ids.some((id) => `${id}` === `${openId}`);
+      if (action === "delete") {
+        if (hitOpen) navigate(`${EDISON_PATH}/new`, { replace: true, state: location.state });
+      } else if (hitOpen) {
+        // Keep the open chat, just reflect its new archive state.
+        setConversation((prev) => ({ ...prev, archived: action === "archive" }));
+      }
+
+      _exitSelectionMode();
+      setBulkDeleteConfirmOpen(false);
+      // Refetch rather than splice: offset is derived from list length, and the
+      // totals plus both tab counts have all changed.
+      await _refreshConversationList();
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setIsBulkBusy(false);
+    }
+  };
+
+  const _onBulkArchiveConversations = () => _runBulkConversationAction("archive", "Archived");
+  const _onBulkUnarchiveConversations = () => _runBulkConversationAction("unarchive", "Restored");
+  const _onBulkDeleteConversations = () => _runBulkConversationAction("delete", "Deleted");
 
   const _onStartRename = (conv) => {
     setRenamingConversationId(conv.id);
@@ -984,24 +1394,21 @@ function AiModal({ isOpen, onClose }) {
 
       _notifyAiComplete(response.orchestration.message, response.orchestration.aiConversationId || conversation?.id);
 
-      // Update conversation data in background
+      // Update conversation data in background. Fetched by id rather than by
+      // searching the list, which used to cost two list requests and would only
+      // work while the conversation happened to be on the loaded page.
       if (response.orchestration?.aiConversationId) {
-        await loadConversations();
-        const updatedConversations = await getAiConversations(team.id);
-        const newConversation = updatedConversations.conversations.find(
-          c => c.id === response.orchestration.aiConversationId
-        );
-        if (newConversation) {
-          const fullConversation = await getAiConversation(newConversation.id, team.id);
-          if (fullConversation?.conversation) {
-            setConversation({
-              ...fullConversation.conversation,
-              id: newConversation.id,
-              isTemporary: false
-            });
-            setLocalMessages([]);
-            setProgressEvents([]);
-          }
+        const newConversationId = response.orchestration.aiConversationId;
+        _refreshConversationList().catch(() => {});
+        const fullConversation = await getAiConversation(newConversationId, team.id);
+        if (fullConversation?.conversation) {
+          setConversation({
+            ...fullConversation.conversation,
+            id: newConversationId,
+            isTemporary: false
+          });
+          setLocalMessages([]);
+          setProgressEvents([]);
         }
       }
 
@@ -1078,18 +1485,20 @@ function AiModal({ isOpen, onClose }) {
     }
   }, [conversation?.full_history]);
 
-  // Fetch team members when modal opens (for sharing)
+  // Fetch team members (for sharing)
   useEffect(() => {
-    if (isOpen && team?.id && (!teamMembers || teamMembers.length === 0)) {
+    if (team?.id && (!teamMembers || teamMembers.length === 0)) {
       dispatch(getTeamMembers({ team_id: team.id }));
     }
-  }, [isOpen, team?.id]);
+  }, [team?.id]);
 
   const _onForkConversation = async (conversationId) => {
     try {
       const result = await forkAiConversation(conversationId, team.id);
       toast.success("Conversation forked");
-      await loadConversations();
+      // The fork lands in Active; if the user is on the Archived tab they won't
+      // see the new row, but it's opened for them immediately below anyway.
+      await _refreshConversationList();
       _onSelectConversation(result.id);
     } catch (e) {
       toast.error(e.message || "Failed to fork conversation");
@@ -1911,446 +2320,108 @@ function AiModal({ isOpen, onClose }) {
     );
   };
 
+  // Built once and shared by both ConversationList instances (landing accordion
+  // and in-chat sidebar) so the two can never show a different filtered page.
+  const conversationListState = {
+    statuses: conversationStatuses,
+    starredOnly,
+    search: conversationSearch,
+    activeCount: conversationCounts.active,
+    archivedCount: conversationCounts.archived,
+    starredCount: conversationCounts.starred,
+    total: conversationsTotal,
+    isLoading: isLoadingConversations,
+    isLoadingMore: isLoadingMoreConversations,
+    // Covers the debounce window too, not just the request, so the spinner
+    // appears the moment the user types.
+    isSearching: conversationSearch.trim() !== conversationQuery || isLoadingConversations,
+    hasMore: conversations.length < conversationsTotal,
+    onToggleStatus: _onToggleConversationStatus,
+    onToggleStarredOnly: _onToggleStarredOnly,
+    onSearchChange: _onChangeConversationSearch,
+    onLoadMore: _onLoadMoreConversations,
+  };
+
+  const conversationSelection = {
+    mode: selectionMode,
+    ids: selectedConversationIds,
+    isBusy: isBulkBusy,
+    onToggleMode: () => (selectionMode ? _exitSelectionMode() : setSelectionMode(true)),
+    onToggle: _onToggleSelectConversation,
+    onToggleAllLoaded: _onToggleAllLoadedConversations,
+    onBulkArchive: _onBulkArchiveConversations,
+    onBulkUnarchive: _onBulkUnarchiveConversations,
+    onRequestBulkDelete: () => setBulkDeleteConfirmOpen(true),
+  };
+
+  const conversationRowActions = {
+    onSelect: _onNavigateToConversation,
+    onStartRename: _onStartRename,
+    onCancelRename: _onCancelRename,
+    onConfirmRename: _onConfirmRename,
+    onRenameValueChange: setRenameValue,
+    renamingConversationId,
+    renameValue,
+    onFork: _onForkConversation,
+    onShare: setShareModalConversationId,
+    onArchive: _onArchiveConversation,
+    onUnarchive: _onUnarchiveConversation,
+    onToggleStar: _onToggleConversationStar,
+    onRequestDelete: _onRequestDeleteConversation,
+  };
+
   return (
     <>
-    <Modal
-      classNames={{
-        wrapper: conversation ? (isMobile ? "!overflow-hidden" : "p-4 !overflow-hidden") : "",
-        base: conversation
-          ? (isMobile
-            ? "!h-full !max-h-full !m-0 !rounded-none !overflow-hidden"
-            : "border-1 border-divider !h-[calc(100vh-2rem)] !max-h-[calc(100vh-2rem)] !my-0 !overflow-hidden")
-          : "border-1 border-divider",
-        body: conversation ? "!p-0 !overflow-hidden !flex-1 !min-h-0" : "",
-      }}
-      backdrop="blur"
-      isOpen={isOpen}
-      onClose={onClose}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      hideCloseButton
-      size={conversation ? (isMobile ? "full" : "6xl") : "xl"}
-      scrollBehavior={conversation ? "normal" : "inside"}
-    >
-      <ModalContent>{(closeModal) => (<>
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={() => onClose()}
-          className="absolute top-1 right-1 z-50 p-2 text-foreground-500 rounded-full hover:bg-default-100 active:bg-default-200 outline-none focus-visible:outline-2 focus-visible:outline-focus focus-visible:outline-offset-2"
-        >
-          <LuX size={18} />
-        </button>
-        {!conversation && (
-          <ModalBody className="pt-8">
-            <div className="flex flex-col gap-2 items-center justify-center">
-              <Avatar
-                className="shrink-0 aspect-square" icon={<LuBrainCircuit size={24} className="text-background" />}
-                size="lg"
-                color="primary"
-              />
-              <div className="flex flex-col items-center justify-center">
-                <div className="flex flex-row items-center gap-2">
-                  <div className="font-tw font-medium text-lg">Edison AI</div>
-                  <Chip color="primary" variant="flat" size="sm" radius="sm" className="shadow-sm">
-                    Beta
-                  </Chip>
-                </div>
-                <div className="text-sm text-foreground-500">Ask me anything about your data</div>
-                <div className="flex flex-row items-center gap-1 mt-2">
-                  <Kbd keys={isMac() ? ["command"] : ["ctrl"]}>K</Kbd>
-                </div>
-              </div>
-            </div>
-            <Spacer y={2} />
-            <form onSubmit={_onAskAi} id="ai-form">
-              <Input
-                placeholder="Ask me a question"
-                value={question}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setQuestion(value);
-                  // Open context popover when "@" is typed
-                  if (value.endsWith("@") && !isContextPopoverOpen) {
-                    setIsContextPopoverOpen(true);
-                  }
-                }}
-                variant="bordered"
-                endContent={
-                  <Button type="submit" isIconOnly isDisabled={(!question.trim() && selectedContext.multiSelect.length === 0 && !selectedContext.singleSelect)} color="primary" onPress={() => setQuestion(question + " ")} size="sm">
-                    <LuArrowRight size={18} />
-                  </Button>
-                }
-              />
-              <div className="flex flex-row items-center gap-1 flex-wrap mt-2">
-                <Chip
-                  variant="flat"
-                  size="sm"
-                  onClick={() => {
-                    setQuestion("What can you do?");
-                  }}
-                  className="cursor-pointer"
-                >
-                  What can you do?
-                </Chip>
-                <Chip
-                  variant="flat"
-                  size="sm"
-                  onClick={() => {
-                    setQuestion("How many users I have in my database?");
-                  }}
-                  className="cursor-pointer"
-                >
-                  How many users I have in my database?
-                </Chip>
-              </div>
-            </form>
-            <div className="flex flex-row items-center gap-1 flex-wrap">
-              <Popover placement="bottom" isOpen={isContextPopoverOpen} onOpenChange={setIsContextPopoverOpen}>
-                <PopoverTrigger>
-                  <Button
-                    variant="light"
-                    size="sm"
-                    startContent={selectedContext.multiSelect.length > 0 ? null : <LuAtSign size={16} />}
-                    isDisabled={isLoading}
-                    isIconOnly={selectedContext.multiSelect.length > 0}
-                  >
-                    {selectedContext.multiSelect.length > 0 ? <LuAtSign size={16} /> : "Add extra context"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80">
-                  <div className="p-2 w-full">
-                    <div className="text-xs text-foreground-500 mb-2">
-                      Context helps our AI to understand your intentions better.
-                    </div>
-                    <Input
-                      placeholder="Search projects, connections, datasets..."
-                      value={contextSearch}
-                      onChange={(e) => setContextSearch(e.target.value)}
-                      variant="bordered"
-                      size="sm"
-                      className="mb-2"
-                      autoFocus
-                    />
-                    <div className="max-h-64 overflow-y-auto w-full">
-                      <Listbox emptyContent="No entities found" className="w-full">
-                        {filteredContextEntities.map((entity) => {
-                          const isSelected = selectedContext.multiSelect.some(e => e.id === entity.id && e.entity_type === entity.entity_type);
-                          return (
-                            <ListboxItem
-                              key={`${entity.entity_type}-${entity.id}`}
-                              textValue={getContextLabel(entity)}
-                              startContent={
-                                entity.entity_type === "project" ? <LuLayoutGrid size={16} /> :
-                                entity.entity_type === "connection" ? <LuPlug size={16} /> :
-                                entity.entity_type === "dataset" ? <LuDatabase size={16} /> : null
-                              }
-                              endContent={isSelected ? <div className="w-2 h-2 bg-primary rounded-full" /> : null}
-                              className={isSelected ? "bg-primary-50" : ""}
-                              onPress={() => {
-                              setSelectedContext(prev => {
-                                const newEntity = {
-                                  ...entity,
-                                  label: getContextLabel(entity)
-                                };
-                                const isAlreadySelected = prev.multiSelect.some(e => e.id === entity.id && e.entity_type === entity.entity_type);
-                                if (isAlreadySelected) {
-                                  // Remove if already selected (toggle behavior for multi-select)
-                                  return {
-                                    ...prev,
-                                    multiSelect: prev.multiSelect.filter(e => !(e.id === entity.id && e.entity_type === entity.entity_type))
-                                  };
-                                } else {
-                                  // Add if not selected
-                                  return {
-                                    ...prev,
-                                    multiSelect: [...prev.multiSelect, newEntity]
-                                  };
-                                }
-                              });
-                              setContextSearch("");
-                            }}
-                          >
-                            <div className="flex flex-col">
-                              <span className="text-sm">{entity.name || entity.legend}</span>
-                              <span className="text-xs text-foreground-500">
-                                {entity.entity_type === "project" ? "Project" :
-                                 entity.entity_type === "connection" ? `Connection (${entity.type})` :
-                                 "Dataset"}
-                              </span>
-                            </div>
-                          </ListboxItem>
-                        )})}
-                      </Listbox>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-
-              {(selectedContext.multiSelect.length > 0 || selectedContext.singleSelect) && (
-                <>
-                  {selectedContext.multiSelect.map((entity) => (
-                    <Chip
-                      key={`${entity.entity_type}-${entity.id}`}
-                      color="primary"
-                      variant="flat"
-                      size="sm"
-                      onClose={() => {
-                        setSelectedContext(prev => ({
-                          ...prev,
-                          multiSelect: prev.multiSelect.filter(e => !(e.id === entity.id && e.entity_type === entity.entity_type))
-                        }));
-                      }}
-                    >
-                      {entity.label}
-                    </Chip>
-                  ))}
-                  {selectedContext.singleSelect && (
-                    <Chip
-                      color="secondary"
-                      variant="flat"
-                      size="sm"
-                      onClose={() => {
-                        setSelectedContext(prev => ({
-                          ...prev,
-                          singleSelect: null
-                        }));
-                      }}
-                    >
-                      {selectedContext.singleSelect.label}
-                    </Chip>
-                  )}
-                </>
-              )}
-            </div>
-            <Divider />
-            <Accordion variant="light">
-              <AccordionItem
-                key="previous_conversations"
-                title={`Previous Conversations (${conversations.length})`}
-                classNames={{ title: "text-sm font-medium" }}
-              >
-                <div className="flex flex-col gap-2 max-h-[250px] overflow-y-auto">
-                  {conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className="flex flex-row gap-2 cursor-pointer p-2 rounded-lg hover:bg-content2 transition-colors group"
-                      onClick={() => _onSelectConversation(conv.id)}
-                    >
-                      <div className="pt-1">
-                        {conv.source === "slack" ? <LuSlack size={16} /> : <LuMessageSquare size={16} />}
-                      </div>
-                      <div className="flex flex-col gap-1 flex-1">
-                        {renamingConversationId === conv.id ? (
-                          <div className="flex flex-row items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                            <Input
-                              size="sm"
-                              value={renameValue}
-                              onValueChange={setRenameValue}
-                              autoFocus
-                              classNames={{ inputWrapper: "h-7" }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") _onConfirmRename(conv.id);
-                                if (e.key === "Escape") _onCancelRename();
-                              }}
-                            />
-                            <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(conv.id)}>
-                              <LuCheck size={14} />
-                            </Button>
-                            <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
-                              <LuX size={14} />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-foreground font-medium">{conv.title}</div>
-                        )}
-                        <div className="flex flex-row items-center gap-3 text-xs text-foreground-500">
-                          <div className="flex items-center gap-1">
-                            <LuClock size={12} />
-                            <span>{formatDate(conv.createdAt)}</span>
-                          </div>
-                          {conv.total_tokens > 0 && (
-                            <div className="flex items-center gap-1">
-                              <LuCoins size={12} />
-                              <span>{formatTokens(conv.total_tokens)} tokens</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Dropdown>
-                          <DropdownTrigger>
-                            <Button isIconOnly size="sm" variant="light">
-                              <LuEllipsis size={16} />
-                            </Button>
-                          </DropdownTrigger>
-                          <DropdownMenu>
-                            <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conv)} startContent={<LuPencil size={16} />}>
-                              Rename conversation
-                            </DropdownItem>
-                            <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(conv.id)} startContent={<LuGitFork size={16} />}>
-                              Fork conversation
-                            </DropdownItem>
-                            <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(conv.id)} startContent={<LuShare2 size={16} />}>
-                              Share with teammate
-                            </DropdownItem>
-                            <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conv.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
-                              Delete conversation
-                            </DropdownItem>
-                          </DropdownMenu>
-                        </Dropdown>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </AccordionItem>
-            </Accordion>
-
-            <Divider />
-            <div className="text-xs text-foreground-500 mb-2">
-              <span className="font-medium">Note:</span> We are still in beta. Some features may not work as expected. Please let us know if you encounter any issues or have any feedback at <a href="#" className="text-primary-500 hover:text-primary-600">our support team</a>
-            </div>
-          </ModalBody>
-        )}
-
-        {conversation && (
-          <ModalBody>
-            <div className="flex flex-row h-full min-h-0 relative">
+    {/*
+      Full-viewport chat. Deliberately not a modal: this is a route (/edison), so
+      it owns the whole window and has its own exit control. fixed + inset-0
+      rather than h-screen so mobile browser chrome can't push the composer off
+      the bottom.
+    */}
+    <div className="fixed inset-0 z-40 flex flex-col bg-background">
+      <div className="flex flex-row h-full min-h-0 relative">
               <div className={cn(
                 "flex-none w-60",
                 // On phones the list slides in over the chat instead of stealing width.
                 isMobile && "absolute inset-y-0 left-0 z-30 w-[85%] max-w-[18rem] transition-transform duration-300",
                 isMobile && (showConvoSidebar ? "translate-x-0 shadow-2xl" : "-translate-x-full")
               )}>
-                <div className="flex flex-col relative h-full bg-content2 rounded-tl-2xl rounded-bl-2xl">
-                  <div className="w-full px-4 pt-4 border-r border-divider rounded-tl-2xl">
-                    <Button
-                      color="primary"
-                      startContent={<LuPlus size={18} />}
-                      onPress={() => {
-                        setShowConvoSidebar(false);
-                        setConversation(null);
-                        setLocalMessages([]);
-                        setProgressEvents([]);
-                        setStreamingResponse("");
-                        setCreatedCharts([]);
-                        fetchedChartsRef.current.clear();
-                        // Abandon any in-flight turn so its late completion can't
-                        // hijack the fresh blank screen.
-                        turnRef.current = null;
-                        setIsLoading(false);
-                        setSelectedContext({
-                          multiSelect: [],
-                          singleSelect: null
-                        });
-                        setContextSearch("");
-                      }}
-                      fullWidth
-                    >
-                      New Conversation
-                    </Button>
-                    <Spacer y={4} />
-                    <Divider />
-                  </div>
-                  <div className="flex flex-col flex-1 min-h-0 gap-2 px-2 overflow-y-auto border-r border-divider py-4 pb-16">
-                    {conversations.map((c) => (
-                      <div
-                        key={c.id}
-                        className={`flex flex-row gap-2 cursor-pointer px-2 py-2 rounded-lg transition-colors group relative ${c.id === conversation.id ? "bg-background shadow-sm" : "hover:bg-background/50"}`}
-                        onClick={() => _onSelectConversation(c.id)}
+                <div className="flex flex-col relative h-full bg-content2">
+                  {/* Search + filter dropdown sit at the top; New Conversation
+                      now lives in the sticky footer with the token total. */}
+                  <div className="w-full pt-3 border-r border-divider" />
+                  <ConversationList
+                    conversations={conversations}
+                    activeConversationId={conversation?.id}
+                    listState={conversationListState}
+                    selection={conversationSelection}
+                    rowActions={conversationRowActions}
+                    onNewConversation={_onStartNewConversation}
+                    footer={(
+                      <Tooltip
+                        content={<div className="flex flex-col gap-1">
+                          <div className="text-xs text-foreground-500">Total tokens used: {formatTokens(teamUsage?.total?.total_tokens || 0)}</div>
+                          <div className="text-xs text-foreground-500">Total API calls: {teamUsage?.total?.api_calls || 0}</div>
+                          <div className="text-xs text-foreground-500">Total models used: {teamUsage?.byModel?.length || 0}</div>
+                        </div>}
                       >
-                        <div className="pt-1">
-                          {c.source === "slack" ? <LuSlack size={14} /> : <LuMessageSquare size={14} />}
+                        <div className="flex flex-row items-center justify-center gap-2 cursor-help">
+                          <div><LuCoins size={14} /></div>
+                          <div className="text-xs text-foreground-500">{formatTokens(teamUsage?.total?.total_tokens || 0)}</div>
                         </div>
-                        <div className="flex flex-col gap-1 flex-1 min-w-0">
-                          {renamingConversationId === c.id ? (
-                            <div className="flex flex-row items-center gap-1 pr-6" onClick={(e) => e.stopPropagation()}>
-                              <Input
-                                size="sm"
-                                value={renameValue}
-                                onValueChange={setRenameValue}
-                                autoFocus
-                                classNames={{ inputWrapper: "h-7" }}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") _onConfirmRename(c.id);
-                                  if (e.key === "Escape") _onCancelRename();
-                                }}
-                              />
-                              <Button isIconOnly size="sm" variant="light" color="success" onPress={() => _onConfirmRename(c.id)}>
-                                <LuCheck size={14} />
-                              </Button>
-                              <Button isIconOnly size="sm" variant="light" color="danger" onPress={_onCancelRename}>
-                                <LuX size={14} />
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="text-sm text-foreground truncate pr-6">{c.title}</div>
-                          )}
-                          <div className="flex flex-col gap-1">
-                            <div className="text-xs text-foreground-500 flex items-center gap-1">
-                              <LuClock size={10} />
-                              <span className="truncate">{formatDate(c.createdAt)}</span>
-                            </div>
-                            {c.total_tokens > 0 && (
-                              <div className="text-xs text-foreground-500 flex items-center gap-1">
-                                <LuCoins size={10} />
-                                <span>{formatTokens(c.total_tokens)}</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Dropdown>
-                            <DropdownTrigger>
-                              <Button isIconOnly size="sm" variant="light">
-                                <LuEllipsis size={16} />
-                              </Button>
-                            </DropdownTrigger>
-                            <DropdownMenu>
-                              <DropdownItem key="rename_conversation" onPress={() => _onStartRename(c)} startContent={<LuPencil size={16} />}>
-                                Rename conversation
-                              </DropdownItem>
-                              <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(c.id)} startContent={<LuGitFork size={16} />}>
-                                Fork conversation
-                              </DropdownItem>
-                              <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(c.id)} startContent={<LuShare2 size={16} />}>
-                                Share with teammate
-                              </DropdownItem>
-                              <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(c.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
-                                Delete conversation
-                              </DropdownItem>
-                            </DropdownMenu>
-                          </Dropdown>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="absolute bottom-0 left-0 right-0 p-4 border-r border-t border-divider bg-content2 rounded-bl-2xl">
-                    <Tooltip
-                      content={<div className="flex flex-col gap-1">
-                        <div className="text-xs text-foreground-500">Total tokens used: {formatTokens(teamUsage?.total?.total_tokens || 0)}</div>
-                        <div className="text-xs text-foreground-500">Total API calls: {teamUsage?.total?.api_calls || 0}</div>
-                        <div className="text-xs text-foreground-500">Total models used: {teamUsage?.byModel?.length || 0}</div>
-                      </div>}
-                    >
-                      <div className="flex flex-row items-center justify-center gap-2 cursor-help">
-                        <div><LuCoins size={14} /></div>
-                        <div className="text-sm text-foreground-500">{formatTokens(teamUsage?.total?.total_tokens || 0)}</div>
-                      </div>
-                    </Tooltip>
-                  </div>
+                      </Tooltip>
+                    )}
+                  />
                 </div>
               </div>
               {isMobile && showConvoSidebar && (
                 <div
                   className="absolute inset-0 z-20 bg-black/40"
-                  onClick={() => setShowConvoSidebar(false)}
+                  onClick={() => { setShowConvoSidebar(false); _exitSelectionMode(); }}
                   aria-hidden="true"
                 />
               )}
-              <div className="relative flex-1 min-w-0 flex flex-col min-h-0 rounded-lg">
+              <div className="relative flex-1 min-w-0 flex flex-col min-h-0">
                 <div className="flex-none py-4 border-b border-divider">
                   <div className="flex flex-row gap-3 pl-4 pr-4 items-start">
                     {isMobile && (
@@ -2368,9 +2439,9 @@ function AiModal({ isOpen, onClose }) {
                       className="shrink-0 aspect-square" icon={<LuBrainCircuit size={24} className="text-background" />}
                       color="primary"
                     />
-                    <div className="flex flex-col gap-1 flex-1">
+                    <div className="flex flex-col gap-1 flex-1 min-w-0">
                       <div className="flex flex-row items-center gap-2">
-                        {renamingConversationId === conversation.id ? (
+                        {conversation?.id && renamingConversationId === conversation.id ? (
                           <div className="flex flex-row items-center gap-1 flex-1">
                             <Input
                               size="sm"
@@ -2392,43 +2463,62 @@ function AiModal({ isOpen, onClose }) {
                           </div>
                         ) : (
                           <>
-                            <div className="text-md text-foreground font-medium">{conversation.title}</div>
-                            <Dropdown>
-                              <DropdownTrigger>
-                                <Button isIconOnly size="sm" variant="light">
-                                  <LuEllipsis size={16} />
-                                </Button>
-                              </DropdownTrigger>
-                              <DropdownMenu>
-                                <DropdownItem key="rename_conversation" onPress={() => _onStartRename(conversation)} startContent={<LuPencil size={16} />}>
-                                  Rename conversation
-                                </DropdownItem>
-                                <DropdownItem key="fork_conversation" onPress={() => _onForkConversation(conversation.id)} startContent={<LuGitFork size={16} />}>
-                                  Fork conversation
-                                </DropdownItem>
-                                <DropdownItem key="share_conversation" onPress={() => setShareModalConversationId(conversation.id)} startContent={<LuShare2 size={16} />}>
-                                  Share with teammate
-                                </DropdownItem>
-                                <DropdownItem key="delete_conversation" onPress={() => _onDeleteConversation(conversation.id)} startContent={<LuTrash2 size={16} />} className="text-danger" color="danger">
-                                  Delete conversation
-                                </DropdownItem>
-                              </DropdownMenu>
-                            </Dropdown>
+                            {conversation?.starred && (
+                              <LuStar size={14} className="shrink-0 text-warning" fill="currentColor" />
+                            )}
+                            <div className="text-md text-foreground font-medium truncate">
+                              {conversation?.title || "Edison AI"}
+                            </div>
+                            {conversation?.archived && (
+                              <Chip
+                                size="sm"
+                                variant="flat"
+                                radius="sm"
+                                startContent={<LuArchive size={11} />}
+                              >
+                                Archived
+                              </Chip>
+                            )}
+                            {/* A conversation with no id is unsaved, so rename /
+                                fork / share / delete have nothing to act on. */}
+                            {conversation?.id && (
+                              <Dropdown>
+                                <DropdownTrigger>
+                                  <Button isIconOnly size="sm" variant="light">
+                                    <LuEllipsis size={16} />
+                                  </Button>
+                                </DropdownTrigger>
+                                <ConversationActionsMenu
+                                  conversation={conversation}
+                                  isArchived={!!conversation.archived}
+                                  isStarred={!!conversation.starred}
+                                  onToggleStar={_onToggleConversationStar}
+                                  onRename={_onStartRename}
+                                  onFork={_onForkConversation}
+                                  onShare={setShareModalConversationId}
+                                  onArchive={_onArchiveConversation}
+                                  onUnarchive={_onUnarchiveConversation}
+                                  onRequestDelete={_onRequestDeleteConversation}
+                                />
+                              </Dropdown>
+                            )}
                           </>
                         )}
                       </div>
                       <div className="flex flex-row items-center gap-3 text-xs text-foreground-500">
-                        <div className="flex items-center gap-1">
-                          <LuClock size={12} />
-                          <span>{formatDate(conversation.createdAt)}</span>
-                        </div>
-                        {conversation.message_count > 0 && (
+                        {conversation?.createdAt && (
+                          <div className="flex items-center gap-1">
+                            <LuClock size={12} />
+                            <span>{formatDate(conversation.createdAt)}</span>
+                          </div>
+                        )}
+                        {conversation?.message_count > 0 && (
                           <div className="flex items-center gap-1">
                             <LuMessageSquare size={12} />
                             <span>{conversation.message_count} {conversation.message_count === 1 ? "message" : "messages"}</span>
                           </div>
                         )}
-                        {conversation.total_tokens > 0 && (
+                        {conversation?.total_tokens > 0 && (
                           <Tooltip content={`${conversation.total_tokens.toLocaleString()} tokens used`}>
                             <div className="flex items-center gap-1 cursor-help">
                               <LuCoins size={12} />
@@ -2438,6 +2528,20 @@ function AiModal({ isOpen, onClose }) {
                         )}
                       </div>
                     </div>
+                    {/* Exit control — this page owns the viewport, so it needs its
+                        own way back to wherever the user came from. */}
+                    <Tooltip content="Close Edison">
+                      <Button
+                        isIconOnly
+                        size="sm"
+                        variant="light"
+                        aria-label="Close Edison"
+                        className="shrink-0 min-w-11 h-11 sm:min-w-8 sm:h-8"
+                        onPress={_onExit}
+                      >
+                        <LuX size={18} />
+                      </Button>
+                    </Tooltip>
                   </div>
                 </div>
                 <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden py-4">
@@ -2515,7 +2619,7 @@ function AiModal({ isOpen, onClose }) {
                       )}
                       <div ref={messagesEndRef} />
                     </>
-                  ) : isLoading ? (
+                  ) : (isLoading || isResolvingRoute) ? (
                     <div className="flex justify-center items-center h-full">
                       <div className="flex items-center gap-2">
                         <LuLoader size={24} className="animate-spin text-primary" />
@@ -2523,12 +2627,53 @@ function AiModal({ isOpen, onClose }) {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <div className="text-foreground-500 text-sm">No messages yet</div>
+                    /*
+                      Empty chat — the greeting and starter prompts that used to
+                      live on the separate landing screen. The composer below is
+                      shared, so there's no second input to keep in sync.
+                    */
+                    <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center">
+                      <Avatar
+                        className="shrink-0 aspect-square"
+                        icon={<LuBrainCircuit size={24} className="text-background" />}
+                        size="lg"
+                        color="primary"
+                      />
+                      <div className="flex flex-col items-center gap-1">
+                        <div className="flex flex-row items-center gap-2">
+                          <div className="font-tw font-medium text-lg">Edison AI</div>
+                          <Chip color="primary" variant="flat" size="sm" radius="sm" className="shadow-sm">
+                            Beta
+                          </Chip>
+                        </div>
+                        <div className="text-sm text-foreground-500">Ask me anything about your data</div>
+                      </div>
+                      <div className="flex flex-row items-center gap-1 flex-wrap justify-center">
+                        <Chip
+                          variant="flat"
+                          size="sm"
+                          onClick={() => setQuestion("What can you do?")}
+                          className="cursor-pointer"
+                        >
+                          What can you do?
+                        </Chip>
+                        <Chip
+                          variant="flat"
+                          size="sm"
+                          onClick={() => setQuestion("How many users I have in my database?")}
+                          className="cursor-pointer"
+                        >
+                          How many users I have in my database?
+                        </Chip>
+                      </div>
+                      <div className="flex flex-row items-center gap-1 text-xs text-foreground-400">
+                        <Kbd keys={isMac() ? ["command"] : ["ctrl"]}>K</Kbd>
+                        <span>opens Edison from anywhere</span>
+                      </div>
                     </div>
                   )}
                 </div>
-                <div className="flex-none p-4 border-t border-divider bg-background z-10 rounded-b-2xl">
+                <div className="flex-none p-4 border-t border-divider bg-background z-10">
                   <form onSubmit={_onAskAi} id="ai-conversation-form">
                     {(selectedContext.multiSelect.length > 0 || selectedContext.singleSelect) && (
                       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -2674,10 +2819,7 @@ function AiModal({ isOpen, onClose }) {
                 </div>
               </div>
             </div>
-          </ModalBody>
-        )}
-      </>)}</ModalContent>
-    </Modal>
+    </div>
 
     <Modal
       isOpen={!!shareModalConversationId}
@@ -2753,13 +2895,97 @@ function AiModal({ isOpen, onClose }) {
         </ModalFooter>
       </ModalContent>
     </Modal>
+
+    {/* Single delete confirmation. Delete is a hard, unrecoverable delete, so it
+        no longer fires straight from the dropdown item. */}
+    <Modal
+      isOpen={!!conversationToDelete}
+      onClose={() => setConversationToDelete(null)}
+      size="md"
+    >
+      <ModalContent>
+        <ModalHeader>
+          <div className="font-bold">Are you sure you want to delete this conversation?</div>
+        </ModalHeader>
+        <ModalBody>
+          <div>
+            {`"${conversationToDelete?.title || "This conversation"}" and all of its messages will be permanently removed. This action cannot be undone.`}
+          </div>
+          <div className="text-sm text-foreground-500">
+            {"If you just want it out of the way, archive it instead — you can restore it any time."}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="bordered" onPress={() => setConversationToDelete(null)} auto>
+            Cancel
+          </Button>
+          {/* Offers the reversible path at the exact moment of hesitation. */}
+          {!conversationToDelete?.archived && (
+            <Button
+              auto
+              variant="flat"
+              startContent={<LuArchive size={14} />}
+              onPress={() => {
+                const target = conversationToDelete;
+                setConversationToDelete(null);
+                _onArchiveConversation(target.id);
+              }}
+            >
+              Archive instead
+            </Button>
+          )}
+          <Button
+            auto
+            color="danger"
+            endContent={<LuTrash2 size={14} />}
+            isLoading={isDeletingConversation}
+            onPress={() => _onDeleteConversation()}
+          >
+            Delete
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+
+    {/* Bulk delete confirmation — kept separate from the single-delete modal so
+        neither has to guess which mode it's in. */}
+    <Modal
+      isOpen={bulkDeleteConfirmOpen}
+      onClose={() => setBulkDeleteConfirmOpen(false)}
+      size="md"
+    >
+      <ModalContent>
+        <ModalHeader>
+          <div className="font-bold">
+            {`Delete ${selectedConversationIds.size} ${selectedConversationIds.size === 1 ? "conversation" : "conversations"}?`}
+          </div>
+        </ModalHeader>
+        <ModalBody>
+          <div>
+            {"These conversations and all of their messages will be permanently removed. This action cannot be undone."}
+          </div>
+          <div className="text-sm text-foreground-500">
+            {"Archiving hides conversations without deleting them."}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="bordered" onPress={() => setBulkDeleteConfirmOpen(false)} auto>
+            Cancel
+          </Button>
+          <Button
+            auto
+            color="danger"
+            endContent={<LuTrash2 size={14} />}
+            isLoading={isBulkBusy}
+            onPress={_onBulkDeleteConversations}
+          >
+            {`Delete ${selectedConversationIds.size}`}
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
     </>
   )
 }
 
-AiModal.propTypes = {
-  isOpen: PropTypes.bool.isRequired,
-  onClose: PropTypes.func.isRequired
-}
-
-export default AiModal
+export default AiPage

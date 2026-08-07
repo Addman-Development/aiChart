@@ -1,10 +1,36 @@
-const { fn, col, Op } = require("sequelize");
+const {
+  fn, col, literal, Op,
+} = require("sequelize");
 
 const { orchestrate, availableTools } = require("../modules/ai/orchestrator/orchestrator");
 const { aiClient, aiModel } = require("../modules/ai/aiClient");
 const db = require("../models/models");
 const socketManager = require("../modules/socketManager");
 const logger = require("../modules/logger").child({ module: "AiController" });
+
+// Conversation ids are UUIDs. Postgres throws "invalid input syntax for type
+// uuid" on anything else, which would surface as an opaque 500, so ids coming
+// off the wire are shape-checked before they reach a query.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const DEFAULT_CONVERSATION_PAGE_SIZE = 20;
+const MAX_CONVERSATION_PAGE_SIZE = 100;
+// Matches the page size cap so "select everything loaded" always fits one call.
+const MAX_BULK_CONVERSATIONS = 100;
+const BULK_ACTIONS = ["archive", "unarchive", "delete"];
+
+/**
+ * Escape a user-supplied ILIKE search term.
+ *
+ * Postgres treats % and _ as wildcards and \ as the escape character, so an
+ * unescaped term lets a bare "%" match everything and "_" match any character.
+ * Sequelize binds the value as a parameter, so the backslash reaches Postgres
+ * literally and is honoured as ILIKE's default escape character (no ESCAPE
+ * clause needed).
+ */
+function escapeLikePattern(value) {
+  return String(value).replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
 
 /**
  * Generate a short conversation title from the user's question and the AI response.
@@ -165,6 +191,12 @@ async function getOrchestration(
       message_count: orchestration.conversationHistory.filter((msg) => msg.role === "user").length,
       status: "active",
       error_message: null,
+      // A conversation receiving a new turn is active again by definition —
+      // otherwise it would stay hidden in the Archived tab while being chatted
+      // to. Unlike the archive/unarchive writes, this update is intentionally
+      // NOT silent: real activity should bump updatedAt.
+      archived: false,
+      archived_at: null,
     };
 
     await conversation.update(updateData);
@@ -231,43 +263,115 @@ async function getAvailableTools() {
   return tools;
 }
 
-async function getConversations(teamId, userId, limit = 20, offset = 0) {
+/**
+ * List a user's conversations for one team.
+ *
+ * `statuses` is a set drawn from ("active", "archived") — the client's filter
+ * dropdown lets both be selected at once, which yields one merged list. An empty
+ * or unrecognised set falls back to "active". `starred` narrows to starred only.
+ *
+ * Costs a flat 3 queries: the page, one count row carrying all three filter
+ * totals, and one grouped token aggregation over the page's ids.
+ */
+async function getConversations(teamId, userId, options = {}) {
+  const {
+    limit = DEFAULT_CONVERSATION_PAGE_SIZE, offset = 0, search = "",
+    statuses, starred = false,
+  } = options;
+
+  const safeLimit = Math.min(
+    Math.max(parseInt(limit, 10) || DEFAULT_CONVERSATION_PAGE_SIZE, 1),
+    MAX_CONVERSATION_PAGE_SIZE,
+  );
+  const safeOffset = Math.max(parseInt(offset, 10) || 0, 0);
+  const trimmedSearch = typeof search === "string" ? search.trim() : "";
+  const starredOnly = !!starred;
+
+  const requested = Array.isArray(statuses) ? statuses : [];
+  const wantsActive = requested.includes("active");
+  const wantsArchived = requested.includes("archived");
+  // Neither recognised (or nothing sent) means the default view: active only.
+  const archivedValues = (!wantsActive && !wantsArchived)
+    ? [false]
+    : [...(wantsActive ? [false] : []), ...(wantsArchived ? [true] : [])];
+
+  // Ownership + optional title search. The status/starred filters are applied
+  // only to the page query, so this same WHERE feeds the filter counts below.
+  const baseWhere = { team_id: teamId, user_id: userId };
+  if (trimmedSearch) {
+    baseWhere.title = { [Op.iLike]: `%${escapeLikePattern(trimmedSearch)}%` };
+  }
+
+  const pageWhere = { ...baseWhere, archived: { [Op.in]: archivedValues } };
+  if (starredOnly) pageWhere.starred = true;
+
   const conversations = await db.AiConversation.findAll({
-    where: {
-      team_id: teamId,
-      user_id: userId,
-    },
-    order: [["updatedAt", "DESC"]],
-    limit,
-    offset,
-    attributes: ["id", "title", "status", "message_count", "createdAt", "updatedAt", "source"],
-    include: [
-      {
-        model: db.AiUsage,
-        attributes: [],
-      }
+    where: pageWhere,
+    // Starred pins to the top; id is a tie-breaker so "Load more" can't
+    // duplicate or skip rows when several conversations share an updatedAt.
+    order: [["starred", "DESC"], ["updatedAt", "DESC"], ["id", "DESC"]],
+    limit: safeLimit,
+    offset: safeOffset,
+    attributes: [
+      "id", "title", "status", "message_count", "createdAt", "updatedAt",
+      "source", "archived", "archived_at", "starred",
     ],
+    // NOTE: a previous `include: [{ model: db.AiUsage, attributes: [] }]` was
+    // removed here — it contributed nothing and its JOIN could multiply rows,
+    // which would silently break LIMIT/OFFSET.
   });
 
-  // Compute token totals from AiUsage for each conversation
-  const conversationsWithUsage = await Promise.all(conversations.map(async (conv) => {
-    const usageStats = await db.AiUsage.findAll({
-      where: { conversation_id: conv.id },
+  // One row carrying every count the filter dropdown needs. Conditional
+  // aggregates rather than GROUP BY, because `starred` cuts across `archived`
+  // and a grouped query would need a second round-trip for it.
+  const [counts] = await db.AiConversation.findAll({
+    where: baseWhere,
+    attributes: [
+      [fn("COUNT", literal("CASE WHEN archived = false THEN 1 END")), "activeCount"],
+      [fn("COUNT", literal("CASE WHEN archived = true THEN 1 END")), "archivedCount"],
+      [fn("COUNT", literal("CASE WHEN starred = true THEN 1 END")), "starredCount"],
+      // Split by status too, so the filtered total stays exact when "Starred
+      // only" is combined with a status selection — without a 4th query.
+      [fn("COUNT", literal("CASE WHEN starred = true AND archived = false THEN 1 END")), "starredActiveCount"],
+      [fn("COUNT", literal("CASE WHEN starred = true AND archived = true THEN 1 END")), "starredArchivedCount"],
+    ],
+    raw: true,
+  });
+
+  const readCount = (key) => parseInt(counts?.[key], 10) || 0;
+  const activeCount = readCount("activeCount");
+  const archivedCount = readCount("archivedCount");
+  const starredCount = readCount("starredCount");
+
+  // Batched token aggregation — replaces a one-query-per-row N+1.
+  const ids = conversations.map((conv) => conv.id);
+  const usageByConversation = new Map();
+  if (ids.length > 0) {
+    const usageRows = await db.AiUsage.findAll({
+      where: { conversation_id: { [Op.in]: ids } },
       attributes: [
+        "conversation_id",
         [fn("SUM", col("total_tokens")), "total_tokens"],
         [fn("SUM", col("prompt_tokens")), "prompt_tokens"],
         [fn("SUM", col("completion_tokens")), "completion_tokens"],
       ],
+      group: ["conversation_id"],
       raw: true,
     });
+    usageRows.forEach((row) => usageByConversation.set(row.conversation_id, row));
+  }
 
-    const stats = usageStats[0] || {};
+  const items = conversations.map((conv) => {
+    const stats = usageByConversation.get(conv.id) || {};
 
     return {
       id: conv.id,
       title: conv.title,
       source: conv.source,
       status: conv.status,
+      archived: conv.archived,
+      archived_at: conv.archived_at,
+      starred: conv.starred,
       message_count: conv.message_count,
       total_tokens: parseInt(stats.total_tokens, 10) || 0,
       prompt_tokens: parseInt(stats.prompt_tokens, 10) || 0,
@@ -275,9 +379,29 @@ async function getConversations(teamId, userId, limit = 20, offset = 0) {
       createdAt: conv.createdAt,
       updatedAt: conv.updatedAt,
     };
-  }));
+  });
 
-  return conversationsWithUsage;
+  const includesActive = archivedValues.includes(false);
+  const includesArchived = archivedValues.includes(true);
+  const total = starredOnly
+    ? (includesActive ? readCount("starredActiveCount") : 0)
+      + (includesArchived ? readCount("starredArchivedCount") : 0)
+    : (includesActive ? activeCount : 0) + (includesArchived ? archivedCount : 0);
+
+  return {
+    conversations: items,
+    total,
+    activeCount,
+    archivedCount,
+    starredCount,
+    limit: safeLimit,
+    offset: safeOffset,
+    hasMore: safeOffset + items.length < total,
+    // Echoed back so a debounced client can discard out-of-order responses.
+    statuses: [...(includesActive ? ["active"] : []), ...(includesArchived ? ["archived"] : [])],
+    starred: starredOnly,
+    search: trimmedSearch,
+  };
 }
 
 async function getConversation(conversationId, teamId) {
@@ -344,36 +468,178 @@ async function getConversation(conversationId, teamId) {
   };
 }
 
-async function deleteConversation(conversationId, teamId) {
-  const conversation = await db.AiConversation.findOne({
-    where: {
-      id: conversationId,
-      team_id: teamId,
-    },
+/**
+ * Hard-delete the rows making up one or more conversations.
+ *
+ * AiUsage rows are deliberately PRESERVED for billing/audit with
+ * conversation_id nulled — aiusage.js documents that nullable FK, and team_id
+ * keeps the usage attributable.
+ *
+ * Statement ORDER IS LOAD-BEARING. Both child FKs are ON DELETE NO ACTION
+ * (verified against the database: the `onDelete` in the create-migrations is
+ * nested inside `references`, where Sequelize v6 ignores it), so nothing
+ * cascades: the AiMessage rows must be destroyed explicitly, and
+ * AiUsage.conversation_id must be nulled before the parent row can go or the
+ * delete throws a foreign key violation. That is also why callers run this in a
+ * transaction — a partial failure would otherwise leave orphaned messages or a
+ * message-less shell conversation.
+ *
+ * Callers MUST have already verified ownership of every id passed in.
+ */
+async function purgeConversations(conversationIds, transaction) {
+  if (!conversationIds || conversationIds.length === 0) return 0;
+
+  await db.AiMessage.destroy({
+    where: { conversation_id: { [Op.in]: conversationIds } },
+    transaction,
   });
+
+  await db.AiUsage.update(
+    { conversation_id: null },
+    { where: { conversation_id: { [Op.in]: conversationIds } }, transaction },
+  );
+
+  return db.AiConversation.destroy({
+    where: { id: { [Op.in]: conversationIds } },
+    transaction,
+  });
+}
+
+async function deleteConversation(conversationId, teamId, userId) {
+  if (!UUID_RE.test(String(conversationId || ""))) {
+    throw new Error("Conversation not found");
+  }
+
+  const where = { id: conversationId, team_id: teamId };
+  // Scoped by owner so one team admin cannot hard-delete another member's
+  // conversation by id. Optional so the signature stays backwards compatible.
+  if (userId) where.user_id = userId;
+
+  const conversation = await db.AiConversation.findOne({ where });
 
   if (!conversation) {
     throw new Error("Conversation not found");
   }
 
-  // Delete messages (AiMessage cascade delete will handle this)
-  await db.AiMessage.destroy({
-    where: { conversation_id: conversationId }
-  });
-
-  // NOTE: We intentionally DO NOT delete AiUsage records
-  // They are kept for billing/audit purposes even after conversation deletion
-  // The team_id field in AiUsage allows us to track usage history
-  // Set conversation_id to NULL in AiUsage records to avoid foreign key constraint
-  await db.AiUsage.update(
-    { conversation_id: null },
-    { where: { conversation_id: conversationId } }
+  await db.sequelize.transaction(
+    (transaction) => purgeConversations([conversation.id], transaction),
   );
 
-  // Delete the conversation itself
-  await conversation.destroy();
-
   return { success: true };
+}
+
+/**
+ * Archive or unarchive one conversation.
+ *
+ * The write is { silent: true } so updatedAt keeps meaning "last conversation
+ * activity". Without that, unarchiving an old conversation would jump it to the
+ * top of the list, since both tabs sort by updatedAt DESC; archived_at carries
+ * the archive timestamp instead.
+ */
+async function setConversationArchived(conversationId, teamId, userId, archived) {
+  if (!UUID_RE.test(String(conversationId || ""))) {
+    throw new Error("Conversation not found");
+  }
+
+  const where = { id: conversationId, team_id: teamId };
+  if (userId) where.user_id = userId;
+
+  const conversation = await db.AiConversation.findOne({ where });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  await conversation.update(
+    {
+      archived: !!archived,
+      archived_at: archived ? new Date() : null,
+    },
+    { silent: true },
+  );
+
+  return { success: true, id: conversation.id, archived: !!archived };
+}
+
+/**
+ * Star or unstar one conversation.
+ *
+ * Silent for the same reason as archiving: starring must pin the row via the
+ * `starred DESC` sort, not by pretending the conversation was just used.
+ */
+async function setConversationStarred(conversationId, teamId, userId, starred) {
+  if (!UUID_RE.test(String(conversationId || ""))) {
+    throw new Error("Conversation not found");
+  }
+
+  const where = { id: conversationId, team_id: teamId };
+  if (userId) where.user_id = userId;
+
+  const conversation = await db.AiConversation.findOne({ where });
+
+  if (!conversation) {
+    throw new Error("Conversation not found");
+  }
+
+  await conversation.update({ starred: !!starred }, { silent: true });
+
+  return { success: true, id: conversation.id, starred: !!starred };
+}
+
+/**
+ * Archive / unarchive / delete up to MAX_BULK_CONVERSATIONS conversations.
+ *
+ * Ids are resolved to owned rows FIRST; anything not owned by the caller (or
+ * malformed, or already gone) is never touched and comes back in `skipped`.
+ */
+async function bulkUpdateConversations(teamId, userId, action, ids) {
+  if (!BULK_ACTIONS.includes(action)) {
+    throw new Error(`action must be one of: ${BULK_ACTIONS.join(", ")}`);
+  }
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new Error("ids must be a non-empty array");
+  }
+  if (ids.length > MAX_BULK_CONVERSATIONS) {
+    throw new Error(`Cannot process more than ${MAX_BULK_CONVERSATIONS} conversations at once`);
+  }
+
+  // De-dupe, and drop malformed ids before they reach Postgres — one bad UUID
+  // would abort the whole statement with a cast error.
+  const requestedIds = [...new Set(ids.map((id) => String(id)))];
+  const candidateIds = requestedIds.filter((id) => UUID_RE.test(id));
+
+  const owned = candidateIds.length > 0
+    ? await db.AiConversation.findAll({
+      where: { id: { [Op.in]: candidateIds }, team_id: teamId, user_id: userId },
+      attributes: ["id"],
+    })
+    : [];
+
+  const ownedIds = owned.map((conv) => conv.id);
+  const ownedSet = new Set(ownedIds);
+  const skipped = requestedIds.filter((id) => !ownedSet.has(id));
+
+  let affected = 0;
+
+  if (ownedIds.length > 0) {
+    if (action === "delete") {
+      affected = await db.sequelize.transaction(
+        (transaction) => purgeConversations(ownedIds, transaction),
+      );
+    } else {
+      const archived = action === "archive";
+      // A single UPDATE is already atomic, so no transaction needed here.
+      const [count] = await db.AiConversation.update(
+        { archived, archived_at: archived ? new Date() : null },
+        { where: { id: { [Op.in]: ownedIds } }, silent: true },
+      );
+      affected = count;
+    }
+  }
+
+  return {
+    success: true, action, requested: requestedIds.length, affected, skipped,
+  };
 }
 
 async function getAiUsage(teamId, startDate, endDate) {
@@ -437,13 +703,13 @@ async function getAiUsage(teamId, startDate, endDate) {
   }
 }
 
-async function renameConversation(conversationId, teamId, title) {
-  const conversation = await db.AiConversation.findOne({
-    where: {
-      id: conversationId,
-      team_id: teamId,
-    },
-  });
+async function renameConversation(conversationId, teamId, title, userId) {
+  const where = { id: conversationId, team_id: teamId };
+  // The list only ever shows conversations you own, so the client can never
+  // legitimately rename someone else's.
+  if (userId) where.user_id = userId;
+
+  const conversation = await db.AiConversation.findOne({ where });
 
   if (!conversation) {
     throw new Error("Conversation not found");
@@ -538,6 +804,9 @@ module.exports = {
   getConversation,
   deleteConversation,
   renameConversation,
+  setConversationArchived,
+  setConversationStarred,
+  bulkUpdateConversations,
   getAiUsage,
   submitMessageFeedback,
   forkConversation,

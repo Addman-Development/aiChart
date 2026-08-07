@@ -37,6 +37,29 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.ENUM("active", "completed", "error", "cancelled"),
       defaultValue: "active",
     },
+    // Archive state backing the Active/Archived tabs. Deliberately NOT folded
+    // into `status`: getOrchestration overwrites status on every turn, so it
+    // cannot hold user intent.
+    archived: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    // Set when archived, nulled when unarchived. Kept separate from updatedAt
+    // because archive writes use { silent: true } so they don't reorder the
+    // list (both tabs sort by updatedAt DESC).
+    archived_at: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      defaultValue: null,
+    },
+    // Starred conversations pin to the top of the list (ORDER BY starred DESC,
+    // updatedAt DESC). Independent of `archived` — you can star either.
+    starred: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
     // Condensed conversation history (token-efficient, rebuildable from AiMessage)
     conversation_summary: {
       type: DataTypes.TEXT("long"),
@@ -64,9 +87,15 @@ module.exports = (sequelize, DataTypes) => {
     },
   }, {
     freezeTableName: true,
+    // NOTE: this block is documentation only — there is no sequelize.sync() in
+    // this app, so server/models/migrations is the source of truth. The first
+    // two entries have never existed in the database
+    // (20251025070449-create-aiconversation.js makes no addIndex calls); the
+    // third is real, created by 20260804120000-add-archived-aiconversation.js.
     indexes: [
       { fields: ["team_id", "user_id", "updatedAt"] },
-      { fields: ["status", "updatedAt"] }
+      { fields: ["status", "updatedAt"] },
+      { fields: ["team_id", "user_id", "archived", "updatedAt"] }
     ]
   });
 

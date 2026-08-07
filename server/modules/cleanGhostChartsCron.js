@@ -12,6 +12,12 @@ const CHART_TOOL_NAMES = ["create_chart", "update_chart", "create_temporary_char
 // conversations. We keep these alive even when older than the retention
 // window — deleting them would break conversation history (the in-chat chart
 // card would render a permanent loading spinner).
+//
+// Archived conversations are intentionally included: archiving is reversible
+// and the conversation is still fully readable from the Archived tab, so
+// reaping its charts would be exactly the breakage described above. Only a hard
+// delete releases charts, which it does implicitly by removing the AiMessage
+// rows that reference them.
 async function collectReferencedChartIds() {
   const referenced = new Set();
   const messages = await db.AiMessage.findAll({

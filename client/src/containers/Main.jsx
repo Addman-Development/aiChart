@@ -13,7 +13,8 @@ import {
   selectUser,
 } from "../slices/user";
 import { getTeams, saveActiveTeam, selectTeam, selectTeams } from "../slices/team";
-import { selectFeedbackModalOpen, hideFeedbackModal, selectAiModalOpen, hideAiModal, toggleAiModal } from "../slices/ui";
+import { selectFeedbackModalOpen, hideFeedbackModal } from "../slices/ui";
+import { EDISON_PATH, edisonNavState } from "../modules/edisonNav";
 import { getProjectCharts } from "../slices/chart";
 import { cleanErrors as cleanErrorsAction } from "../actions/error";
 import { useTheme } from "../modules/ThemeContext";
@@ -49,7 +50,7 @@ const ProjectRedirect = lazy(() => import("./ProjectRedirect"));
 import FeedbackForm from "../components/FeedbackForm";
 import ForcePasswordChange from "../components/ForcePasswordChange";
 import canAccess from "../config/canAccess";
-import AiModal from "./Ai/AiModal";
+import AiPage from "./Ai/AiPage";
 import Auth from "./Integrations/Auth/Auth";
 import SlackCallback from "./Integrations/Auth/SlackCallback";
 import Integration from "./Integrations/Integration/Integration";
@@ -104,7 +105,6 @@ function Main(props) {
   const team = useSelector(selectTeam);
   const teams = useSelector(selectTeams);
   const feedbackModal = useSelector(selectFeedbackModalOpen);
-  const aiModalOpen = useSelector(selectAiModalOpen);
   const teamsRef = useRef(null);
   const [signupAllowed, setSignupAllowed] = useState(false);
 
@@ -165,7 +165,9 @@ function Main(props) {
     const handleKeyDown = (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key === "k") {
         event.preventDefault();
-        dispatch(toggleAiModal());
+        // Already on the chat page — don't stack another history entry.
+        if (window.location.pathname.startsWith(EDISON_PATH)) return;
+        navigate(EDISON_PATH, edisonNavState(window.location.pathname));
       }
     };
 
@@ -271,6 +273,22 @@ function Main(props) {
                   <Route path=":projectId/settings" element={<ProjectSettings />} />
                 </Route>
               </Route>
+              {/*
+                Edison chat. Full-viewport, so it sits OUTSIDE the UserDashboard
+                shell rather than nested in it. Same teamAdmin gate the old modal
+                had — the server enforces it too, this just keeps the UI honest.
+              */}
+              {canAccess("teamAdmin", user.id, team?.TeamRoles, user) ? (
+                <>
+                  <Route exact path="/edison" element={<AiPage />} />
+                  <Route path="/edison/:conversationId" element={<AiPage />} />
+                </>
+              ) : (
+                <>
+                  <Route exact path="/edison" element={<NoAccessPage />} />
+                  <Route path="/edison/:conversationId" element={<NoAccessPage />} />
+                </>
+              )}
               <Route exact path="/b/:brewName" element={<PublicDashboard />} />
               <Route path="/report/:brewName" element={<Report />} />
               <Route path="/report/:brewName/edit" element={<Report editMode />} />
@@ -337,16 +355,6 @@ function Main(props) {
           </ModalFooter>
         </ModalContent>
       </Modal>
-
-      {canAccess("teamAdmin", user.id, team?.TeamRoles, user) && (
-        <AiModal isOpen={aiModalOpen} onClose={() => {
-          dispatch(hideAiModal());
-          const dashboardMatch = pathname.match(/\/dashboard\/(\d+)/);
-          if (dashboardMatch) {
-            dispatch(getProjectCharts({ project_id: dashboardMatch[1] }));
-          }
-        }} />
-      )}
 
       <ForcePasswordChange />
 

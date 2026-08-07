@@ -15,7 +15,8 @@ import canAccess from "../config/canAccess"
 import { createTeam, getTeamMembers, saveActiveTeam, selectTeam, selectTeams } from "../slices/team"
 import { clearConnections } from "../slices/connection"
 import { clearDatasets, getDatasets } from "../slices/dataset"
-import { selectSidebarCollapsed, selectMobileSidebarOpen, closeMobileSidebar, showFeedbackModal, toggleAiModal } from "../slices/ui"
+import { selectSidebarCollapsed, selectMobileSidebarOpen, closeMobileSidebar, showFeedbackModal } from "../slices/ui"
+import { EDISON_PATH, edisonNavState } from "../modules/edisonNav"
 import toast from "react-hot-toast"
 import { logout } from "../slices/user"
 
@@ -191,7 +192,7 @@ function Sidebar() {
                 fullWidth
                 onPress={() => {
                   dispatch(closeMobileSidebar());
-                  dispatch(toggleAiModal());
+                  navigate(EDISON_PATH, edisonNavState(location.pathname));
                 }}
               >
                 Ask Edison AI

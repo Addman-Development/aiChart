@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { LuArrowLeft, LuBrainCircuit, LuChartArea, LuCompass, LuLayoutDashboard, LuPartyPopper, LuSearch, LuShare2 } from "react-icons/lu";
 import { Button, Card, CardBody, CardFooter, CardHeader, Chip, Divider, Image, Input, Modal, ModalBody, ModalContent, ModalFooter, ModalHeader, Spacer, Switch, Tooltip } from "@heroui/react";
 import { useDispatch, useSelector } from "react-redux";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useLocation } from "react-router";
 import toast from "react-hot-toast";
 import { Link, useSearchParams } from "react-router";
 
@@ -16,7 +16,7 @@ import PostgresConnectionForm from "./components/PostgresConnectionForm";
 import MssqlConnectionForm from "./components/MssqlConnectionForm";
 import { addConnection, addFilesToConnection, getConnection, getTeamConnections, saveConnection, selectConnections } from "../../slices/connection";
 import { selectTeam } from "../../slices/team";
-import { showAiModal } from "../../slices/ui";
+import { EDISON_PATH, edisonNavState } from "../../modules/edisonNav";
 import canAccess from "../../config/canAccess";
 import { selectUser } from "../../slices/user";
 
@@ -34,6 +34,7 @@ function ConnectionWizard() {
   const fetchConnectionRef = useRef(null);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const params = useParams();
 
@@ -140,9 +141,7 @@ function ConnectionWizard() {
 
   const _onAskAi = async () => {
     setCompletionModal(false);
-    setTimeout(() => {
-      dispatch(showAiModal())
-    }, 100);
+    navigate(EDISON_PATH, edisonNavState(location.pathname));
   };
 
   if (!_canAccess("teamAdmin", team.TeamRoles)) {

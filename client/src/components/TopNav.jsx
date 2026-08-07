@@ -5,7 +5,8 @@ import { useNavigate, useLocation, useParams } from "react-router";
 import { LuBell, LuBook, LuBookOpenText, LuBrainCircuit, LuFileCode2, LuGithub, LuHeartHandshake, LuMenu, LuPanelLeftClose, LuPanelLeftOpen, LuSmile, LuSquareKanban } from "react-icons/lu";
 import { Button, Dropdown, DropdownItem, DropdownMenu, DropdownTrigger, Breadcrumbs, BreadcrumbItem, Popover, PopoverTrigger, PopoverContent, Badge } from "@heroui/react";
 
-import { selectSidebarCollapsed, showFeedbackModal, toggleAiModal, toggleSidebar, toggleMobileSidebar, showAiModal, setAiPendingConversationId } from "../slices/ui";
+import { selectSidebarCollapsed, showFeedbackModal, toggleSidebar, toggleMobileSidebar } from "../slices/ui";
+import { EDISON_PATH, edisonNavState } from "../modules/edisonNav";
 import {
   selectNotifications, selectUnreadCount, getNotifications,
   markNotificationRead, markAllNotificationsRead, clearNotifications,
@@ -58,10 +59,12 @@ function TopNav() {
     }
     setNotifOpen(false);
     if (n.type === "ai") {
-      if (n.meta?.conversationId) {
-        dispatch(setAiPendingConversationId(n.meta.conversationId));
-      }
-      dispatch(showAiModal());
+      // The conversation id lives in the URL now, so the deep-link is a plain
+      // navigate — no pending-id handoff through Redux.
+      const target = n.meta?.conversationId
+        ? `${EDISON_PATH}/${n.meta.conversationId}`
+        : EDISON_PATH;
+      navigate(target, edisonNavState(location.pathname));
     }
   };
 
@@ -118,13 +121,15 @@ function TopNav() {
       if (!msg || msg.type !== "push-notification-click") return;
       const data = msg.data || {};
       if (data.type === "ai") {
-        if (data.conversationId) dispatch(setAiPendingConversationId(data.conversationId));
-        dispatch(showAiModal());
+        const target = data.conversationId
+          ? `${EDISON_PATH}/${data.conversationId}`
+          : EDISON_PATH;
+        navigate(target, edisonNavState(window.location.pathname));
       }
     };
     navigator.serviceWorker.addEventListener("message", onSwMessage);
     return () => navigator.serviceWorker.removeEventListener("message", onSwMessage);
-  }, [dispatch]);
+  }, [dispatch, navigate]);
 
   useEffect(() => {
     try {
@@ -273,7 +278,9 @@ function TopNav() {
           {_canAccess("teamAdmin", team) && (
             <Button
               variant="solid"
-              onPress={() => dispatch(toggleAiModal())}
+              // Goes straight to the full-size chat, which resolves to the last
+              // active conversation.
+              onPress={() => navigate(EDISON_PATH, edisonNavState(location.pathname))}
               startContent={<LuBrainCircuit size={18} />}
               size="sm"
               className="hidden sm:inline-flex from-primary-300 via-violet-200 to-secondary-300 dark:from-primary-500 dark:via-violet-500 dark:to-secondary-500 bg-linear-to-tr hover:bg-linear-to-br transition-all duration-300 shadow-md"

@@ -15,7 +15,7 @@ import {
   LuBell, LuCalendarClock, LuCheck, LuChevronDown, LuEllipsis, LuFileDown,
   LuLayoutDashboard, LuListFilter, LuLock, LuLockOpen,
   LuRefreshCw, LuSettings, LuShare, LuTrash, LuMonitor, LuMonitorX, LuX,
-  LuCircleCheck, LuVariable,
+  LuCircleCheck, LuVariable, LuMaximize2,
 } from "react-icons/lu";
 
 import moment from "moment";
@@ -99,6 +99,8 @@ function Chart(props) {
   const [exportLoading, setExportLoading] = useState(false);
   const [alertsModal, setAlertsModal] = useState(false);
   const [alertsDatasetId, setAlertsDatasetId] = useState(null);
+  const [fullscreenModal, setFullscreenModal] = useState(false);
+  const [fullscreenRedraw, setFullscreenRedraw] = useState(false);
   const chartSize = useChartSize(chart.layout);
   const [isCompact, setIsCompact] = useState(false);
   const containerRef = useRef(null);
@@ -153,6 +155,16 @@ function Chart(props) {
       resizeObserver.disconnect();
     };
   }, []);
+
+  useEffect(() => {
+    if (!fullscreenModal) return () => {};
+
+    // The chart mounts before the modal finished opening, so its container is still
+    // measuring the old size. Redraw once it settled to pick up the larger breakpoints.
+    const timeout = setTimeout(() => setFullscreenRedraw(true), 300);
+
+    return () => clearTimeout(timeout);
+  }, [fullscreenModal]);
 
   const _shouldCompact = () => {
     if (isCompact && (chart.type === "kpi" || chart.type === "gauge" || chart.type === "bar")) {
@@ -539,6 +551,104 @@ function Chart(props) {
     return variables;
   };
 
+  // Renders the chart itself. Shared between the dashboard card and the fullscreen
+  // modal so both always render the same chart types with the same data.
+  const _renderChartBody = (fullscreen = false) => {
+    const redrawProps = {
+      redraw: fullscreen ? fullscreenRedraw : redraw,
+      redrawComplete: () => (
+        fullscreen ? setFullscreenRedraw(false) : setRedraw(false)
+      ),
+    };
+
+    return (
+      <div className="h-full">
+        {chart.type === "line"
+          && (
+            <LineChart
+              chart={chart}
+              {...redrawProps}
+            />
+          )}
+        {chart.type === "bar"
+          && (
+            <BarChart
+              chart={chart}
+              {...redrawProps}
+            />
+          )}
+        {chart.type === "pie"
+          && (
+          <PieChart
+            chart={chart}
+            height={height}
+            {...redrawProps}
+          />
+          )}
+        {chart.type === "doughnut"
+          && (
+            <DoughnutChart
+              chart={chart}
+              height={height}
+              {...redrawProps}
+            />
+          )}
+        {chart.type === "radar"
+          && (
+          <RadarChart
+            chart={chart}
+            height={height}
+            {...redrawProps}
+          />
+          )}
+        {chart.type === "polar"
+          && (
+            <PolarChart
+              chart={chart}
+              height={height}
+              {...redrawProps}
+            />
+          )}
+        {chart.type === "matrix"
+          && (
+            <MatrixChart
+              chart={chart}
+              {...redrawProps}
+            />
+          )}
+        {chart.type === "table"
+          && (
+            <div className="h-full">
+              <TableContainer
+                tabularData={chart.chartData}
+                datasets={chart.ChartDatasetConfigs}
+                defaultRowsPerPage={chart.defaultRowsPerPage}
+                searchEnabled={chart.tableSearchEnabled !== false}
+                filterEnabled={chart.tableFilterEnabled !== false}
+                sortEnabled={chart.tableSortEnabled !== false}
+              />
+            </div>
+          )}
+        {(chart.type === "kpi" || chart.type === "avg")
+          && (
+            <KpiMode
+              chart={chart}
+              height={height}
+              {...redrawProps}
+            />
+          )}
+        {chart.type === "gauge"
+          && (
+            <GaugeChart
+              chart={chart}
+              height={height}
+              {...redrawProps}
+            />
+          )}
+      </div>
+    );
+  };
+
   const { projectId } = params;
 
   return (
@@ -675,6 +785,17 @@ function Chart(props) {
                     </PopoverContent>
                   </Popover>
                 </div>
+              )}
+              {!print && !editingLayout && chart.chartData && (
+                <Tooltip content="Expand chart">
+                  <LinkNext
+                    className="cursor-pointer"
+                    onPress={() => setFullscreenModal(true)}
+                    aria-label="Expand chart to fullscreen"
+                  >
+                    <LuMaximize2 className="text-default-500" size={16} />
+                  </LinkNext>
+                </Tooltip>
               )}
               {projectId && !print && (
                 <Dropdown aria-label="Select a chart option">
@@ -855,104 +976,36 @@ function Chart(props) {
           <CardBody
             className={`${_shouldCompact() ? "pt-0 pb-0" : "pt-2 pb-4"} overflow-y-hidden`}
           >
-            {chart.chartData && (
-              <div className="h-full">
-                {chart.type === "line"
-                  && (
-                    <LineChart
-                      chart={chart}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-                {chart.type === "bar"
-                  && (
-                    <BarChart
-                      chart={chart}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-                {chart.type === "pie"
-                  && (
-                  <PieChart
-                    chart={chart}
-                    height={height}
-                    redraw={redraw}
-                    redrawComplete={() => setRedraw(false)}
-                  />
-                  )}
-                {chart.type === "doughnut"
-                  && (
-                    <DoughnutChart
-                      chart={chart}
-                      height={height}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-                {chart.type === "radar"
-                  && (
-                  <RadarChart
-                    chart={chart}
-                    height={height}
-                    redraw={redraw}
-                    redrawComplete={() => setRedraw(false)}
-                  />
-                  )}
-                {chart.type === "polar"
-                  && (
-                    <PolarChart
-                      chart={chart}
-                      height={height}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-                {chart.type === "matrix"
-                  && (
-                    <MatrixChart
-                      chart={chart}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-                {chart.type === "table"
-                  && (
-                    <div className="h-full">
-                      <TableContainer
-                        tabularData={chart.chartData}
-                        datasets={chart.ChartDatasetConfigs}
-                        defaultRowsPerPage={chart.defaultRowsPerPage}
-                        searchEnabled={chart.tableSearchEnabled !== false}
-                        filterEnabled={chart.tableFilterEnabled !== false}
-                        sortEnabled={chart.tableSortEnabled !== false}
-                      />
-                    </div>
-                  )}
-                {(chart.type === "kpi" || chart.type === "avg")
-                  && (
-                    <KpiMode
-                      chart={chart}
-                      height={height}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-                {chart.type === "gauge"
-                  && (
-                    <GaugeChart
-                      chart={chart}
-                      height={height}
-                      redraw={redraw}
-                      redrawComplete={() => setRedraw(false)}
-                    />
-                  )}
-              </div>
-            )}
+            {chart.chartData && _renderChartBody()}
           </CardBody>
         </Card>
       )}
+
+      {/* FULLSCREEN CHART MODAL */}
+      <Modal
+        isOpen={fullscreenModal}
+        onClose={() => setFullscreenModal(false)}
+        backdrop="blur"
+        placement="center"
+        classNames={{
+          base: "w-[90vw] max-w-[90vw] h-[90vh] max-h-[90vh] m-0 sm:m-0",
+          body: "min-h-0 overflow-hidden pb-6",
+        }}
+      >
+        <ModalContent>
+          <ModalHeader className="flex flex-col gap-0 items-start">
+            <div className="font-bold">{chart.name}</div>
+            {chart.chartData && (
+              <span className="text-[11px] font-normal text-default-500">
+                {`Last updated ${_getUpdatedTime(chart)}`}
+              </span>
+            )}
+          </ModalHeader>
+          <ModalBody>
+            {chart.chartData && _renderChartBody(true)}
+          </ModalBody>
+        </ModalContent>
+      </Modal>
 
       {/* DELETE CONFIRMATION MODAL */}
       <Modal isOpen={deleteModal} onClose={() => setDeleteModal(false)} backdrop="blur">

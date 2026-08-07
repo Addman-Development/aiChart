@@ -7,6 +7,9 @@ const {
   getConversation,
   deleteConversation,
   renameConversation,
+  setConversationArchived,
+  setConversationStarred,
+  bulkUpdateConversations,
   getAiUsage,
   submitMessageFeedback,
   forkConversation
@@ -88,10 +91,14 @@ module.exports = (app) => {
     }
   });
 
-  // Get user conversations for a team
-  app.get("/ai/conversations", apiLimiter(10), verifyToken, checkAccess, async (req, res) => {
+  // Get user conversations for a team (paginated, archive-filtered, searchable).
+  // Rate limit is deliberately high: a debounced search fires a request per
+  // settled keystroke burst, "Load more" one per page, and the client already
+  // refreshes the list after every orchestration. express-rate-limit keys on IP
+  // by default, so everyone behind one NAT shares this bucket.
+  app.get("/ai/conversations", apiLimiter(60), verifyToken, checkAccess, async (req, res) => {
     const {
-      teamId, limit = 20, offset = 0
+      teamId, limit, offset, statuses, starred, search
     } = req.query;
 
     if (!teamId || !req.user.id) {
@@ -99,10 +106,19 @@ module.exports = (app) => {
     }
 
     try {
-      const conversations = await getConversations(
-        teamId, req.user.id, parseInt(limit, 10), parseInt(offset, 10)
-      );
-      return res.json({ conversations });
+      const result = await getConversations(teamId, req.user.id, {
+        limit,
+        offset,
+        // Comma-separated because this app runs the "simple" query parser, so
+        // repeated/bracketed params never parse into an array.
+        statuses: typeof statuses === "string" && statuses
+          ? statuses.split(",").map((s) => s.trim()).filter(Boolean)
+          : [],
+        // Query strings are always strings.
+        starred: starred === "true" || starred === "1",
+        search: typeof search === "string" ? search : "",
+      });
+      return res.json(result);
     } catch (error) {
       return res.status(500).json({ error: error.message });
     }
@@ -135,9 +151,12 @@ module.exports = (app) => {
     }
 
     try {
-      const result = await deleteConversation(conversationId, teamId);
+      const result = await deleteConversation(conversationId, teamId, req.user.id);
       return res.json(result);
     } catch (error) {
+      if (error.message === "Conversation not found") {
+        return res.status(404).json({ error: error.message });
+      }
       return res.status(500).json({ error: error.message });
     }
   });
@@ -156,9 +175,96 @@ module.exports = (app) => {
     }
 
     try {
-      const result = await renameConversation(conversationId, teamId, title.trim());
+      const result = await renameConversation(conversationId, teamId, title.trim(), req.user.id);
       return res.json(result);
     } catch (error) {
+      if (error.message === "Conversation not found") {
+        return res.status(404).json({ error: error.message });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Archive / unarchive a conversation.
+  //
+  // Deliberately NOT folded into PATCH /ai/conversations/:conversationId: that
+  // handler hard-requires a non-empty title, and loosening it would mean a body
+  // of just { teamId } returns 200 having changed nothing. Archiving is a state
+  // transition, not a field edit — same reasoning as the /fork sub-path. Three
+  // path segments, so it cannot collide with the two-segment rename route.
+  app.patch("/ai/conversations/:conversationId/archive", apiLimiter(20), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId } = req.params;
+    const { teamId, archived } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    if (typeof archived !== "boolean") {
+      return res.status(400).json({ error: "archived must be a boolean" });
+    }
+
+    try {
+      const result = await setConversationArchived(
+        conversationId, teamId, req.user.id, archived,
+      );
+      return res.json(result);
+    } catch (error) {
+      if (error.message === "Conversation not found") {
+        return res.status(404).json({ error: error.message });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Star / unstar a conversation. Starred rows pin to the top of the list.
+  app.patch("/ai/conversations/:conversationId/star", apiLimiter(30), verifyToken, checkAccess, async (req, res) => {
+    const { conversationId } = req.params;
+    const { teamId, starred } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    if (typeof starred !== "boolean") {
+      return res.status(400).json({ error: "starred must be a boolean" });
+    }
+
+    try {
+      const result = await setConversationStarred(
+        conversationId, teamId, req.user.id, starred,
+      );
+      return res.json(result);
+    } catch (error) {
+      if (error.message === "Conversation not found") {
+        return res.status(404).json({ error: error.message });
+      }
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Bulk archive / unarchive / delete.
+  //
+  // POST with a JSON body rather than DELETE with array query params: this app
+  // runs the "simple" query parser (server/index.js), so ids[]=a&ids[]=b would
+  // parse as the literal key "ids[]" and never as an array. One route with an
+  // `action` field rather than three, since validation, the ownership gate and
+  // the response shape are identical for all three verbs.
+  app.post("/ai/conversations/bulk", apiLimiter(10), verifyToken, checkAccess, async (req, res) => {
+    const { teamId, action, ids } = req.body;
+
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId is required" });
+    }
+
+    try {
+      const result = await bulkUpdateConversations(teamId, req.user.id, action, ids);
+      return res.json(result);
+    } catch (error) {
+      // Every throw in bulkUpdateConversations is a caller/validation error.
+      if (/^(action must be|ids must be|Cannot process more than)/.test(error.message)) {
+        return res.status(400).json({ error: error.message });
+      }
       return res.status(500).json({ error: error.message });
     }
   });

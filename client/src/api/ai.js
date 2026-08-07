@@ -1,14 +1,44 @@
 import { API_HOST } from "../config/settings";
 import { getAuthToken } from "../modules/auth";
 
-export async function getAiConversations(teamId) {
+// Same shape as the helper in api/notification.js. Used by the functions below;
+// the older ones in this file still inline their own Headers, and are left alone
+// on purpose so this change doesn't touch working request code.
+const authHeaders = (json = false) => {
   const token = getAuthToken();
-  const url = `${API_HOST}/ai/conversations?teamId=${teamId}`;
   const headers = new Headers({
-    "Accept": "application/json",
-    "Authorization": `Bearer ${token}`,
+    Accept: "application/json",
+    Authorization: `Bearer ${token}`,
   });
-  const response = await fetch(url, { headers, method: "GET" });
+  if (json) headers.set("Content-Type", "application/json");
+  return headers;
+};
+
+/**
+ * List conversations. Returns { conversations, total, activeCount, archivedCount,
+ * starredCount, limit, offset, hasMore, statuses, starred, search }.
+ *
+ * `statuses` is an array drawn from ("active", "archived") — both may be sent to
+ * get one merged list. It's serialised comma-separated because the API runs the
+ * "simple" query parser, which never parses repeated params into an array.
+ *
+ * Built with URL/searchParams rather than a template string so the search term
+ * is percent-encoded — a raw template breaks on &, #, + and % in a user's query.
+ */
+export async function getAiConversations(teamId, {
+  limit, offset, statuses, starred, search,
+} = {}) {
+  const url = new URL(`${API_HOST}/ai/conversations`);
+  url.searchParams.set("teamId", teamId);
+  if (limit != null) url.searchParams.set("limit", limit);
+  if (offset != null) url.searchParams.set("offset", offset);
+  if (Array.isArray(statuses) && statuses.length) {
+    url.searchParams.set("statuses", statuses.join(","));
+  }
+  if (starred) url.searchParams.set("starred", "true");
+  if (search) url.searchParams.set("search", search);
+
+  const response = await fetch(url.toString(), { headers: authHeaders(), method: "GET" });
   if (!response.ok) {
     throw new Error("Failed to fetch AI conversations");
   }
@@ -119,6 +149,68 @@ export async function deleteAiConversation(conversationId, teamId) {
 
   if (!response.ok) {
     throw new Error("Failed to delete conversation");
+  }
+
+  return response.json();
+}
+
+/**
+ * Archive or unarchive one conversation. A single endpoint handles both
+ * directions via the boolean, so callers just pass the state they want.
+ */
+export async function setAiConversationArchived(conversationId, teamId, archived) {
+  const url = `${API_HOST}/ai/conversations/${conversationId}/archive`;
+
+  const response = await fetch(url, {
+    headers: authHeaders(true),
+    method: "PATCH",
+    body: JSON.stringify({ teamId, archived })
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to ${archived ? "archive" : "unarchive"} conversation`);
+  }
+
+  return response.json();
+}
+
+/** Star or unstar one conversation. Starred conversations pin to the top. */
+export async function setAiConversationStarred(conversationId, teamId, starred) {
+  const url = `${API_HOST}/ai/conversations/${conversationId}/star`;
+
+  const response = await fetch(url, {
+    headers: authHeaders(true),
+    method: "PATCH",
+    body: JSON.stringify({ teamId, starred })
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || `Failed to ${starred ? "star" : "unstar"} conversation`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Bulk mutation. `action` is "archive" | "unarchive" | "delete", max 100 ids.
+ * Resolves to { success, action, requested, affected, skipped } — `skipped`
+ * holds ids the server refused (not yours, already gone, or malformed), so the
+ * caller can report partial success.
+ */
+export async function bulkUpdateAiConversations(teamId, ids, action) {
+  const url = `${API_HOST}/ai/conversations/bulk`;
+
+  const response = await fetch(url, {
+    headers: authHeaders(true),
+    method: "POST",
+    body: JSON.stringify({ teamId, action, ids })
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Failed to update conversations");
   }
 
   return response.json();

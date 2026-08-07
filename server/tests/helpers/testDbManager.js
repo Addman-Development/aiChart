@@ -143,9 +143,16 @@ class TestDbManager {
   async runMigrations() {
     console.log("🔄 Running database migrations...");
 
+    // Forward slashes are required even on Windows: glob treats "\" as an escape
+    // character, so a path.join()-built pattern silently matches zero files and
+    // umzug then reports success having created nothing but SequelizeMeta.
+    const migrationsGlob = path
+      .join(__dirname, "../../models/migrations/*.js")
+      .replace(/\\/g, "/");
+
     const umzug = new Umzug({
       migrations: {
-        glob: path.join(__dirname, "../../models/migrations/*.js"),
+        glob: migrationsGlob,
         resolve: (params) => {
           const migration = require(params.path);
           return {

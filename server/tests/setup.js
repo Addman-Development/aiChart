@@ -9,6 +9,16 @@ process.env.CB_ENCRYPTION_KEY = process.env.CB_ENCRYPTION_KEY
 process.env.VITE_APP_CLIENT_HOST = process.env.VITE_APP_CLIENT_HOST || "http://localhost:3000";
 process.env.CB_RESTRICT_TEAMS = process.env.CB_RESTRICT_TEAMS || "0";
 process.env.CB_RESTRICT_SIGNUP = process.env.CB_RESTRICT_SIGNUP || "0";
+// Force SSL off for the models singleton. models/config/config.js loads the repo
+// .env, so a developer pointing CB_DB_SSL at a real (TLS-requiring) database
+// leaked that setting into the tests and made every model-backed test fail with
+// "The server does not support SSL connections" against the local test
+// container. Set before the model modules are required — dotenv does not
+// override variables that already exist.
+process.env.CB_DB_SSL = "";
+process.env.CB_DB_CERT = "";
+process.env.CB_DB_SSL_KEY = "";
+process.env.CB_DB_SSL_CERT = "";
 
 // Clean database between each test but don't restart containers
 beforeEach(async () => {

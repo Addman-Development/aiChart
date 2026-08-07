@@ -203,7 +203,13 @@ class SlackController {
 
     let conversationId = slackConversations[conversationKey];
 
-    // Verify conversation exists and is active
+    // Verify conversation exists and is active.
+    //
+    // Deliberately NOT checking `archived`: archiving is a UI housekeeping
+    // action and must not fragment a Slack thread's history by forcing a fresh
+    // conversation (which would lose all prior context). An archived thread
+    // keeps its conversation, and the next orchestration turn unarchives it
+    // automatically — see updateData in AiController.getOrchestration.
     if (conversationId) {
       const conversation = await db.AiConversation.findByPk(conversationId);
       if (!conversation || conversation.team_id !== integration.team_id) {

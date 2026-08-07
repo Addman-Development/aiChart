@@ -99,6 +99,12 @@ const router = createBrowserRouter([
         path: "invite",
       },
       {
+        path: "edison",
+      },
+      {
+        path: "edison/:conversationId",
+      },
+      {
         path: "b/:brewName",
       },
       {
